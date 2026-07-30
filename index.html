@@ -2060,13 +2060,19 @@
     try {
       // 1. Borrar la solicitud
       await remove(ref(database, 'vacation_requests/' + id));
-      // 2. Borrar TODAS las notificaciones relacionadas (empleado y cleon)
-      if (sol && sol.user_uid) {
-        await remove(ref(database, 'vacation_notifications/' + sol.user_uid + '/' + id));
+      // 2. Borrar notificaciones de TODOS los usuarios que puedan tenerla
+      //    (empleado, cleon, y cualquier variante _confirmada / _contra)
+      const notifSnap = await get(ref(database, 'vacation_notifications'));
+      if (notifSnap.exists()) {
+        const delPromises = [];
+        notifSnap.forEach(userNode => {
+          // Borrar el nodo principal y variantes
+          if (userNode.hasChild(id))              delPromises.push(remove(ref(database, 'vacation_notifications/' + userNode.key + '/' + id)));
+          if (userNode.hasChild(id + '_confirmada')) delPromises.push(remove(ref(database, 'vacation_notifications/' + userNode.key + '/' + id + '_confirmada')));
+          if (userNode.hasChild(id + '_contra'))  delPromises.push(remove(ref(database, 'vacation_notifications/' + userNode.key + '/' + id + '_contra')));
+        });
+        await Promise.all(delPromises);
       }
-      await remove(ref(database, 'vacation_notifications/cleon/' + id));
-      await remove(ref(database, 'vacation_notifications/cleon/' + id + '_confirmada'));
-      await remove(ref(database, 'vacation_notifications/cleon/' + id + '_contra'));
       alert('\u2705 Solicitud eliminada.');
       window.loadVacaciones();
     } catch(e) {
@@ -2114,12 +2120,23 @@
     });
     if (toDelete.length === 0) { alert('No hay solicitudes en ese rango.'); return; }
     if (!confirm('¿Eliminar ' + toDelete.length + ' solicitud(es) de vacaciones? Esta acción no se puede deshacer.')) return;
+    // Leer todas las notificaciones una sola vez para eficiencia
+    let notifVacSnap = null;
+    try { notifVacSnap = await get(ref(database, 'vacation_notifications')); } catch {}
     let ok = 0, err = 0;
     for (const sol of toDelete) {
       try {
         await remove(ref(database, 'vacation_requests/' + sol.id));
-        if (sol.user_uid) await remove(ref(database, 'vacation_notifications/' + sol.user_uid + '/' + sol.id));
-        await remove(ref(database, 'vacation_notifications/cleon/' + sol.id));
+        // Borrar notificaciones de todos los usuarios que tengan este id
+        if (notifVacSnap && notifVacSnap.exists()) {
+          const delPromises = [];
+          notifVacSnap.forEach(userNode => {
+            if (userNode.hasChild(sol.id))              delPromises.push(remove(ref(database, 'vacation_notifications/' + userNode.key + '/' + sol.id)));
+            if (userNode.hasChild(sol.id + '_confirmada')) delPromises.push(remove(ref(database, 'vacation_notifications/' + userNode.key + '/' + sol.id + '_confirmada')));
+            if (userNode.hasChild(sol.id + '_contra'))  delPromises.push(remove(ref(database, 'vacation_notifications/' + userNode.key + '/' + sol.id + '_contra')));
+          });
+          await Promise.all(delPromises);
+        }
         ok++;
       } catch(e) { err++; }
     }
@@ -2215,10 +2232,20 @@
     const nombre = sol ? (sol.nombre_solicitante || 'este empleado') : 'este empleado';
     if (!confirm('¿Eliminar el permiso de ' + nombre + '? Esta acción no se puede deshacer.')) return;
     try {
+      // 1. Borrar la solicitud
       await remove(ref(database, 'permission_requests/' + id));
-      if (sol && sol.uid) await remove(ref(database, 'permission_notifications/' + sol.uid + '/' + id));
-      await remove(ref(database, 'permission_notifications/cleon/' + id));
-      await remove(ref(database, 'permission_notifications/lgallegos/' + id));
+      // 2. Borrar notificaciones de todos los usuarios que puedan tenerla
+      //    (empleado, cleon, lgallegos, gerente de plaza)
+      const notifSnap = await get(ref(database, 'permission_notifications'));
+      if (notifSnap.exists()) {
+        const delPromises = [];
+        notifSnap.forEach(userNode => {
+          if (userNode.hasChild(id)) {
+            delPromises.push(remove(ref(database, 'permission_notifications/' + userNode.key + '/' + id)));
+          }
+        });
+        await Promise.all(delPromises);
+      }
       alert('✅ Permiso eliminado.');
       window.loadPermisos();
     } catch(e) {
@@ -2262,13 +2289,23 @@
     });
     if (toDelete.length === 0) { alert('No hay permisos en ese rango.'); return; }
     if (!confirm('¿Eliminar ' + toDelete.length + ' permiso(s)? Esta acción no se puede deshacer.')) return;
+    // Leer todas las notificaciones una sola vez para eficiencia
+    let notifSnap = null;
+    try { notifSnap = await get(ref(database, 'permission_notifications')); } catch {}
     let ok = 0, err = 0;
     for (const sol of toDelete) {
       try {
         await remove(ref(database, 'permission_requests/' + sol.id));
-        if (sol.uid) await remove(ref(database, 'permission_notifications/' + sol.uid + '/' + sol.id));
-        await remove(ref(database, 'permission_notifications/cleon/' + sol.id));
-        await remove(ref(database, 'permission_notifications/lgallegos/' + sol.id));
+        // Borrar notificaciones de todos los usuarios que tengan este id
+        if (notifSnap && notifSnap.exists()) {
+          const delPromises = [];
+          notifSnap.forEach(userNode => {
+            if (userNode.hasChild(sol.id)) {
+              delPromises.push(remove(ref(database, 'permission_notifications/' + userNode.key + '/' + sol.id)));
+            }
+          });
+          await Promise.all(delPromises);
+        }
         ok++;
       } catch(e) { err++; }
     }
