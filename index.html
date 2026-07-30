@@ -645,7 +645,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import { getDatabase, ref, get, remove, update, query, orderByChild, startAt, endAt } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import { getDatabase, ref, get, remove, update, query, orderByChild, startAt, endAt, onValue, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
   // ── Firebase config ────────────────────────────────────────────────────────
   const firebaseConfig = {
@@ -1864,19 +1864,20 @@
   };
 
   // ── Cargar desde Firebase ─────────────────────────────────────────────────────────────────────
-  window.loadVacaciones = async function() {
+  let _vacUnsub = null;
+  window.loadVacaciones = function() {
     document.getElementById('vacTableContainer').innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Cargando solicitudes...</div>';
-    try {
-      const snap = await get(ref(database, 'vacation_requests'));
+    if (_vacUnsub) { _vacUnsub(); _vacUnsub = null; }
+    _vacUnsub = onValue(ref(database, 'vacation_requests'), (snap) => {
       vacData = [];
       if (snap.exists()) {
         snap.forEach(child => vacData.push({ id: child.key, ...child.val() }));
       }
       vacData.sort((a,b) => (b.timestamp_creacion||0) - (a.timestamp_creacion||0));
       window.renderVacaciones();
-    } catch(e) {
+    }, (e) => {
       document.getElementById('vacTableContainer').innerHTML = '<div style="color:#D32F2F;padding:20px">❌ Error al cargar: ' + e.message + '</div>';
-    }
+    });
   };
 
   // ── Renderizar tabla ─────────────────────────────────────────────────────────────────────
@@ -2136,10 +2137,11 @@
     window.loadPermisos();
   };
 
-  window.loadPermisos = async function() {
+  let _permUnsub = null;
+  window.loadPermisos = function() {
     document.getElementById('permTableContainer').innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Cargando...</div>';
-    try {
-      const snap = await get(ref(database, 'permission_requests'));
+    if (_permUnsub) { _permUnsub(); _permUnsub = null; }
+    _permUnsub = onValue(ref(database, 'permission_requests'), (snap) => {
       permData = [];
       if (snap.exists()) {
         snap.forEach(child => {
@@ -2148,9 +2150,9 @@
         permData.sort((a,b) => (b.timestamp_creacion||0) - (a.timestamp_creacion||0));
       }
       window.renderPermisos();
-    } catch(e) {
+    }, (e) => {
       document.getElementById('permTableContainer').innerHTML = '<div style="color:#D32F2F;padding:20px">❌ Error: ' + e.message + '</div>';
-    }
+    });
   };
 
   const PERM_ESTADO_CFG = {
