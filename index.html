@@ -401,8 +401,7 @@
         <button class="btn-export" style="background:#2563EB" onclick="exportVehiculos()">🚗 Exportar Vehículos</button>
         <button class="btn-download" id="btnFotosAsistencia" onclick="downloadFotosAsistencia()" title="Haz una búsqueda primero" disabled style="opacity:0.4;cursor:not-allowed">📷 Fotos Asistencia</button>
         <button class="btn-download km" id="btnFotosKm" onclick="downloadFotosKm()" title="Haz una búsqueda primero" disabled style="opacity:0.4;cursor:not-allowed">🚗 Fotos Km</button>
-        <button class="btn-export" style="background:#7B1FA2" onclick="window.showVacaciones()">🏖 Vacaciones</button>
-        <button class="btn-export" style="background:#0D7A5F" onclick="window.showPermisos()">📝 Permisos</button>
+        <button class="btn-export" style="background:#0D7A5F" onclick="window.showVacPerm()">📋 Vac &amp; Permisos</button>
         <button class="btn-export" style="background:#B91C1C" onclick="window.showEliminarRegistros()">🗑 Eliminar Registros</button>
         <button id="btnAlfredo" class="btn-export" style="background:#1565C0;display:none" onclick="window.showAlfredo()">👤 Alfredo</button>
       </div>
@@ -485,65 +484,104 @@
   </div>
 </div>
 
-<!-- ── Vacaciones section ── -->
-<div id="vacacionesSection" style="display:none;padding:24px 32px">
+<!-- ── Vacaciones & Permisos unificado ── -->
+<div id="vacPermSection" style="display:none;padding:24px 32px">
+  <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-    <h2 style="margin:0;color:#7B1FA2;font-size:20px">🏖 Solicitudes de Vacaciones</h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <select id="filtroEstadoVac" onchange="window.renderVacaciones()" style="padding:8px 12px;border-radius:8px;border:1.5px solid #D0DDD0;font-size:13px;color:#1A2E1A">
-        <option value="">Todos los estados</option>
-        <option value="sin_responder">Sin responder</option>
-        <option value="propuesta_cleon">Propuesta RH</option>
-        <option value="confirmada">Confirmada</option>
-        <option value="activo">Activo</option>
-        <option value="gozados">Gozados</option>
-      </select>
-      <button onclick="window.loadVacaciones()" style="padding:8px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">↻ Actualizar</button>
-      <button onclick="document.getElementById('vacacionesSection').style.display='none';document.getElementById('app').style.display='block'" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Volver</button>
+    <h2 style="margin:0;color:#0D7A5F;font-size:20px">📋 Vacaciones &amp; Permisos</h2>
+    <button onclick="window.volverDesdeVacPerm()" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Volver</button>
+  </div>
+
+  <!-- Filtros -->
+  <div style="background:#F0F9F4;border:1.5px solid #D0DDD0;border-radius:12px;padding:18px;margin-bottom:18px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:5px">Fecha inicio</label>
+        <input type="date" id="vpFechaIni" style="width:100%;padding:8px 10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;box-sizing:border-box" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:5px">Fecha fin</label>
+        <input type="date" id="vpFechaFin" style="width:100%;padding:8px 10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;box-sizing:border-box" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:5px">Tipo</label>
+        <select id="vpTipo" style="width:100%;padding:8px 10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;color:#1A2E1A;box-sizing:border-box">
+          <option value="">Todos</option>
+          <option value="vacaciones">🏖 Vacaciones</option>
+          <option value="permisos">📝 Permisos</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:5px">Estado</label>
+        <select id="vpEstado" style="width:100%;padding:8px 10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;color:#1A2E1A;box-sizing:border-box">
+          <option value="">Todos</option>
+          <optgroup label="Vacaciones">
+            <option value="vac_sin_responder">Sin responder</option>
+            <option value="vac_propuesta_cleon">Propuesta RH</option>
+            <option value="vac_confirmada">Confirmada</option>
+            <option value="vac_activo">Activo</option>
+            <option value="vac_gozados">Gozados</option>
+          </optgroup>
+          <optgroup label="Permisos">
+            <option value="perm_sin_responder">Sin responder</option>
+            <option value="perm_propuesta_lgallegos">Propuesta Gte. Ops</option>
+            <option value="perm_pendiente_vobo">Pendiente VoBo RH</option>
+            <option value="perm_aprobado_final">Aprobado Final</option>
+            <option value="perm_cancelado">Cancelado</option>
+          </optgroup>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:5px">Rol</label>
+        <select id="vpRol" style="width:100%;padding:8px 10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;color:#1A2E1A;box-sizing:border-box">
+          <option value="">Todos</option>
+          <option value="GERENTE">Gerente</option>
+          <option value="LIDER A">Lider A</option>
+          <option value="LIDER B">Lider B</option>
+          <option value="LIDER C">Lider C</option>
+          <option value="CANJES">Canjes</option>
+          <option value="GESTOR">Gestor</option>
+          <option value="ADMINISTRATIVO">Administrativo</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:5px">Plaza</label>
+        <select id="vpPlaza" style="width:100%;padding:8px 10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;color:#1A2E1A;box-sizing:border-box">
+          <option value="">Todas</option>
+          <option value="TAMPICO">Tampico</option>
+          <option value="MADERO">Madero</option>
+          <option value="POZA">Poza</option>
+          <option value="TUXPAN">Tuxpan</option>
+          <option value="VALLES">Valles</option>
+          <option value="XALAPA">Xalapa</option>
+          <option value="MANTE">Mante</option>
+          <option value="PAPANTLA">Papantla</option>
+          <option value="SALTILLO">Saltillo</option>
+          <option value="ADMINISTRATIVO">Administrativo</option>
+        </select>
+      </div>
+      <div style="grid-column:span 2">
+        <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:5px">Buscar usuario (nombre o correo, separar con comas)</label>
+        <input type="text" id="vpUsuario" placeholder="Ej: Juan, garcia, juan@fredinero.com" style="width:100%;padding:8px 10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;box-sizing:border-box" />
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="window.buscarVacPerm()" style="padding:9px 22px;background:#0D7A5F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🔍 Buscar</button>
+      <button onclick="window.exportVacPermExcel()" style="padding:9px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
+      <button onclick="window.showEliminarVacaciones()" style="padding:9px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Vacaciones</button>
+      <button onclick="window.showEliminarPermisos()" style="padding:9px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Permisos</button>
     </div>
   </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-    <input type="text" id="filtroNombreVac" placeholder="Buscar por nombre..." style="padding:8px 12px;border-radius:8px;border:1.5px solid #D0DDD0;font-size:13px;min-width:200px" oninput="window.renderVacaciones()" />
-    <select id="filtroRolVac" onchange="window.renderVacaciones()" style="padding:8px 12px;border-radius:8px;border:1.5px solid #D0DDD0;font-size:13px;color:#1A2E1A">
-      <option value="">Todos los roles</option>
-      <option value="ADMINISTRATIVO">Administrativo</option>
-      <option value="OPERATIVO">Operativo</option>
-    </select>
-    <button onclick="window.exportVacacionesExcel()" style="padding:8px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
-    <button onclick="window.showEliminarVacaciones()" style="padding:8px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar por rango</button>
+
+  <!-- Tabla de resultados -->
+  <div id="vacPermTableContainer">
+    <div style="text-align:center;padding:48px;color:#7A8C7A">🔍 Usa los filtros y presiona <strong>Buscar</strong> para cargar los registros.</div>
   </div>
-  <div id="vacTableContainer"><div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Cargando...</div></div>
 </div>
 
-<!-- ── Permisos section ── -->
-<div id="permisosSection" style="display:none;padding:24px 32px">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-    <h2 style="margin:0;color:#0D7A5F;font-size:20px">📝 Solicitudes de Permisos</h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <select id="filtroEstadoPerm" onchange="window.renderPermisos()" style="padding:8px 12px;border-radius:8px;border:1.5px solid #D0DDD0;font-size:13px;color:#1A2E1A">
-        <option value="">Todos los estados</option>
-        <option value="pendiente">Pendiente</option>
-        <option value="aprobado_lgallegos">Aprobado Gerente Operaciones</option>
-        <option value="pendiente_visto_bueno">Pendiente Visto Bueno</option>
-        <option value="aprobado_final">Aprobado Final</option>
-        <option value="cancelado">Cancelado</option>
-      </select>
-      <button onclick="window.loadPermisos()" style="padding:8px 16px;background:#0D7A5F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">↻ Actualizar</button>
-      <button onclick="document.getElementById('permisosSection').style.display='none';document.getElementById('app').style.display='block'" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Volver</button>
-    </div>
-  </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-    <input type="text" id="filtroNombrePerm" placeholder="Buscar por nombre..." style="padding:8px 12px;border-radius:8px;border:1.5px solid #D0DDD0;font-size:13px;min-width:200px" oninput="window.renderPermisos()" />
-    <select id="filtroRolPerm" onchange="window.renderPermisos()" style="padding:8px 12px;border-radius:8px;border:1.5px solid #D0DDD0;font-size:13px;color:#1A2E1A">
-      <option value="">Todos los roles</option>
-      <option value="ADMINISTRATIVO">Administrativo</option>
-      <option value="OPERATIVO">Operativo</option>
-    </select>
-    <button onclick="window.exportPermisosExcel()" style="padding:8px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
-    <button onclick="window.showEliminarPermisos()" style="padding:8px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar por rango</button>
-  </div>
-  <div id="permTableContainer"><div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Cargando...</div></div>
-</div>
+<!-- IDs legacy mantenidos para compatibilidad con modales de edición y eliminación -->
+<div id="vacacionesSection" style="display:none"></div>
+<div id="permisosSection" style="display:none"></div>
 
 <!-- ── Eliminar Registros section ── -->
 <div id="eliminarRegistrosSection" style="display:none;padding:24px 32px">
@@ -2017,7 +2055,7 @@
 
   // ── Abrir modal de edición ─────────────────────────────────────────────────────────────────────
   window.openVacEdit = function(id) {
-    const sol = vacData.find(s => s.id === id);
+    const sol = vacData.find(s => s.id === id) || (typeof _vpData !== 'undefined' && _vpData.find(s => s.id === id && s._tipo === 'vacaciones'));
     if (!sol) return;
     const estado = vacGetEstado(sol);
 
@@ -2102,7 +2140,12 @@
       await update(ref(database, `vacation_requests/${id}`), updates);
       document.getElementById('vacEditModal').style.display = 'none';
       alert('✅ Solicitud actualizada correctamente.');
-      window.loadVacaciones();
+      // Recargar la vista que esté activa
+      if (document.getElementById('vacPermSection').style.display !== 'none') {
+        window.buscarVacPerm();
+      } else {
+        window.loadVacaciones();
+      }
     } catch(e) {
       alert('❌ Error al guardar: ' + e.message);
     }
@@ -2377,6 +2420,219 @@
   };
 
   // ── Sección Eliminar Registros de Inicio ────────────────────────────────────────────────────
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ── VAC & PERMISOS UNIFICADO ─────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════════════════════
+
+  let _vpData = [];
+
+  window.showVacPerm = function() {
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('vacPermSection').style.display = 'block';
+    const hoy = new Date();
+    const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - hoy.getDay() + 1);
+    const fmt = d => d.toISOString().slice(0,10);
+    document.getElementById('vpFechaIni').value = fmt(lunes);
+    document.getElementById('vpFechaFin').value = fmt(hoy);
+  };
+
+  window.volverDesdeVacPerm = function() {
+    document.getElementById('vacPermSection').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    if (_vacUnsub) { _vacUnsub(); _vacUnsub = null; }
+    if (_permUnsub) { _permUnsub(); _permUnsub = null; }
+  };
+
+  window.buscarVacPerm = async function() {
+    const container = document.getElementById('vacPermTableContainer');
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Buscando...</div>';
+    const tipo    = document.getElementById('vpTipo').value;
+    const estado  = document.getElementById('vpEstado').value;
+    const rol     = document.getElementById('vpRol').value.toUpperCase();
+    const plaza   = document.getElementById('vpPlaza').value.toUpperCase();
+    const buscar  = document.getElementById('vpUsuario').value.toLowerCase();
+    const fechaIni = document.getElementById('vpFechaIni').value;
+    const fechaFin = document.getElementById('vpFechaFin').value;
+    const terminos = buscar ? buscar.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const tsStart = fechaIni ? new Date(fechaIni + 'T00:00:00').getTime() : 0;
+    const tsEnd   = fechaFin ? new Date(fechaFin + 'T23:59:59').getTime() : Infinity;
+    const coincideUsuario = (nombre, correo) => {
+      if (terminos.length === 0) return true;
+      const n = (nombre||'').toLowerCase(), c = (correo||'').toLowerCase();
+      return terminos.some(t => n.includes(t) || c.includes(t));
+    };
+    const coincideFecha = ts => (!fechaIni && !fechaFin) || (ts >= tsStart && ts <= tsEnd);
+    _vpData = [];
+    try {
+      if (tipo === '' || tipo === 'vacaciones') {
+        const snapVac = await get(ref(database, 'vacation_requests'));
+        if (snapVac.exists()) {
+          snapVac.forEach(child => {
+            const s = { id: child.key, _tipo: 'vacaciones', ...child.val() };
+            const estadoVac = vacGetEstado(s);
+            if (estado && estado.startsWith('vac_') && estadoVac !== estado.replace('vac_','')) return;
+            if (estado && estado.startsWith('perm_')) return;
+            if (rol   && (s.rol  ||'').toUpperCase() !== rol)   return;
+            if (plaza && (s.plaza||'').toUpperCase() !== plaza) return;
+            if (!coincideUsuario(s.nombre_solicitante, s.user_email)) return;
+            if (!coincideFecha(s.timestamp_creacion || 0)) return;
+            _vpData.push({ ...s, _estadoKey: estadoVac });
+          });
+        }
+      }
+      if (tipo === '' || tipo === 'permisos') {
+        const snapPerm = await get(ref(database, 'permission_requests'));
+        if (snapPerm.exists()) {
+          snapPerm.forEach(child => {
+            const s = { id: child.key, _tipo: 'permisos', ...child.val() };
+            const estadoPerm = s.estado || 'sin_responder';
+            if (estado && estado.startsWith('perm_') && estadoPerm !== estado.replace('perm_','')) return;
+            if (estado && estado.startsWith('vac_')) return;
+            if (rol   && (s.rol  ||'').toUpperCase() !== rol)   return;
+            if (plaza && (s.plaza||'').toUpperCase() !== plaza) return;
+            if (!coincideUsuario(s.nombre_solicitante || s.nombre, s.correo || s.user_email)) return;
+            if (!coincideFecha(s.timestamp_creacion || 0)) return;
+            _vpData.push({ ...s, _estadoKey: estadoPerm });
+          });
+        }
+      }
+      _vpData.sort((a, b) => (b.timestamp_creacion||0) - (a.timestamp_creacion||0));
+      window.renderVacPerm();
+    } catch(e) {
+      container.innerHTML = '<div style="color:#D32F2F;padding:20px">❌ Error al buscar: ' + e.message + '</div>';
+    }
+  };
+
+  window.renderVacPerm = function() {
+    const container = document.getElementById('vacPermTableContainer');
+    if (_vpData.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:48px;color:#7A8C7A">💭 No se encontraron registros con los filtros seleccionados.</div>';
+      return;
+    }
+    let html = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#E8F5E9;color:#0D7A5F">
+        <th style="padding:10px 12px;text-align:left;white-space:nowrap">Tipo</th>
+        <th style="padding:10px 12px;text-align:left;white-space:nowrap">Empleado</th>
+        <th style="padding:10px 12px;text-align:left;white-space:nowrap">Rol / Plaza</th>
+        <th style="padding:10px 12px;text-align:left;white-space:nowrap">Fechas</th>
+        <th style="padding:10px 12px;text-align:left;white-space:nowrap">Detalle</th>
+        <th style="padding:10px 12px;text-align:center;white-space:nowrap">Estado</th>
+        <th style="padding:10px 12px;text-align:center;white-space:nowrap">Acciones</th>
+      </tr></thead><tbody>`;
+    _vpData.forEach((s, i) => {
+      const esVac = s._tipo === 'vacaciones';
+      const bg = i % 2 === 0 ? '#fff' : '#f7fdf9';
+      const tipoBadge = esVac
+        ? '<span style="background:#F3E5F5;color:#7B1FA2;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">🏖 Vacaciones</span>'
+        : '<span style="background:#D1FAE5;color:#0D7A5F;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">📝 Permiso</span>';
+      const estadoCfg = esVac
+        ? (VAC_ESTADO_CFG[s._estadoKey]  || { label: s._estadoKey, color:'#555', bg:'#eee' })
+        : (PERM_ESTADO_CFG[s._estadoKey] || PERM_ESTADO_CFG.sin_responder);
+      const estadoBadge = `<span style="background:${estadoCfg.bg};color:${estadoCfg.color};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${estadoCfg.label}</span>`;
+      const nombre = s.nombre_solicitante || s.nombre || '—';
+      const correo = s.user_email || s.correo || '';
+      let fechas = '';
+      if (esVac) {
+        const fi = s.fecha_inicio_aprobada || s.fecha_inicio || '—';
+        const ff = s.fecha_fin_aprobada    || s.fecha_fin    || '—';
+        const dias = s.dias_aprobados != null ? s.dias_aprobados : (s.dias_solicitados || '—');
+        fechas = `${fi} → ${ff}<br><span style="font-size:11px;color:#7A8C7A">${dias} día(s)</span>`;
+      } else {
+        const fi = s.fecha_inicio || '—', fr = s.fecha_regreso || '—';
+        fechas = `${fi} → ${fr}<br><span style="font-size:11px;color:#7A8C7A">${s.dia_completo ? 'Día completo' : 'Parcial'}</span>`;
+      }
+      let detalle = '';
+      if (esVac) {
+        detalle = s.nota_respuesta
+          ? `<span style="color:#0288D1;font-style:italic">💬 ${s.nota_respuesta}</span>`
+          : '<span style="color:#bbb">Sin nota</span>';
+      } else {
+        const horario = s.dia_completo ? '—' : `${s.hora_inicio||'?'} - ${s.hora_salida||'?'}`;
+        detalle = `<div style="font-size:12px">${horario}</div><div style="font-size:11px;color:#7A8C7A;max-width:180px;word-break:break-word">${s.motivo||'—'}</div>`;
+      }
+      const acciones = esVac
+        ? `<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button><button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`
+        : `<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+      html += `<tr style="background:${bg};border-bottom:1px solid #E8F5E9">
+        <td style="padding:10px 12px">${tipoBadge}</td>
+        <td style="padding:10px 12px"><div style="font-weight:700;color:#1A2E1A">${nombre}</div><div style="font-size:11px;color:#7A8C7A">${correo}</div></td>
+        <td style="padding:10px 12px;color:#4A5568">${s.rol||'—'}<br><span style="font-size:11px">${s.plaza||'—'}</span></td>
+        <td style="padding:10px 12px;white-space:nowrap">${fechas}</td>
+        <td style="padding:10px 12px">${detalle}</td>
+        <td style="padding:10px 12px;text-align:center">${estadoBadge}</td>
+        <td style="padding:10px 12px;text-align:center;white-space:nowrap">${acciones}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+    html += `<div style="margin-top:12px;color:#7A8C7A;font-size:12px">${_vpData.length} registro(s) encontrado(s)</div>`;
+    container.innerHTML = html;
+  };
+
+  window.deleteVacPermById = async function(btn, tipo) {
+    if (tipo === 'vac') {
+      const id = btn.getAttribute('data-vacid');
+      const sol = _vpData.find(s => s.id === id);
+      if (!confirm('¿Eliminar la vacación de ' + (sol ? sol.nombre_solicitante||'este empleado' : 'este empleado') + '? Esta acción no se puede deshacer.')) return;
+      try {
+        await remove(ref(database, 'vacation_requests/' + id));
+        const ns = await get(ref(database, 'vacation_notifications'));
+        if (ns.exists()) {
+          const d = [];
+          ns.forEach(u => {
+            if (u.hasChild(id)) d.push(remove(ref(database, 'vacation_notifications/' + u.key + '/' + id)));
+            if (u.hasChild(id + '_confirmada')) d.push(remove(ref(database, 'vacation_notifications/' + u.key + '/' + id + '_confirmada')));
+            if (u.hasChild(id + '_contra')) d.push(remove(ref(database, 'vacation_notifications/' + u.key + '/' + id + '_contra')));
+          });
+          await Promise.all(d);
+        }
+        alert('✅ Vacación eliminada.');
+        window.buscarVacPerm();
+      } catch(e) { alert('❌ Error: ' + e.message); }
+    } else {
+      const id = btn.getAttribute('data-permid');
+      const sol = _vpData.find(s => s.id === id);
+      if (!confirm('¿Eliminar el permiso de ' + (sol ? sol.nombre_solicitante||sol.nombre||'este empleado' : 'este empleado') + '? Esta acción no se puede deshacer.')) return;
+      try {
+        await remove(ref(database, 'permission_requests/' + id));
+        const ns = await get(ref(database, 'permission_notifications'));
+        if (ns.exists()) {
+          const d = [];
+          ns.forEach(u => { if (u.hasChild(id)) d.push(remove(ref(database, 'permission_notifications/' + u.key + '/' + id))); });
+          await Promise.all(d);
+        }
+        alert('✅ Permiso eliminado.');
+        window.buscarVacPerm();
+      } catch(e) { alert('❌ Error: ' + e.message); }
+    }
+  };
+
+  window.exportVacPermExcel = function() {
+    if (!_vpData || _vpData.length === 0) { alert('Primero realiza una búsqueda para exportar.'); return; }
+    const rows = [['Tipo','Empleado','Correo','Rol','Plaza','Fecha Inicio','Fecha Fin/Regreso','Días/Tipo','Horario','Motivo/Nota','Estado']];
+    _vpData.forEach(s => {
+      const esVac = s._tipo === 'vacaciones';
+      const estadoLabel = esVac
+        ? ((VAC_ESTADO_CFG[s._estadoKey]||{}).label||s._estadoKey)
+        : ((PERM_ESTADO_CFG[s._estadoKey]||{}).label||s._estadoKey);
+      if (esVac) {
+        const dias = s.dias_aprobados != null ? s.dias_aprobados : (s.dias_solicitados||'');
+        rows.push(['Vacaciones', s.nombre_solicitante||'', s.user_email||'', s.rol||'', s.plaza||'',
+          s.fecha_inicio_aprobada||s.fecha_inicio||'', s.fecha_fin_aprobada||s.fecha_fin||'',
+          dias + ' día(s)', '', s.nota_respuesta||'', estadoLabel]);
+      } else {
+        const horario = s.dia_completo ? 'Día completo' : `${s.hora_inicio||''} - ${s.hora_salida||''}`;
+        rows.push(['Permiso', s.nombre_solicitante||s.nombre||'', s.correo||s.user_email||'', s.rol||'', s.plaza||'',
+          s.fecha_inicio||'', s.fecha_regreso||'',
+          s.dia_completo ? 'Día completo' : 'Parcial', horario, s.motivo||'', estadoLabel]);
+      }
+    });
+    let csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'vac_permisos_' + new Date().toISOString().slice(0,10) + '.csv'; a.click();
+  };
+
   window.showEliminarRegistros = async function() {
     document.getElementById('app').style.display = 'none';
     document.getElementById('eliminarRegistrosSection').style.display = 'block';
