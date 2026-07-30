@@ -1870,12 +1870,18 @@
     if (_vacUnsub) { _vacUnsub(); _vacUnsub = null; }
     _vacUnsub = onValue(ref(database, 'vacation_requests'), (snap) => {
       vacData = [];
+      console.log('[VAC] snapshot exists:', snap.exists(), '| numChildren:', snap.numChildren());
       if (snap.exists()) {
-        snap.forEach(child => vacData.push({ id: child.key, ...child.val() }));
+        snap.forEach(child => {
+          console.log('[VAC] nodo:', child.key, '| nombre:', child.val().nombre_solicitante);
+          vacData.push({ id: child.key, ...child.val() });
+        });
       }
+      console.log('[VAC] vacData.length:', vacData.length);
       vacData.sort((a,b) => (b.timestamp_creacion||0) - (a.timestamp_creacion||0));
       window.renderVacaciones();
     }, (e) => {
+      console.error('[VAC] Error onValue:', e);
       document.getElementById('vacTableContainer').innerHTML = '<div style="color:#D32F2F;padding:20px">❌ Error al cargar: ' + e.message + '</div>';
     });
   };
