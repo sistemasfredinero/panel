@@ -2492,12 +2492,18 @@
             if (rol   && (s.rol  ||'').toUpperCase() !== rol)   return;
             if (plaza && (s.plaza||'').toUpperCase() !== plaza) return;
             if (!coincideUsuario(s.nombre_solicitante || s.nombre, s.correo || s.user_email)) return;
-            if (!coincideFecha(s.timestamp_creacion || 0)) return;
+            // Permisos usan 'timestamp' (no 'timestamp_creacion')
+            if (!coincideFecha(s.timestamp || s.timestamp_creacion || 0)) return;
             _vpData.push({ ...s, _estadoKey: estadoPerm });
           });
         }
       }
-      _vpData.sort((a, b) => (b.timestamp_creacion||0) - (a.timestamp_creacion||0));
+      // Vacaciones usan timestamp_creacion, permisos usan timestamp
+      _vpData.sort((a, b) => {
+        const ta = a._tipo === 'permisos' ? (a.timestamp || a.timestamp_creacion || 0) : (a.timestamp_creacion || 0);
+        const tb = b._tipo === 'permisos' ? (b.timestamp || b.timestamp_creacion || 0) : (b.timestamp_creacion || 0);
+        return tb - ta;
+      });
       window.renderVacPerm();
     } catch(e) {
       container.innerHTML = '<div style="color:#D32F2F;padding:20px">❌ Error al buscar: ' + e.message + '</div>';
