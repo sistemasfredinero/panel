@@ -1920,7 +1920,8 @@
     if (_vacUnsub) { _vacUnsub(); _vacUnsub = null; }
     _vacUnsub = onValue(ref(database, 'vacation_requests'), (snap) => {
       vacData = [];
-      console.log('[VAC] snapshot exists:', snap.exists(), '| numChildren:', snap.numChildren());
+      let _vacCount = 0; snap.forEach(() => { _vacCount++; });
+      console.log('[VAC] snapshot exists:', snap.exists(), '| numChildren:', _vacCount);
       if (snap.exists()) {
         snap.forEach(child => {
           console.log('[VAC] nodo:', child.key, '| nombre:', child.val().nombre_solicitante);
