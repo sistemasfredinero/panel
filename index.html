@@ -2272,6 +2272,34 @@
     });
   };
 
+  // Calcula el estado visible de un permiso igual que la app móvil (getEstado)
+  // NO usa el campo 'estado' guardado en Firebase, sino los flags booleanos
+  function permGetEstado(p) {
+    if (p.cancelado) return 'cancelado';
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    function parseFechaPerm(str) {
+      if (!str) return null;
+      if (str.includes('-')) { const [y,m,d]=str.split('-').map(Number); return new Date(y,m-1,d); }
+      if (str.includes('/')) { const [d,m,y]=str.split('/').map(Number); return new Date(y,m-1,d); }
+      return null;
+    }
+    if (p.confirmada_empleado) {
+      if (!p.visto_bueno_cleon && p.rol !== 'ADMINISTRATIVO') return 'pendiente_vobo';
+      const ini = parseFechaPerm(p.fecha_inicio_aprobada || p.fecha_inicio);
+      const fin = parseFechaPerm(p.fecha_regreso_aprobada || p.fecha_regreso);
+      if (ini && fin) {
+        if (hoy >= ini && hoy <= fin) return 'activo';
+        if (hoy > fin) return 'gozados';
+      } else if (ini) {
+        if (hoy >= ini) return p.dia_completo ? 'gozados' : 'activo';
+      }
+      return p.rol === 'ADMINISTRATIVO' ? 'confirmada_lgallegos' : 'pendiente_vobo';
+    }
+    if (p.aprobado_lgallegos && !p.confirmada_empleado) return 'confirmada_lgallegos';
+    if (p.respondida_lgallegos && !p.aprobado_lgallegos) return 'propuesta_lgallegos';
+    return 'sin_responder';
+  }
+
   const PERM_ESTADO_CFG = {
     pendiente:             { label:'Pendiente',                    color:'#92400E', bg:'#FEF3C7' },
     sin_responder:         { label:'Sin responder',                color:'#92400E', bg:'#FEF3C7' },
@@ -2486,7 +2514,8 @@
         if (snapPerm.exists()) {
           snapPerm.forEach(child => {
             const s = { id: child.key, _tipo: 'permisos', ...child.val() };
-            const estadoPerm = s.estado || 'sin_responder';
+            // Usar permGetEstado (igual que la app móvil) para estado calculado correcto
+            const estadoPerm = permGetEstado(s);
             if (estado && estado.startsWith('perm_') && estadoPerm !== estado.replace('perm_','')) return;
             if (estado && estado.startsWith('vac_')) return;
             if (rol   && (s.rol  ||'').toUpperCase() !== rol)   return;
