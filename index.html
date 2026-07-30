@@ -336,7 +336,10 @@
         <div style="font-size:12px;opacity:0.75;margin-top:1px;">Panel de Control de Asistencia</div>
       </div>
     </div>
-    <span id="adminName" style="font-size:13px;opacity:0.75;"></span>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span id="adminName" style="font-size:13px;opacity:0.75;"></span>
+      <button onclick="window.cerrarSesion()" style="padding:6px 14px;background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.4);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:background 0.2s" onmouseover="this.style.background='rgba(255,255,255,0.28)'" onmouseout="this.style.background='rgba(255,255,255,0.15)'">&#x2192; Cerrar sesión</button>
+    </div>
   </div>
 
   <div class="main">
@@ -677,7 +680,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
-  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
   import { getDatabase, ref, get, remove, update, query, orderByChild, startAt, endAt, onValue, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
   // ── Firebase config ────────────────────────────────────────────────────────
@@ -700,6 +703,14 @@
   let usersMap   = {};
 
   // ── Auth ───────────────────────────────────────────────────────────────────
+  window.cerrarSesion = async function() {
+    try {
+      await signOut(auth);
+    } catch(e) {
+      console.error('Error al cerrar sesión:', e);
+    }
+  };
+
   window.adminLogin = async function() {
     const email = document.getElementById('adminEmail').value.trim();
     const pass  = document.getElementById('adminPass').value;
