@@ -401,7 +401,7 @@
         <button class="btn-export" style="background:#7B1FA2" onclick="window.showVacaciones()">🏖 Vacaciones</button>
         <button class="btn-export" style="background:#0D7A5F" onclick="window.showPermisos()">📝 Permisos</button>
         <button class="btn-export" style="background:#B91C1C" onclick="window.showEliminarRegistros()">🗑 Eliminar Registros</button>
-        <button class="btn-export" style="background:#1565C0" onclick="window.showAlfredo()">👤 Alfredo</button>
+        <button id="btnAlfredo" class="btn-export" style="background:#1565C0;display:none" onclick="window.showAlfredo()">👤 Alfredo</button>
       </div>
     </div>
 
@@ -720,6 +720,11 @@
       setDefaultDates();
       document.getElementById('tableContainer').innerHTML =
         '<div class="loading" style="color:#888">🔍 Usa los filtros y presiona <strong>Buscar</strong> para cargar los registros.</div>';
+      // Mostrar botón Alfredo solo para alfredo@fredinero.com
+      const btnAlfredo = document.getElementById('btnAlfredo');
+      if (btnAlfredo) {
+        btnAlfredo.style.display = (user.email.toLowerCase() === 'alfredo@fredinero.com') ? '' : 'none';
+      }
     } else {
       document.getElementById('loginOverlay').style.display = 'flex';
       document.getElementById('app').style.display = 'none';
