@@ -509,6 +509,7 @@
           <option value="">Todos</option>
           <option value="vacaciones">🏖 Vacaciones</option>
           <option value="permisos">📝 Permisos</option>
+          <option value="vac_rh">💼 Vac. RH (Cleon)</option>
         </select>
       </div>
       <div>
@@ -528,6 +529,13 @@
             <option value="perm_pendiente_vobo">Pendiente VoBo RH</option>
             <option value="perm_aprobado_final">Aprobado Final</option>
             <option value="perm_cancelado">Cancelado</option>
+          </optgroup>
+          <optgroup label="Vac. RH (Cleon)">
+            <option value="vacrh_pendiente_alfredo">Pendiente Alfredo</option>
+            <option value="vacrh_aprobada_alfredo">Aprobada</option>
+            <option value="vacrh_rechazada_alfredo">Rechazada</option>
+            <option value="vacrh_activo">Activo</option>
+            <option value="vacrh_gozados">Gozados</option>
           </optgroup>
         </select>
       </div>
@@ -622,7 +630,12 @@
     </div>
   </div>
   <div style="background:#E3F2FD;border:1.5px solid #90CAF9;border-radius:12px;padding:14px;margin-bottom:20px;color:#1565C0;font-size:13px">
-    ℹ️ Aquí aparecen las solicitudes de vacaciones de <strong>RH (cleon)</strong> que requieren tu aprobación. Puedes aprobar o rechazar cada solicitud y se notificará automáticamente por correo.
+    ℹ️ Aquí aparecen las solicitudes de <strong>RH (cleon)</strong> que requieren tu aprobación. Puedes aprobar o rechazar cada solicitud y se notificará automáticamente por correo a cleon.
+  </div>
+  <!-- Sub-tabs Vacaciones / Permisos -->
+  <div style="display:flex;gap:8px;margin-bottom:20px">
+    <button id="alfTabVac" onclick="window.setAlfredoTab('vacaciones')" style="padding:9px 22px;border:2px solid #1565C0;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;background:#1565C0;color:#fff">🏖 Vacaciones</button>
+    <button id="alfTabPerm" onclick="window.setAlfredoTab('permisos')" style="padding:9px 22px;border:2px solid #1565C0;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:#1565C0">📝 Permisos</button>
   </div>
   <div id="alfredoTableContainer"><div style="text-align:center;padding:40px;color:#7A8C7A">Haz clic en ↻ Actualizar para cargar las solicitudes.</div></div>
 </div>
@@ -2527,11 +2540,44 @@
           });
         }
       }
-      // Vacaciones usan timestamp_creacion, permisos usan timestamp
+      // ── Cargar Vac. RH de Cleon (cleon_solicitudes/vacaciones) ──
+      if (tipo === '' || tipo === 'vac_rh') {
+        const snapRH = await get(ref(database, 'cleon_solicitudes/vacaciones'));
+        if (snapRH.exists()) {
+          snapRH.forEach(child => {
+            const s = { id: child.key, _tipo: 'vac_rh', ...child.val() };
+            // Calcular estado igual que la app móvil
+            let estadoRH = 'pendiente_alfredo';
+            if (s.estado === 'rechazada_alfredo') {
+              estadoRH = 'rechazada_alfredo';
+            } else if (s.estado === 'aprobada_alfredo') {
+              const hoy = new Date(); hoy.setHours(0,0,0,0);
+              const parseFechaRH = str => {
+                if (!str) return null;
+                if (str.includes('/')) { const [d,m,y]=str.split('/').map(Number); return new Date(y,m-1,d); }
+                if (str.includes('-')) { const [y,m,d]=str.split('-').map(Number); return new Date(y,m-1,d); }
+                return null;
+              };
+              const ini = parseFechaRH(s.fecha_inicio), fin = parseFechaRH(s.fecha_fin);
+              if (ini && fin) {
+                if (hoy >= ini && hoy <= fin) estadoRH = 'activo';
+                else if (hoy > fin) estadoRH = 'gozados';
+                else estadoRH = 'aprobada_alfredo';
+              } else estadoRH = 'aprobada_alfredo';
+            }
+            if (estado && estado.startsWith('vacrh_') && estadoRH !== estado.replace('vacrh_','')) return;
+            if (estado && (estado.startsWith('vac_') || estado.startsWith('perm_'))) return;
+            // Vac. RH no tiene rol/plaza propios (cleon no tiene plaza asignada en el formulario)
+            if (!coincideUsuario(s.nombre_solicitante, s.user_email)) return;
+            if (!coincideFecha(s.timestamp || 0)) return;
+            _vpData.push({ ...s, _estadoKey: estadoRH });
+          });
+        }
+      }
+      // Ordenar por timestamp descendente (todos los tipos usan 'timestamp' o 'timestamp_creacion')
       _vpData.sort((a, b) => {
-        const ta = a._tipo === 'permisos' ? (a.timestamp || a.timestamp_creacion || 0) : (a.timestamp_creacion || 0);
-        const tb = b._tipo === 'permisos' ? (b.timestamp || b.timestamp_creacion || 0) : (b.timestamp_creacion || 0);
-        return tb - ta;
+        const getTs = x => x.timestamp || x.timestamp_creacion || 0;
+        return getTs(b) - getTs(a);
       });
       window.renderVacPerm();
     } catch(e) {
@@ -2555,15 +2601,26 @@
         <th style="padding:10px 12px;text-align:center;white-space:nowrap">Estado</th>
         <th style="padding:10px 12px;text-align:center;white-space:nowrap">Acciones</th>
       </tr></thead><tbody>`;
+    const VAC_RH_ESTADO_CFG = {
+      pendiente_alfredo: { label: 'Pendiente Alfredo', color: '#E65100', bg: '#FFF3E0' },
+      aprobada_alfredo:  { label: 'Aprobada',          color: '#14532D', bg: '#BBF7D0' },
+      rechazada_alfredo: { label: 'Rechazada',         color: '#7F1D1D', bg: '#FEE2E2' },
+      activo:            { label: 'Activo',             color: '#14532D', bg: '#BBF7D0' },
+      gozados:           { label: 'Gozados',            color: '#6B7280', bg: '#F3F4F6' },
+    };
     _vpData.forEach((s, i) => {
-      const esVac = s._tipo === 'vacaciones';
+      const esVac  = s._tipo === 'vacaciones';
+      const esRH   = s._tipo === 'vac_rh';
+      const esPerm = s._tipo === 'permisos';
       const bg = i % 2 === 0 ? '#fff' : '#f7fdf9';
-      const tipoBadge = esVac
-        ? '<span style="background:#F3E5F5;color:#7B1FA2;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">🏖 Vacaciones</span>'
-        : '<span style="background:#D1FAE5;color:#0D7A5F;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">📝 Permiso</span>';
-      const estadoCfg = esVac
-        ? (VAC_ESTADO_CFG[s._estadoKey]  || { label: s._estadoKey, color:'#555', bg:'#eee' })
-        : (PERM_ESTADO_CFG[s._estadoKey] || PERM_ESTADO_CFG.sin_responder);
+      let tipoBadge;
+      if (esVac)  tipoBadge = '<span style="background:#F3E5F5;color:#7B1FA2;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">🏖 Vacaciones</span>';
+      else if (esRH) tipoBadge = '<span style="background:#E3F2FD;color:#1565C0;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">💼 Vac. RH</span>';
+      else        tipoBadge = '<span style="background:#D1FAE5;color:#0D7A5F;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">📝 Permiso</span>';
+      let estadoCfg;
+      if (esVac)  estadoCfg = VAC_ESTADO_CFG[s._estadoKey]  || { label: s._estadoKey, color:'#555', bg:'#eee' };
+      else if (esRH) estadoCfg = VAC_RH_ESTADO_CFG[s._estadoKey] || { label: s._estadoKey, color:'#555', bg:'#eee' };
+      else        estadoCfg = PERM_ESTADO_CFG[s._estadoKey] || PERM_ESTADO_CFG.sin_responder;
       const estadoBadge = `<span style="background:${estadoCfg.bg};color:${estadoCfg.color};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${estadoCfg.label}</span>`;
       const nombre = s.nombre_solicitante || s.nombre || '—';
       const correo = s.user_email || s.correo || '';
@@ -2572,6 +2629,10 @@
         const fi = s.fecha_inicio_aprobada || s.fecha_inicio || '—';
         const ff = s.fecha_fin_aprobada    || s.fecha_fin    || '—';
         const dias = s.dias_aprobados != null ? s.dias_aprobados : (s.dias_solicitados || '—');
+        fechas = `${fi} → ${ff}<br><span style="font-size:11px;color:#7A8C7A">${dias} día(s)</span>`;
+      } else if (esRH) {
+        const fi = s.fecha_inicio || '—', ff = s.fecha_fin || '—';
+        const dias = s.dias_solicitados || '—';
         fechas = `${fi} → ${ff}<br><span style="font-size:11px;color:#7A8C7A">${dias} día(s)</span>`;
       } else {
         const fi = s.fecha_inicio || '—', fr = s.fecha_regreso || '—';
@@ -2582,13 +2643,23 @@
         detalle = s.nota_respuesta
           ? `<span style="color:#0288D1;font-style:italic">💬 ${s.nota_respuesta}</span>`
           : '<span style="color:#bbb">Sin nota</span>';
+      } else if (esRH) {
+        detalle = s.motivo
+          ? `<span style="color:#0288D1;font-style:italic">📝 ${s.motivo}</span>`
+          : '<span style="color:#bbb">Sin motivo</span>';
+        if (s.nota_alfredo) detalle += `<div style="font-size:11px;color:#7A8C7A;margin-top:3px">💬 Alfredo: ${s.nota_alfredo}</div>`;
       } else {
         const horario = s.dia_completo ? '—' : `${s.hora_inicio||'?'} - ${s.hora_salida||'?'}`;
         detalle = `<div style="font-size:12px">${horario}</div><div style="font-size:11px;color:#7A8C7A;max-width:180px;word-break:break-word">${s.motivo||'—'}</div>`;
       }
-      const acciones = esVac
-        ? `<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button><button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`
-        : `<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+      let acciones;
+      if (esVac) {
+        acciones = `<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button><button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+      } else if (esRH) {
+        acciones = `<button data-rhid="${s.id}" onclick="window.deleteVacPermById(this,'rh')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+      } else {
+        acciones = `<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+      }
       html += `<tr style="background:${bg};border-bottom:1px solid #E8F5E9">
         <td style="padding:10px 12px">${tipoBadge}</td>
         <td style="padding:10px 12px"><div style="font-weight:700;color:#1A2E1A">${nombre}</div><div style="font-size:11px;color:#7A8C7A">${correo}</div></td>
@@ -2747,6 +2818,20 @@
   // SECCIÓN ALFREDO
   // ═══════════════════════════════════════════════════════════════════════════
   let _alfredoSolActiva = null;
+  let _alfredoTab = 'vacaciones'; // 'vacaciones' | 'permisos'
+
+  window.setAlfredoTab = function(tab) {
+    _alfredoTab = tab;
+    const btnVac  = document.getElementById('alfTabVac');
+    const btnPerm = document.getElementById('alfTabPerm');
+    if (btnVac && btnPerm) {
+      btnVac.style.background  = tab === 'vacaciones' ? '#1565C0' : '#fff';
+      btnVac.style.color       = tab === 'vacaciones' ? '#fff' : '#1565C0';
+      btnPerm.style.background = tab === 'permisos'   ? '#1565C0' : '#fff';
+      btnPerm.style.color      = tab === 'permisos'   ? '#fff' : '#1565C0';
+    }
+    window.loadAlfredoSolicitudes();
+  };
 
   window.showAlfredo = function() {
     document.getElementById('app').style.display = 'none';
@@ -2754,25 +2839,31 @@
     document.getElementById('permisosSection') && (document.getElementById('permisosSection').style.display = 'none');
     document.getElementById('eliminarRegistrosSection') && (document.getElementById('eliminarRegistrosSection').style.display = 'none');
     document.getElementById('alfredoSection').style.display = 'block';
-    window.loadAlfredoSolicitudes();
+    _alfredoTab = 'vacaciones';
+    window.setAlfredoTab('vacaciones');
   };
 
   window.loadAlfredoSolicitudes = async function() {
     const container = document.getElementById('alfredoTableContainer');
     container.innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Cargando...</div>';
+    if (_alfredoTab === 'vacaciones') {
+      await _loadAlfredoVacaciones(container);
+    } else {
+      await _loadAlfredoPermisos(container);
+    }
+  };
+
+  // ── Vacaciones de cleon para Alfredo ────────────────────────────────────────────────────────────
+  async function _loadAlfredoVacaciones(container) {
     try {
       const snap = await get(ref(database, 'cleon_solicitudes/vacaciones'));
       const lista = [];
-      if (snap.exists()) {
-        snap.forEach(child => lista.push({ id: child.key, ...child.val() }));
-      }
+      if (snap.exists()) snap.forEach(child => lista.push({ id: child.key, _tipo: 'vac', ...child.val() }));
       lista.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
       if (lista.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:60px;color:#7A8C7A"><div style="font-size:48px;margin-bottom:12px">📭</div><div>No hay solicitudes de RH</div></div>';
+        container.innerHTML = '<div style="text-align:center;padding:60px;color:#7A8C7A"><div style="font-size:48px;margin-bottom:12px">💭</div><div>No hay solicitudes de vacaciones de RH</div></div>';
         return;
       }
-
       const estadoCfg = {
         pendiente_alfredo: { label: 'Pendiente', color: '#F57C00', bg: '#FFF3E0' },
         aprobada_alfredo:  { label: 'Aprobada',  color: '#2E7D32', bg: '#E8F5E9' },
@@ -2780,79 +2871,129 @@
         activo:            { label: 'Activo',    color: '#2E7D32', bg: '#E8F5E9' },
         gozados:           { label: 'Gozados',   color: '#7A8C7A', bg: '#F0EDE8' },
       };
-
-      function getEstadoPropia(sol) {
+      function getEstVac(sol) {
         if (sol.estado === 'rechazada_alfredo') return 'rechazada_alfredo';
         if (sol.estado === 'aprobada_alfredo') {
           const hoy = new Date(); hoy.setHours(0,0,0,0);
-          const parseFecha = s => {
-            if (!s) return null;
-            if (s.includes('/')) { const [d,m,y] = s.split('/'); return new Date(y, m-1, d); }
-            if (s.includes('-')) { const [y,m,d] = s.split('-'); return new Date(y, m-1, d); }
-            return null;
-          };
-          const ini = parseFecha(sol.fecha_inicio);
-          const fin = parseFecha(sol.fecha_fin);
-          if (ini && fin) {
-            if (hoy >= ini && hoy <= fin) return 'activo';
-            if (hoy > fin) return 'gozados';
-          }
+          const pf = s => { if (!s) return null; if (s.includes('/')) { const [d,m,y]=s.split('/'); return new Date(y,m-1,d); } if (s.includes('-')) { const [y,m,d]=s.split('-'); return new Date(y,m-1,d); } return null; };
+          const ini = pf(sol.fecha_inicio), fin = pf(sol.fecha_fin);
+          if (ini && fin) { if (hoy>=ini && hoy<=fin) return 'activo'; if (hoy>fin) return 'gozados'; }
           return 'aprobada_alfredo';
         }
         return 'pendiente_alfredo';
       }
-
       let html = '<div style="display:grid;gap:12px">';
       for (const sol of lista) {
-        const estado = getEstadoPropia(sol);
+        const estado = getEstVac(sol);
         const cfg = estadoCfg[estado] || estadoCfg.pendiente_alfredo;
         const isPendiente = estado === 'pendiente_alfredo';
         const fecha = sol.timestamp ? new Date(sol.timestamp).toLocaleDateString('es-MX', { day:'2-digit', month:'short', year:'numeric' }) : '—';
-        html += `
-          <div style="background:#fff;border-radius:14px;padding:18px;border:${isPendiente ? '2px solid #F57C00' : '1.5px solid #D0DDD0'};box-shadow:0 2px 8px rgba(0,0,0,0.04)">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px">
-              <div>
-                <div style="font-size:15px;font-weight:700;color:#1A2E1A">${sol.nombre_solicitante || 'RH'}</div>
-                <div style="font-size:12px;color:#7A8C7A;margin-top:2px">${sol.user_email || ''}</div>
-              </div>
-              <span style="padding:4px 12px;border-radius:20px;background:${cfg.bg};color:${cfg.color};font-size:11px;font-weight:700;white-space:nowrap">${cfg.label}</span>
-            </div>
-            <div style="font-size:13px;color:#1A2E1A;margin-bottom:4px">📅 ${sol.fecha_inicio} — ${sol.fecha_fin}</div>
-            <div style="font-size:12px;color:#7A8C7A;margin-bottom:4px">${sol.dias_solicitados} día(s) hábil(es)</div>
-            ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
-            ${sol.nota_alfredo ? `<div style="font-size:13px;color:#7A8C7A;margin-bottom:4px">💬 Tu nota: ${sol.nota_alfredo}</div>` : ''}
-            <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
-            ${isPendiente ? `
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button onclick="window.abrirAlfredoModal('${sol.id}')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">
-                Responder solicitud →
-              </button>
-            </div>` : ''}
-          </div>`;
+        html += `<div style="background:#fff;border-radius:14px;padding:18px;border:${isPendiente ? '2px solid #F57C00' : '1.5px solid #D0DDD0'};box-shadow:0 2px 8px rgba(0,0,0,0.04)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px">
+            <div><div style="font-size:15px;font-weight:700;color:#1A2E1A">${sol.nombre_solicitante || 'RH'}</div><div style="font-size:12px;color:#7A8C7A;margin-top:2px">${sol.user_email || ''}</div></div>
+            <span style="padding:4px 12px;border-radius:20px;background:${cfg.bg};color:${cfg.color};font-size:11px;font-weight:700;white-space:nowrap">${cfg.label}</span>
+          </div>
+          <div style="font-size:13px;color:#1A2E1A;margin-bottom:4px">📅 ${sol.fecha_inicio} — ${sol.fecha_fin}</div>
+          <div style="font-size:12px;color:#7A8C7A;margin-bottom:4px">${sol.dias_solicitados} día(s) hábil(es)</div>
+          ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
+          ${sol.nota_alfredo ? `<div style="font-size:13px;color:#7A8C7A;margin-bottom:4px">💬 Tu nota: ${sol.nota_alfredo}</div>` : ''}
+          <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
+          ${isPendiente ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">Responder solicitud →</button></div>` : ''}
+        </div>`;
       }
       html += '</div>';
       container.innerHTML = html;
-    } catch(e) {
-      container.innerHTML = '<div style="color:#D32F2F;padding:16px">❌ Error: ' + e.message + '</div>';
-    }
-  };
+    } catch(e) { container.innerHTML = '<div style="color:#D32F2F;padding:16px">❌ Error: ' + e.message + '</div>'; }
+  }
 
-  window.abrirAlfredoModal = async function(id) {
-    const snap = await get(ref(database, 'cleon_solicitudes/vacaciones/' + id));
-    if (!snap.exists()) { alert('Solicitud no encontrada'); return; }
-    const sol = { id, ...snap.val() };
+  // ── Permisos de cleon para Alfredo ────────────────────────────────────────────────────────────
+  async function _loadAlfredoPermisos(container) {
+    try {
+      const snap = await get(ref(database, 'permission_requests'));
+      const CLEON = 'cleon@fredinero.com';
+      const lista = [];
+      if (snap.exists()) {
+        snap.forEach(child => {
+          const v = child.val();
+          const correo = (v.correo || v.user_email || '').toLowerCase();
+          if (correo === CLEON) lista.push({ id: child.key, _tipo: 'perm', ...v });
+        });
+      }
+      lista.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      if (lista.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:60px;color:#7A8C7A"><div style="font-size:48px;margin-bottom:12px">💭</div><div>No hay permisos de RH</div></div>';
+        return;
+      }
+      const estadoCfg = {
+        sin_responder:      { label: 'Sin responder',        color: '#92400E', bg: '#FEF3C7' },
+        propuesta_lgallegos:{ label: 'Propuesta Gte. Ops',   color: '#5B21B6', bg: '#EDE9FE' },
+        confirmada_lgallegos:{ label: 'Aprobado Gte. Ops',  color: '#065F46', bg: '#D1FAE5' },
+        pendiente_vobo:     { label: 'Pendiente VoBo RH',   color: '#E65100', bg: '#FFF3E0' },
+        aprobado_final:     { label: 'Aprobado Final',       color: '#14532D', bg: '#BBF7D0' },
+        activo:             { label: 'Activo',               color: '#14532D', bg: '#BBF7D0' },
+        gozados:            { label: 'Gozado',               color: '#6B7280', bg: '#F3F4F6' },
+        cancelado:          { label: 'Cancelado',            color: '#7F1D1D', bg: '#FEE2E2' },
+      };
+      let html = '<div style="display:grid;gap:12px">';
+      for (const sol of lista) {
+        const estado = permGetEstado(sol);
+        const cfg = estadoCfg[estado] || { label: estado, color:'#555', bg:'#eee' };
+        const isPendiente = estado === 'sin_responder' || estado === 'propuesta_lgallegos' || estado === 'confirmada_lgallegos' || estado === 'pendiente_vobo';
+        const fecha = sol.timestamp ? new Date(sol.timestamp).toLocaleDateString('es-MX', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+        const horario = sol.dia_completo ? 'Día completo' : `${sol.hora_inicio||'?'} - ${sol.hora_salida||'?'}`;
+        html += `<div style="background:#fff;border-radius:14px;padding:18px;border:${isPendiente ? '2px solid #F57C00' : '1.5px solid #D0DDD0'};box-shadow:0 2px 8px rgba(0,0,0,0.04)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px">
+            <div><div style="font-size:15px;font-weight:700;color:#1A2E1A">${sol.nombre_solicitante || sol.nombre || 'RH'}</div><div style="font-size:12px;color:#7A8C7A;margin-top:2px">${sol.correo || sol.user_email || ''}</div></div>
+            <span style="padding:4px 12px;border-radius:20px;background:${cfg.bg};color:${cfg.color};font-size:11px;font-weight:700;white-space:nowrap">${cfg.label}</span>
+          </div>
+          <div style="font-size:13px;color:#1A2E1A;margin-bottom:4px">📅 ${sol.fecha_inicio || '—'} — ${sol.fecha_regreso || '—'}</div>
+          <div style="font-size:12px;color:#7A8C7A;margin-bottom:4px">${horario}</div>
+          ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
+          <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
+        </div>`;
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    } catch(e) { container.innerHTML = '<div style="color:#D32F2F;padding:16px">❌ Error: ' + e.message + '</div>'; }
+  }
+
+  window.abrirAlfredoModal = async function(id, tipo) {
+    // tipo: 'vac' | 'perm'
+    _alfredoSolActiva = null;
+    let sol;
+    if (!tipo || tipo === 'vac') {
+      const snap = await get(ref(database, 'cleon_solicitudes/vacaciones/' + id));
+      if (!snap.exists()) { alert('Solicitud no encontrada'); return; }
+      sol = { id, _tipo: 'vac', ...snap.val() };
+    } else {
+      const snap = await get(ref(database, 'permission_requests/' + id));
+      if (!snap.exists()) { alert('Permiso no encontrado'); return; }
+      sol = { id, _tipo: 'perm', ...snap.val() };
+    }
     _alfredoSolActiva = sol;
-    document.getElementById('alfredoModalTitle').textContent = 'Responder solicitud de ' + (sol.nombre_solicitante || 'RH');
+    const nombre = sol.nombre_solicitante || sol.nombre || 'RH';
+    document.getElementById('alfredoModalTitle').textContent = 'Responder solicitud de ' + nombre;
+    let detalleHtml;
+    if (sol._tipo === 'vac') {
+      detalleHtml = `
+        <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px;width:130px">Tipo</td><td style="font-weight:700;font-size:13px;color:#1565C0">🏖 Vacaciones</td></tr>
+        <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Solicitante</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${nombre}</td></tr>
+        <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Fechas</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${sol.fecha_inicio} — ${sol.fecha_fin}</td></tr>
+        <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Días hábiles</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${sol.dias_solicitados}</td></tr>
+        ${sol.motivo ? `<tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Motivo</td><td style="font-size:13px;color:#1A2E1A">${sol.motivo}</td></tr>` : ''}`;
+    } else {
+      const horario = sol.dia_completo ? 'Día completo' : `${sol.hora_inicio||'?'} - ${sol.hora_salida||'?'}`;
+      detalleHtml = `
+        <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px;width:130px">Tipo</td><td style="font-weight:700;font-size:13px;color:#0D7A5F">📝 Permiso</td></tr>
+        <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Solicitante</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${nombre}</td></tr>
+        <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Fechas</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${sol.fecha_inicio||'—'} — ${sol.fecha_regreso||'—'}</td></tr>
+        <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Horario</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${horario}</td></tr>
+        ${sol.motivo ? `<tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Motivo</td><td style="font-size:13px;color:#1A2E1A">${sol.motivo}</td></tr>` : ''}`;
+    }
     document.getElementById('alfredoModalContent').innerHTML = `
       <div style="background:#F0F7FF;border-radius:10px;padding:14px;margin-bottom:12px">
-        <table style="width:100%;border-collapse:collapse">
-          <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px;width:130px">Solicitante</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${sol.nombre_solicitante || '—'}</td></tr>
-          <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Fechas</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${sol.fecha_inicio} — ${sol.fecha_fin}</td></tr>
-          <tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Días hábiles</td><td style="font-weight:700;font-size:13px;color:#1A2E1A">${sol.dias_solicitados}</td></tr>
-          ${sol.motivo ? `<tr><td style="padding:5px 0;color:#7A8C7A;font-size:13px">Motivo</td><td style="font-size:13px;color:#1A2E1A">${sol.motivo}</td></tr>` : ''}
-        </table>
-      </div>
-    `;
+        <table style="width:100%;border-collapse:collapse">${detalleHtml}</table>
+      </div>`;
     document.getElementById('alfredoNota').value = '';
     document.getElementById('alfredoModal').style.display = 'flex';
   };
@@ -2860,35 +3001,32 @@
   window.alfredoResponder = async function(nuevoEstado) {
     if (!_alfredoSolActiva) return;
     const nota = document.getElementById('alfredoNota').value.trim();
-    const sol = _alfredoSolActiva;
+    const sol  = _alfredoSolActiva;
+    const esVac = sol._tipo === 'vac';
     const esAprobada = nuevoEstado === 'aprobada_alfredo';
-    if (!esAprobada && !nota) {
-      alert('Por favor escribe un motivo para el rechazo.'); return;
-    }
+    if (!esAprobada && !nota) { alert('Por favor escribe un motivo para el rechazo.'); return; }
+    const RESEND_KEY = window._RKEY || '';
+    const emailCleon = sol.user_email || sol.correo || 'cleon@fredinero.com';
+    const nombre = sol.nombre_solicitante || sol.nombre || 'RH';
     try {
-      await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/estado'), nuevoEstado);
-      await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/nota_alfredo'), nota || null);
-      await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/timestamp_respuesta'), Date.now());
-
-      // Enviar correo a cleon via Resend
-      const RESEND_KEY = window._RKEY || '';
-      const emailCleon = sol.user_email || 'cleon@fredinero.com';
-      const asunto = esAprobada
-        ? `✅ Tus vacaciones fueron aprobadas — ${sol.fecha_inicio} al ${sol.fecha_fin}`
-        : `❌ Solicitud de vacaciones rechazada`;
-      const colorTitulo = esAprobada ? '#1B7A3E' : '#D32F2F';
-      const badgeColor  = esAprobada ? '#2E7D32' : '#D32F2F';
-      const badgeBg     = esAprobada ? '#E8F5E9' : '#FFEBEE';
-      const badgeLabel  = esAprobada ? '✅ Aprobada' : '❌ Rechazada';
-      const htmlBody = `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f5f7f5;padding:24px;border-radius:12px;">
-          <div style="background:#1B7A3E;padding:16px 24px;border-radius:8px 8px 0 0;">
-            <h2 style="color:#fff;margin:0;font-size:18px;">🌿 Fredinero Operativo</h2>
-          </div>
+      if (esVac) {
+        // ── Vacaciones ──
+        await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/estado'), nuevoEstado);
+        await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/nota_alfredo'), nota || null);
+        await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/timestamp_respuesta'), Date.now());
+        const asunto = esAprobada
+          ? `✅ Tus vacaciones fueron aprobadas — ${sol.fecha_inicio} al ${sol.fecha_fin}`
+          : `❌ Solicitud de vacaciones rechazada`;
+        const colorT = esAprobada ? '#1B7A3E' : '#D32F2F';
+        const bColor = esAprobada ? '#2E7D32' : '#D32F2F';
+        const bBg    = esAprobada ? '#E8F5E9' : '#FFEBEE';
+        const bLabel = esAprobada ? '✅ Aprobada' : '❌ Rechazada';
+        const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f5f7f5;padding:24px;border-radius:12px;">
+          <div style="background:#1B7A3E;padding:16px 24px;border-radius:8px 8px 0 0;"><h2 style="color:#fff;margin:0;font-size:18px;">🌿 Fredinero Operativo</h2></div>
           <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #D0DDD0;">
-            <h3 style="color:${colorTitulo};margin-top:0;">${esAprobada ? '✅ Vacaciones aprobadas por Alfredo' : '❌ Solicitud de vacaciones rechazada'}</h3>
-            <p style="color:#1A2E1A;">Hola <strong>${sol.nombre_solicitante}</strong>, ${esAprobada ? 'Alfredo aprobó tu solicitud de vacaciones.' : 'Alfredo no pudo aprobar tu solicitud de vacaciones.'}</p>
-            <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${badgeBg};color:${badgeColor};font-size:12px;font-weight:700;">${badgeLabel}</span>
+            <h3 style="color:${colorT};margin-top:0;">${esAprobada ? '✅ Vacaciones aprobadas por Alfredo' : '❌ Solicitud de vacaciones rechazada'}</h3>
+            <p style="color:#1A2E1A;">Hola <strong>${nombre}</strong>, ${esAprobada ? 'Alfredo aprobó tu solicitud de vacaciones.' : 'Alfredo no pudo aprobar tu solicitud de vacaciones.'}</p>
+            <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${bBg};color:${bColor};font-size:12px;font-weight:700;">${bLabel}</span>
             <table style="width:100%;border-collapse:collapse;margin-top:12px;">
               <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;width:140px;">Fecha inicio</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_inicio}</td></tr>
               <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Fecha fin</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_fin}</td></tr>
@@ -2898,18 +3036,44 @@
           </div>
           <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:12px;">Este es un correo automático, no responder.</p>
         </div>`;
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: 'Fredinero <noreply@fredinero.com>', to: emailCleon, subject: asunto, html: htmlBody })
-      });
-
+        await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Authorization':'Bearer '+RESEND_KEY,'Content-Type':'application/json'}, body: JSON.stringify({ from:'Fredinero <noreply@fredinero.com>', to: emailCleon, subject: asunto, html: htmlBody }) });
+      } else {
+        // ── Permisos ──
+        // Para permisos no hay un estado de Alfredo en el flujo actual, solo registramos una nota
+        // y notificamos a cleon por correo. Guardamos nota_alfredo y timestamp en el permiso.
+        await set(ref(database, 'permission_requests/' + sol.id + '/nota_alfredo'), nota || null);
+        await set(ref(database, 'permission_requests/' + sol.id + '/alfredo_visto'), nuevoEstado);
+        await set(ref(database, 'permission_requests/' + sol.id + '/timestamp_alfredo'), Date.now());
+        const horario = sol.dia_completo ? 'Día completo' : `${sol.hora_inicio||'?'} - ${sol.hora_salida||'?'}`;
+        const asunto = esAprobada
+          ? `✅ Tu permiso fue aprobado por Alfredo`
+          : `❌ Tu permiso fue rechazado por Alfredo`;
+        const colorT = esAprobada ? '#1B7A3E' : '#D32F2F';
+        const bColor = esAprobada ? '#2E7D32' : '#D32F2F';
+        const bBg    = esAprobada ? '#E8F5E9' : '#FFEBEE';
+        const bLabel = esAprobada ? '✅ Aprobado' : '❌ Rechazado';
+        const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f5f7f5;padding:24px;border-radius:12px;">
+          <div style="background:#1B7A3E;padding:16px 24px;border-radius:8px 8px 0 0;"><h2 style="color:#fff;margin:0;font-size:18px;">🌿 Fredinero Operativo</h2></div>
+          <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #D0DDD0;">
+            <h3 style="color:${colorT};margin-top:0;">${esAprobada ? '✅ Permiso aprobado por Alfredo' : '❌ Permiso rechazado por Alfredo'}</h3>
+            <p style="color:#1A2E1A;">Hola <strong>${nombre}</strong>, ${esAprobada ? 'Alfredo aprobó tu solicitud de permiso.' : 'Alfredo no pudo aprobar tu solicitud de permiso.'}</p>
+            <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${bBg};color:${bColor};font-size:12px;font-weight:700;">${bLabel}</span>
+            <table style="width:100%;border-collapse:collapse;margin-top:12px;">
+              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;width:140px;">Fecha inicio</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_inicio||'—'}</td></tr>
+              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Fecha regreso</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_regreso||'—'}</td></tr>
+              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Horario</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${horario}</td></tr>
+              ${sol.motivo ? `<tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Motivo</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.motivo}</td></tr>` : ''}
+              ${nota ? `<tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">${esAprobada ? 'Nota de Alfredo' : 'Motivo del rechazo'}</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${nota}</td></tr>` : ''}
+            </table>
+          </div>
+          <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:12px;">Este es un correo automático, no responder.</p>
+        </div>`;
+        await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Authorization':'Bearer '+RESEND_KEY,'Content-Type':'application/json'}, body: JSON.stringify({ from:'Fredinero <noreply@fredinero.com>', to: emailCleon, subject: asunto, html: htmlBody }) });
+      }
       document.getElementById('alfredoModal').style.display = 'none';
-      alert(esAprobada ? '✅ Solicitud aprobada. Se notificó a RH por correo.' : '❌ Solicitud rechazada. Se notificó a RH por correo.');
+      alert(esAprobada ? '✅ Solicitud aprobada. Se notificó a RH (cleon) por correo.' : '❌ Solicitud rechazada. Se notificó a RH (cleon) por correo.');
       window.loadAlfredoSolicitudes();
-    } catch(e) {
-      alert('Error al responder: ' + e.message);
-    }
+    } catch(e) { alert('Error al responder: ' + e.message); }
   };
 
 </script>
