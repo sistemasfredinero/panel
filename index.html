@@ -2421,9 +2421,11 @@
       if (notifSnap.exists()) {
         const delPromises = [];
         notifSnap.forEach(userNode => {
-          if (userNode.hasChild(id)) {
-            delPromises.push(remove(ref(database, 'permission_notifications/' + userNode.key + '/' + id)));
-          }
+          userNode.forEach(notifNode => {
+            if (notifNode.key === id || notifNode.key.startsWith(id + '_')) {
+              delPromises.push(remove(ref(database, 'permission_notifications/' + userNode.key + '/' + notifNode.key)));
+            }
+          });
         });
         await Promise.all(delPromises);
       }
@@ -2477,13 +2479,15 @@
     for (const sol of toDelete) {
       try {
         await remove(ref(database, 'permission_requests/' + sol.id));
-        // Borrar notificaciones de todos los usuarios que tengan este id
+        // Borrar notificaciones con clave exacta O con sufijo (_propuesta, _aprobado, etc.)
         if (notifSnap && notifSnap.exists()) {
           const delPromises = [];
           notifSnap.forEach(userNode => {
-            if (userNode.hasChild(sol.id)) {
-              delPromises.push(remove(ref(database, 'permission_notifications/' + userNode.key + '/' + sol.id)));
-            }
+            userNode.forEach(notifNode => {
+              if (notifNode.key === sol.id || notifNode.key.startsWith(sol.id + '_')) {
+                delPromises.push(remove(ref(database, 'permission_notifications/' + userNode.key + '/' + notifNode.key)));
+              }
+            });
           });
           await Promise.all(delPromises);
         }
@@ -2739,7 +2743,13 @@
         const ns = await get(ref(database, 'permission_notifications'));
         if (ns.exists()) {
           const d = [];
-          ns.forEach(u => { if (u.hasChild(id)) d.push(remove(ref(database, 'permission_notifications/' + u.key + '/' + id))); });
+          ns.forEach(u => {
+            u.forEach(n => {
+              if (n.key === id || n.key.startsWith(id + '_')) {
+                d.push(remove(ref(database, 'permission_notifications/' + u.key + '/' + n.key)));
+              }
+            });
+          });
           await Promise.all(d);
         }
         alert('✅ Permiso eliminado.');
