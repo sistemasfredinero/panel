@@ -2716,6 +2716,7 @@
 
   window.deleteVacPermById = async function(btn, tipo) {
     if (tipo === 'vac') {
+      // Vacaciones normales → vacation_requests
       const id = btn.getAttribute('data-vacid');
       const sol = _vpData.find(s => s.id === id);
       if (!confirm('¿Eliminar la vacación de ' + (sol ? sol.nombre_solicitante||'este empleado' : 'este empleado') + '? Esta acción no se puede deshacer.')) return;
@@ -2725,16 +2726,29 @@
         if (ns.exists()) {
           const d = [];
           ns.forEach(u => {
-            if (u.hasChild(id)) d.push(remove(ref(database, 'vacation_notifications/' + u.key + '/' + id)));
-            if (u.hasChild(id + '_confirmada')) d.push(remove(ref(database, 'vacation_notifications/' + u.key + '/' + id + '_confirmada')));
-            if (u.hasChild(id + '_contra')) d.push(remove(ref(database, 'vacation_notifications/' + u.key + '/' + id + '_contra')));
+            u.forEach(n => {
+              if (n.key === id || n.key.startsWith(id + '_')) {
+                d.push(remove(ref(database, 'vacation_notifications/' + u.key + '/' + n.key)));
+              }
+            });
           });
           await Promise.all(d);
         }
         alert('✅ Vacación eliminada.');
         window.buscarVacPerm();
       } catch(e) { alert('❌ Error: ' + e.message); }
+    } else if (tipo === 'rh') {
+      // Vacaciones de RH (cleon → Alfredo) → cleon_solicitudes/vacaciones
+      const id = btn.getAttribute('data-rhid');
+      const sol = _vpData.find(s => s.id === id);
+      if (!confirm('¿Eliminar la solicitud de vacaciones de RH de ' + (sol ? sol.nombre_solicitante||'este empleado' : 'este empleado') + '? Esta acción no se puede deshacer.')) return;
+      try {
+        await remove(ref(database, 'cleon_solicitudes/vacaciones/' + id));
+        alert('✅ Solicitud de vacaciones RH eliminada.');
+        window.buscarVacPerm();
+      } catch(e) { alert('❌ Error: ' + e.message); }
     } else {
+      // Permisos → permission_requests
       const id = btn.getAttribute('data-permid');
       const sol = _vpData.find(s => s.id === id);
       if (!confirm('¿Eliminar el permiso de ' + (sol ? sol.nombre_solicitante||sol.nombre||'este empleado' : 'este empleado') + '? Esta acción no se puede deshacer.')) return;
