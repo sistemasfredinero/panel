@@ -2227,21 +2227,51 @@
     if (!ini || !fin) { alert('Selecciona un rango de fechas.'); return; }
     const tsStart = new Date(ini + 'T00:00:00').getTime();
     const tsEnd   = new Date(fin + 'T23:59:59').getTime();
-    const toDelete = vacData.filter(s => {
-      const ts = s.timestamp_creacion || 0;
+
+    // Construir lista candidata combinando vacData (vacation_requests) y
+    // los registros de vac_rh (_vpData con _tipo==='vac_rh') del buscador unificado
+    let candidatos = [];
+    // 1) Vacaciones normales de vacData (si están cargadas)
+    if (vacData && vacData.length > 0) {
+      vacData.forEach(s => candidatos.push({ ...s, _nodo: 'vacation_requests' }));
+    }
+    // 2) Vacaciones de RH de _vpData (buscador unificado)
+    if (typeof _vpData !== 'undefined' && _vpData && _vpData.length > 0) {
+      _vpData.forEach(s => {
+        if (s._tipo === 'vac_rh') candidatos.push({ ...s, _nodo: 'cleon_solicitudes/vacaciones' });
+        else if (s._tipo === 'vacaciones') candidatos.push({ ...s, _nodo: 'vacation_requests' });
+      });
+    }
+    // Si no hay datos en memoria, cargar directamente de Firebase
+    if (candidatos.length === 0) {
+      try {
+        const [snapVac, snapRH] = await Promise.all([
+          get(ref(database, 'vacation_requests')),
+          get(ref(database, 'cleon_solicitudes/vacaciones'))
+        ]);
+        if (snapVac.exists()) snapVac.forEach(c => candidatos.push({ id: c.key, _nodo: 'vacation_requests', ...c.val() }));
+        if (snapRH.exists()) snapRH.forEach(c => candidatos.push({ id: c.key, _nodo: 'cleon_solicitudes/vacaciones', ...c.val() }));
+      } catch(e) { alert('❌ Error cargando datos: ' + e.message); return; }
+    }
+    // Deduplicar por id
+    const seen = new Set();
+    candidatos = candidatos.filter(s => { if (seen.has(s.id)) return false; seen.add(s.id); return true; });
+
+    const toDelete = candidatos.filter(s => {
+      // vacation_requests usa timestamp_creacion; cleon_solicitudes usa timestamp
+      const ts = s.timestamp_creacion || s.timestamp || 0;
       return ts >= tsStart && ts <= tsEnd;
     });
     if (toDelete.length === 0) { alert('No hay solicitudes en ese rango.'); return; }
     if (!confirm('¿Eliminar ' + toDelete.length + ' solicitud(es) de vacaciones? Esta acción no se puede deshacer.')) return;
-    // Leer todas las notificaciones una sola vez para eficiencia
     let notifVacSnap = null;
     try { notifVacSnap = await get(ref(database, 'vacation_notifications')); } catch {}
     let ok = 0, err = 0;
     for (const sol of toDelete) {
       try {
-        await remove(ref(database, 'vacation_requests/' + sol.id));
-        // Borrar notificaciones de todos los usuarios que tengan este id
-        if (notifVacSnap && notifVacSnap.exists()) {
+        await remove(ref(database, sol._nodo + '/' + sol.id));
+        // Solo vacation_requests tiene vacation_notifications
+        if (sol._nodo === 'vacation_requests' && notifVacSnap && notifVacSnap.exists()) {
           const delPromises = [];
           notifVacSnap.forEach(userNode => {
             if (userNode.hasChild(sol.id))              delPromises.push(remove(ref(database, 'vacation_notifications/' + userNode.key + '/' + sol.id)));
@@ -2255,7 +2285,12 @@
     }
     document.getElementById('elimVacModal').style.display = 'none';
     alert('✅ ' + ok + ' solicitud(es) eliminada(s).' + (err ? ' ❌ ' + err + ' error(es).' : ''));
-    window.loadVacaciones();
+    // Recargar la vista correcta
+    if (document.getElementById('vacPermSection') && document.getElementById('vacPermSection').style.display !== 'none') {
+      window.buscarVacPerm();
+    } else {
+      window.loadVacaciones();
+    }
   };
 
   // ── Sección Permisos ────────────────────────────────────────────────────────────────────────
