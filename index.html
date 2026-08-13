@@ -648,9 +648,11 @@
       <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Nota (opcional)</label>
       <textarea id="alfredoNota" rows="3" placeholder="Agrega una nota o motivo..." style="width:100%;padding:10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
     </div>
+    <div id="alfredoCamposAlternos" style="margin-top:14px"></div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;flex-wrap:wrap">
       <button class="modal-close" onclick="document.getElementById('alfredoModal').style.display='none'" style="background:#6b7280">Cancelar</button>
       <button class="modal-close" id="alfredoBtnRechazar" onclick="window.alfredoResponder('rechazada_alfredo')" style="background:#B91C1C">❌ Rechazar</button>
+      <button class="modal-close" id="alfredoBtnProponer" onclick="window.alfredoProponer()" style="background:#1565C0">📅 Proponer cambios</button>
       <button class="modal-close" id="alfredoBtnAprobar" onclick="window.alfredoResponder('aprobada_alfredo')" style="background:#2E7D32">✅ Aprobar</button>
     </div>
   </div>
@@ -2925,6 +2927,8 @@
       }
       const estadoCfg = {
         pendiente_alfredo: { label: 'Pendiente', color: '#F57C00', bg: '#FFF3E0' },
+        propuesta_alfredo: { label: 'Propuesta enviada', color: '#1565C0', bg: '#E3F2FD' },
+        contra_propuesta_cleon: { label: 'Contrapropuesta RH', color: '#5B21B6', bg: '#EDE9FE' },
         aprobada_alfredo:  { label: 'Aprobada',  color: '#2E7D32', bg: '#E8F5E9' },
         rechazada_alfredo: { label: 'Rechazada', color: '#D32F2F', bg: '#FFEBEE' },
         activo:            { label: 'Activo',    color: '#2E7D32', bg: '#E8F5E9' },
@@ -2932,6 +2936,8 @@
       };
       function getEstVac(sol) {
         if (sol.estado === 'rechazada_alfredo') return 'rechazada_alfredo';
+        if (sol.estado === 'propuesta_alfredo') return 'propuesta_alfredo';
+        if (sol.estado === 'contra_propuesta_cleon') return 'contra_propuesta_cleon';
         if (sol.estado === 'aprobada_alfredo') {
           const hoy = new Date(); hoy.setHours(0,0,0,0);
           const pf = s => { if (!s) return null; if (s.includes('/')) { const [d,m,y]=s.split('/'); return new Date(y,m-1,d); } if (s.includes('-')) { const [y,m,d]=s.split('-'); return new Date(y,m-1,d); } return null; };
@@ -2957,7 +2963,7 @@
           ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
           ${sol.nota_alfredo ? `<div style="font-size:13px;color:#7A8C7A;margin-bottom:4px">💬 Tu nota: ${sol.nota_alfredo}</div>` : ''}
           <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
-          ${isPendiente ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">Responder solicitud →</button></div>` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar / Editar'}</button></div>
         </div>`;
       }
       html += '</div>';
@@ -2985,6 +2991,10 @@
       }
       const estadoCfg = {
         sin_responder:      { label: 'Sin responder',        color: '#92400E', bg: '#FEF3C7' },
+        propuesta_alfredo:  { label: 'Propuesta Alfredo',     color: '#1565C0', bg: '#E3F2FD' },
+        contra_propuesta_cleon:{ label: 'Contrapropuesta RH', color: '#5B21B6', bg: '#EDE9FE' },
+        aprobada_alfredo:   { label: 'Aprobado Alfredo',      color: '#14532D', bg: '#BBF7D0' },
+        rechazada_alfredo:  { label: 'Rechazado Alfredo',     color: '#7F1D1D', bg: '#FEE2E2' },
         propuesta_lgallegos:{ label: 'Propuesta Gte. Ops',   color: '#5B21B6', bg: '#EDE9FE' },
         confirmada_lgallegos:{ label: 'Aprobado Gte. Ops',  color: '#065F46', bg: '#D1FAE5' },
         pendiente_vobo:     { label: 'Pendiente VoBo RH',   color: '#E65100', bg: '#FFF3E0' },
@@ -2995,7 +3005,7 @@
       };
       let html = '<div style="display:grid;gap:12px">';
       for (const sol of lista) {
-        const estado = permGetEstado(sol);
+        const estado = sol.alfredo_estado || sol.alfredo_visto || permGetEstado(sol);
         const cfg = estadoCfg[estado] || { label: estado, color:'#555', bg:'#eee' };
         const isPendiente = estado === 'sin_responder' || estado === 'propuesta_lgallegos' || estado === 'confirmada_lgallegos' || estado === 'pendiente_vobo';
         const fecha = sol.timestamp ? new Date(sol.timestamp).toLocaleDateString('es-MX', { day:'2-digit', month:'short', year:'numeric' }) : '—';
@@ -3009,6 +3019,7 @@
           <div style="font-size:12px;color:#7A8C7A;margin-bottom:4px">${horario}</div>
           ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
           <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','perm')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar / Editar'}</button></div>
         </div>`;
       }
       html += '</div>';
@@ -3053,8 +3064,86 @@
       <div style="background:#F0F7FF;border-radius:10px;padding:14px;margin-bottom:12px">
         <table style="width:100%;border-collapse:collapse">${detalleHtml}</table>
       </div>`;
-    document.getElementById('alfredoNota').value = '';
+    const toInputDate = (valor) => {
+      if (!valor) return '';
+      if (valor.includes('-')) return valor;
+      const [d,m,y] = valor.split('/');
+      return d && m && y ? `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}` : '';
+    };
+    const campos = document.getElementById('alfredoCamposAlternos');
+    if (sol._tipo === 'vac') {
+      campos.innerHTML = `<div style="background:#EAF4FF;border:1px solid #B9D8F5;border-radius:10px;padding:12px">
+        <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:10px">📅 Fechas que propone Alfredo</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Inicio</label><input type="date" id="alfredoPropInicio" value="${toInputDate(sol.fecha_inicio_propuesta || sol.fecha_inicio)}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
+          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Fin / regreso</label><input type="date" id="alfredoPropFin" value="${toInputDate(sol.fecha_fin_propuesta || sol.fecha_fin)}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
+        </div>
+      </div>`;
+    } else {
+      const diaCompleto = sol.dia_completo_propuesto ?? sol.dia_completo;
+      campos.innerHTML = `<div style="background:#EAF4FF;border:1px solid #B9D8F5;border-radius:10px;padding:12px">
+        <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:10px">📅 Fecha y horario que propone Alfredo</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Inicio</label><input type="date" id="alfredoPropInicio" value="${toInputDate(sol.alfredo_fecha_inicio_propuesta || sol.fecha_inicio)}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
+          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Regreso</label><input type="date" id="alfredoPropFin" value="${toInputDate(sol.alfredo_fecha_regreso_propuesta || sol.fecha_regreso)}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
+        </div>
+        <label style="font-size:12px;color:#1A2E1A;display:block;margin-bottom:8px"><input type="checkbox" id="alfredoPropDiaCompleto" ${diaCompleto ? 'checked' : ''} onchange="window.toggleAlfredoHoras()"> Día completo</label>
+        <div id="alfredoHorasProp" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Hora inicio</label><input type="time" id="alfredoPropHoraInicio" value="${sol.alfredo_hora_inicio_propuesta || sol.hora_inicio || ''}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
+          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Hora salida</label><input type="time" id="alfredoPropHoraSalida" value="${sol.alfredo_hora_salida_propuesta || sol.hora_salida || ''}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
+        </div>
+      </div>`;
+    }
+    document.getElementById('alfredoNota').value = sol.nota_alfredo || '';
+    document.getElementById('alfredoBtnProponer').textContent = '📅 Proponer cambios';
+    document.getElementById('alfredoBtnAprobar').textContent = '✅ Aprobar';
     document.getElementById('alfredoModal').style.display = 'flex';
+    window.toggleAlfredoHoras();
+  };
+
+  window.toggleAlfredoHoras = function() {
+    const completo = document.getElementById('alfredoPropDiaCompleto');
+    const horas = document.getElementById('alfredoHorasProp');
+    if (completo && horas) horas.style.display = completo.checked ? 'none' : 'grid';
+  };
+
+  async function _enviarCorreoPropuestaAlfredo(sol, asunto, descripcion, nota) {
+    const destinatario = sol.user_email || sol.correo || 'cleon@fredinero.com';
+    const nombre = sol.nombre_solicitante || sol.nombre || 'RH';
+    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f5f7f5;padding:24px;border-radius:12px">
+      <div style="background:#1565C0;padding:16px 24px;border-radius:8px 8px 0 0"><h2 style="color:#fff;margin:0;font-size:18px">🌿 Fredinero Operativo</h2></div>
+      <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #D0DDD0"><h3 style="color:#1565C0;margin-top:0">📅 Propuesta de Alfredo</h3><p>Hola <strong>${nombre}</strong>, Alfredo propuso cambios para tu solicitud. Revisa y confirma la propuesta desde la app.</p><p style="font-weight:700;color:#1A2E1A">${descripcion}</p>${nota ? `<p><strong>Nota de Alfredo:</strong> ${nota}</p>` : ''}</div>
+      <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:12px">Este es un correo automático, no responder.</p></div>`;
+    await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Authorization':'Bearer '+(window._RKEY||''),'Content-Type':'application/json'}, body:JSON.stringify({from:'Fredinero <noreply@fredinero.com>',to:destinatario,subject:asunto,html}) });
+  }
+
+  window.alfredoProponer = async function() {
+    if (!_alfredoSolActiva) return;
+    const sol = _alfredoSolActiva;
+    const inicio = document.getElementById('alfredoPropInicio')?.value || '';
+    const fin = document.getElementById('alfredoPropFin')?.value || '';
+    const nota = document.getElementById('alfredoNota').value.trim();
+    if (!inicio || !fin || fin < inicio) { alert('Selecciona fechas válidas para la propuesta.'); return; }
+    const mostrar = s => { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; };
+    try {
+      if (sol._tipo === 'vac') {
+        const cur = new Date(inicio+'T00:00:00'), end = new Date(fin+'T00:00:00'); let dias = 0;
+        while (cur < end) { if (cur.getDay() !== 0) dias++; cur.setDate(cur.getDate()+1); }
+        await update(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id), { estado:'propuesta_alfredo', fecha_inicio_propuesta:mostrar(inicio), fecha_fin_propuesta:mostrar(fin), dias_propuestos:dias, nota_alfredo:nota||null, timestamp_propuesta_alfredo:Date.now() });
+        await _enviarCorreoPropuestaAlfredo(sol, '📅 Alfredo propuso cambios para tus vacaciones', `Fechas propuestas: ${mostrar(inicio)} al ${mostrar(fin)} (${dias} día(s)).`, nota);
+      } else {
+        const diaCompleto = !!document.getElementById('alfredoPropDiaCompleto')?.checked;
+        const horaInicio = document.getElementById('alfredoPropHoraInicio')?.value || '';
+        const horaSalida = document.getElementById('alfredoPropHoraSalida')?.value || '';
+        if (!diaCompleto && (!horaInicio || !horaSalida)) { alert('Indica las horas propuestas o marca Día completo.'); return; }
+        await update(ref(database, 'permission_requests/' + sol.id), { alfredo_estado:'propuesta_alfredo', alfredo_visto:'propuesta_alfredo', alfredo_fecha_inicio_propuesta:mostrar(inicio), alfredo_fecha_regreso_propuesta:mostrar(fin), alfredo_dia_completo_propuesto:diaCompleto, alfredo_hora_inicio_propuesta:diaCompleto?'':horaInicio, alfredo_hora_salida_propuesta:diaCompleto?'':horaSalida, nota_alfredo:nota||null, timestamp_alfredo:Date.now() });
+        const horario = diaCompleto ? 'Día completo' : `${horaInicio} - ${horaSalida}`;
+        await _enviarCorreoPropuestaAlfredo(sol, '📅 Alfredo propuso cambios para tu permiso', `Fechas propuestas: ${mostrar(inicio)} al ${mostrar(fin)}. Horario: ${horario}.`, nota);
+      }
+      document.getElementById('alfredoModal').style.display = 'none';
+      alert('📅 Propuesta enviada a cleon para su confirmación.');
+      window.loadAlfredoSolicitudes();
+    } catch(e) { alert('Error al enviar propuesta: ' + e.message); }
   };
 
   window.alfredoResponder = async function(nuevoEstado) {
@@ -3102,6 +3191,7 @@
         // y notificamos a cleon por correo. Guardamos nota_alfredo y timestamp en el permiso.
         await set(ref(database, 'permission_requests/' + sol.id + '/nota_alfredo'), nota || null);
         await set(ref(database, 'permission_requests/' + sol.id + '/alfredo_visto'), nuevoEstado);
+        await set(ref(database, 'permission_requests/' + sol.id + '/alfredo_estado'), nuevoEstado);
         await set(ref(database, 'permission_requests/' + sol.id + '/timestamp_alfredo'), Date.now());
         const horario = sol.dia_completo ? 'Día completo' : `${sol.hora_inicio||'?'} - ${sol.hora_salida||'?'}`;
         const asunto = esAprobada
