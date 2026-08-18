@@ -5,3 +5,6 @@
 - [x] Permitir que Alfredo acepte, rechace, proponga cambios y edite permisos de cleon.
 - [x] Notificar por correo a cleon cada vez que Alfredo acepte, rechace, proponga o edite una solicitud.
 - [x] Persistir propuestas de Alfredo con estados y campos compatibles con la confirmación de cleon en la app.
+- [ ] Adaptar el panel a las rutas de aprobación de gestores, gerentes por sucursal, lgallegos y cleon.
+- [ ] Mostrar y administrar evidencias fotográficas de permisos desde el panel web.
+- [ ] Validar y publicar el panel junto con la actualización completa de la app.

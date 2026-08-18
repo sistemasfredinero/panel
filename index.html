@@ -519,13 +519,17 @@
           <optgroup label="Vacaciones">
             <option value="vac_sin_responder">Sin responder</option>
             <option value="vac_propuesta_cleon">Propuesta RH</option>
+            <option value="vac_propuesta_intermedia">Propuesta de aprobador</option>
             <option value="vac_confirmada">Confirmada</option>
             <option value="vac_activo">Activo</option>
             <option value="vac_gozados">Gozados</option>
+            <option value="vac_cancelado">Cancelada</option>
           </optgroup>
           <optgroup label="Permisos">
             <option value="perm_sin_responder">Sin responder</option>
             <option value="perm_propuesta_lgallegos">Propuesta Gte. Ops</option>
+            <option value="perm_propuesta_rh">Propuesta RH</option>
+            <option value="perm_propuesta_intermedia">Propuesta de aprobador</option>
             <option value="perm_pendiente_vobo">Pendiente VoBo RH</option>
             <option value="perm_aprobado_final">Aprobado Final</option>
             <option value="perm_cancelado">Cancelado</option>
@@ -1929,8 +1933,20 @@
   let vacData = []; // cache de solicitudes
 
   // ── Helpers de estado ──────────────────────────────────────────────────────────────────────
+  function approvalStageLabel(stage) {
+    const labels = {
+      jaguayo: 'Pendiente Jaguayo',
+      gerente_plaza: 'Pendiente Gerente de sucursal',
+      lgallegos: 'Pendiente Gerente de Operaciones',
+      cleon: 'Pendiente RH',
+      completado: 'Aprobado final',
+    };
+    return labels[stage] || '—';
+  }
+
   function vacGetEstado(sol) {
     const hoy = new Date(); hoy.setHours(0,0,0,0);
+    if (sol.cancelado) return 'cancelado';
     if (sol.confirmada_empleado) {
       const ini = vacParseFecha(sol.fecha_inicio_aprobada || sol.fecha_inicio);
       const fin = vacParseFecha(sol.fecha_fin_aprobada    || sol.fecha_fin);
@@ -1940,7 +1956,11 @@
       }
       return 'confirmada';
     }
-    if (sol.respondida && !sol.confirmada_empleado) return 'propuesta_cleon';
+    if (sol.respondida && !sol.confirmada_empleado) {
+      return ['jaguayo','gerente_plaza','lgallegos'].includes(sol.propuesta_por)
+        ? 'propuesta_intermedia'
+        : 'propuesta_cleon';
+    }
     return 'sin_responder';
   }
 
@@ -1954,9 +1974,11 @@
   const VAC_ESTADO_CFG = {
     sin_responder:   { label: 'Sin responder', color: '#F57C00', bg: '#FFF3E0' },
     propuesta_cleon: { label: 'Propuesta RH',  color: '#0288D1', bg: '#E1F5FE' },
+    propuesta_intermedia: { label: 'Propuesta de aprobador', color: '#0288D1', bg: '#E1F5FE' },
     confirmada:      { label: 'Confirmada',    color: '#7B1FA2', bg: '#F3E5F5' },
     activo:          { label: 'Activo',        color: '#2E7D32', bg: '#E8F5E9' },
     gozados:         { label: 'Gozados',       color: '#6b7280', bg: '#F0EDE8' },
+    cancelado:       { label: 'Cancelada',     color: '#7F1D1D', bg: '#FEE2E2' },
   };
 
   // ── Mostrar sección ──────────────────────────────────────────────────────────────────────
@@ -2333,6 +2355,17 @@
       if (str.includes('/')) { const [d,m,y]=str.split('/').map(Number); return new Date(y,m-1,d); }
       return null;
     }
+    if (p.visto_bueno_cleon || p.estado === 'aprobado_final') {
+      const ini = parseFechaPerm(p.fecha_inicio_aprobada || p.fecha_inicio);
+      const fin = parseFechaPerm(p.fecha_regreso_aprobada || p.fecha_regreso);
+      if (ini && fin) {
+        if (hoy >= ini && hoy <= fin) return 'activo';
+        if (hoy > fin) return 'gozados';
+      } else if (ini && hoy >= ini) {
+        return p.dia_completo ? 'gozados' : 'activo';
+      }
+      return 'aprobado_final';
+    }
     if (p.confirmada_empleado) {
       if (!p.visto_bueno_cleon && p.rol !== 'ADMINISTRATIVO') return 'pendiente_vobo';
       const ini = parseFechaPerm(p.fecha_inicio_aprobada || p.fecha_inicio);
@@ -2346,7 +2379,10 @@
       return p.rol === 'ADMINISTRATIVO' ? 'confirmada_lgallegos' : 'pendiente_vobo';
     }
     if (p.aprobado_lgallegos && !p.confirmada_empleado) return 'confirmada_lgallegos';
-    if (p.respondida_lgallegos && !p.aprobado_lgallegos) return 'propuesta_lgallegos';
+    if (p.respondida_lgallegos && !p.aprobado_lgallegos) {
+      if (p.propuesta_por === 'jaguayo' || p.propuesta_por === 'gerente_plaza') return 'propuesta_intermedia';
+      return p.propuesta_por === 'cleon' || p.estado === 'propuesta_rh' ? 'propuesta_rh' : 'propuesta_lgallegos';
+    }
     return 'sin_responder';
   }
 
@@ -2362,6 +2398,8 @@
     gozados:               { label:'Gozado',                       color:'#6B7280', bg:'#F3F4F6' },
     cancelado:             { label:'Cancelado',                    color:'#7F1D1D', bg:'#FEE2E2' },
     propuesta_lgallegos:   { label:'Propuesta Gte. Operaciones',   color:'#5B21B6', bg:'#EDE9FE' },
+    propuesta_rh:          { label:'Propuesta RH',                  color:'#0288D1', bg:'#E1F5FE' },
+    propuesta_intermedia:  { label:'Propuesta de aprobador',        color:'#0288D1', bg:'#E1F5FE' },
     negociando:            { label:'Negociando',                   color:'#92400E', bg:'#FEF3C7' },
   };
 
@@ -2640,6 +2678,7 @@
         <th style="padding:10px 12px;text-align:left;white-space:nowrap">Fechas</th>
         <th style="padding:10px 12px;text-align:left;white-space:nowrap">Detalle</th>
         <th style="padding:10px 12px;text-align:center;white-space:nowrap">Estado</th>
+        <th style="padding:10px 12px;text-align:center;white-space:nowrap">Etapa</th>
         <th style="padding:10px 12px;text-align:center;white-space:nowrap">Acciones</th>
       </tr></thead><tbody>`;
     const VAC_RH_ESTADO_CFG = {
@@ -2663,6 +2702,10 @@
       else if (esRH) estadoCfg = VAC_RH_ESTADO_CFG[s._estadoKey] || { label: s._estadoKey, color:'#555', bg:'#eee' };
       else        estadoCfg = PERM_ESTADO_CFG[s._estadoKey] || PERM_ESTADO_CFG.sin_responder;
       const estadoBadge = `<span style="background:${estadoCfg.bg};color:${estadoCfg.color};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${estadoCfg.label}</span>`;
+      const etapa = (esVac || esPerm) ? approvalStageLabel(s.approval_stage) : '—';
+      const etapaBadge = etapa === '—'
+        ? '<span style="color:#9CA3AF">—</span>'
+        : `<span style="background:#F3E5F5;color:#6B21A8;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${etapa}</span>`;
       const nombre = s.nombre_solicitante || s.nombre || '—';
       const correo = s.user_email || s.correo || '';
       let fechas = '';
@@ -2708,6 +2751,7 @@
         <td style="padding:10px 12px;white-space:nowrap">${fechas}</td>
         <td style="padding:10px 12px">${detalle}</td>
         <td style="padding:10px 12px;text-align:center">${estadoBadge}</td>
+        <td style="padding:10px 12px;text-align:center">${etapaBadge}</td>
         <td style="padding:10px 12px;text-align:center;white-space:nowrap">${acciones}</td>
       </tr>`;
     });
