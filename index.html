@@ -1935,7 +1935,7 @@
   // ── Helpers de estado ──────────────────────────────────────────────────────────────────────
   function approvalStageLabel(stage) {
     const labels = {
-      jaguayo: 'Pendiente Jaguayo',
+      jaguayo: 'Pendiente Contralor',
       gerente_plaza: 'Pendiente Gerente de sucursal',
       lgallegos: 'Pendiente Gerente de Operaciones',
       cleon: 'Pendiente RH',
@@ -1943,6 +1943,136 @@
     };
     return labels[stage] || '—';
   }
+
+  function vpEtapaVisible(sol, estadoKey) {
+    const estadosFinales = new Set(['aprobado_final', 'confirmada', 'activo', 'gozados', 'aprobada_alfredo']);
+    if (estadosFinales.has(estadoKey) || sol.visto_bueno_cleon || sol.approval_stage === 'completado') return 'Completada';
+    if (sol.devolucion_desde) {
+      const devueltoPor = approvalStageLabel(sol.devolucion_desde).replace(/^Pendiente\s+/, '');
+      return `Devuelta por ${devueltoPor}`;
+    }
+    return approvalStageLabel(sol.approval_stage);
+  }
+
+  function vpNormalizarTexto(valor) {
+    return String(valor || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9@._\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function vpDistanciaLevenshtein(a, b) {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      let diagonal = prev[0];
+      prev[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const arriba = prev[j];
+        prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+        diagonal = arriba;
+      }
+    }
+    return prev[b.length];
+  }
+
+  function vpCoincideToken(token, candidatos) {
+    return candidatos.some(candidato => {
+      if (candidato.includes(token)) return true;
+      return token.length >= 4 && candidato.length >= 4 && vpDistanciaLevenshtein(token, candidato) <= 1;
+    });
+  }
+
+  function vpCoincideUsuarioFlexible(busqueda, nombre, correo) {
+    const consulta = vpNormalizarTexto(busqueda);
+    if (!consulta) return true;
+    const nombreNormalizado = vpNormalizarTexto(nombre);
+    const correoNormalizado = vpNormalizarTexto(correo);
+    const candidatos = [...nombreNormalizado.split(' '), ...correoNormalizado.split(/[\s@._]+/)].filter(Boolean);
+    return consulta.split(',').map(grupo => grupo.trim()).filter(Boolean).some(grupo =>
+      grupo.split(' ').filter(Boolean).every(token => vpCoincideToken(token, candidatos))
+    );
+  }
+
+  const VP_ADMINISTRADORES_FLUJO = new Set(['cleon@fredinero.com', 'soporte@fredinero.com', 'alfredo@fredinero.com']);
+
+  function vpPuedeGestionarFlujo() {
+    return VP_ADMINISTRADORES_FLUJO.has(String(auth.currentUser?.email || '').trim().toLowerCase());
+  }
+
+  function vpRutaFlujo(rol) {
+    const normalizado = String(rol || '').trim().toUpperCase();
+    if (normalizado === 'GESTOR') return ['jaguayo', 'cleon'];
+    if (['LIDER A', 'LIDER B', 'LIDER C', 'CANJES'].includes(normalizado)) return ['gerente_plaza', 'lgallegos', 'cleon'];
+    return ['cleon'];
+  }
+
+  function vpSolicitudActual(id, tipo) {
+    return _vpData.find(s => s.id === id && s._tipo === tipo);
+  }
+
+  window.vpAprobarFlujo = async function(id, tipo) {
+    if (!vpPuedeGestionarFlujo()) { alert('No tienes permiso para gestionar etapas de aprobación.'); return; }
+    const sol = vpSolicitudActual(id, tipo);
+    if (!sol) { alert('No se encontró la solicitud. Vuelve a realizar la búsqueda.'); return; }
+    const ruta = vpRutaFlujo(sol.rol);
+    const etapaActual = sol.approval_stage || ruta[0];
+    const indice = Math.max(0, ruta.indexOf(etapaActual));
+    const siguiente = ruta[indice + 1] || 'completado';
+    const nombreAdmin = String(auth.currentUser?.email || 'Administrador');
+    if (!confirm(`¿Aprobar la etapa ${approvalStageLabel(etapaActual).replace(/^Pendiente\s+/, '')} de esta solicitud?`)) return;
+    try {
+      const path = tipo === 'vacaciones' ? `vacation_requests/${id}` : `permission_requests/${id}`;
+      const base = {
+        approval_stage: siguiente,
+        devolucion_desde: null,
+        devolucion_por: null,
+        devolucion_timestamp: null,
+        motivo_devolucion: null,
+        [`approved_by_names/${etapaActual}`]: nombreAdmin,
+      };
+      if (tipo === 'permisos') {
+        Object.assign(base, siguiente === 'completado'
+          ? { estado: 'aprobado_final', visto_bueno_cleon: true, confirmada_empleado: true }
+          : { estado: siguiente === 'cleon' ? 'pendiente_vobo' : 'sin_responder', confirmada_empleado: siguiente === 'cleon' });
+      } else {
+        Object.assign(base, siguiente === 'completado'
+          ? { confirmada_empleado: true, respondida: false }
+          : { respondida: false, confirmada_empleado: false });
+      }
+      await update(ref(database, path), base);
+      alert(siguiente === 'completado' ? '✅ Solicitud aprobada de forma final.' : `✅ Solicitud enviada a ${approvalStageLabel(siguiente)}.`);
+      window.buscarVacPerm();
+    } catch (e) { alert('❌ No se pudo aprobar la etapa: ' + e.message); }
+  };
+
+  window.vpDevolverFlujo = async function(id, tipo) {
+    if (!vpPuedeGestionarFlujo()) { alert('No tienes permiso para gestionar etapas de aprobación.'); return; }
+    const sol = vpSolicitudActual(id, tipo);
+    if (!sol) { alert('No se encontró la solicitud. Vuelve a realizar la búsqueda.'); return; }
+    const motivo = prompt('Motivo de devolución (obligatorio):');
+    if (!motivo || !motivo.trim()) { alert('Debes indicar el motivo de devolución.'); return; }
+    const ruta = vpRutaFlujo(sol.rol);
+    const etapaActual = sol.approval_stage || ruta[0];
+    const indice = Math.max(0, ruta.indexOf(etapaActual));
+    const etapaAnterior = indice > 0 ? ruta[indice - 1] : ruta[0];
+    const nombreAdmin = String(auth.currentUser?.email || 'Administrador');
+    if (!confirm(`¿Devolver esta solicitud a ${indice > 0 ? approvalStageLabel(etapaAnterior).replace(/^Pendiente\s+/, '') : 'la persona solicitante'}?`)) return;
+    try {
+      const path = tipo === 'vacaciones' ? `vacation_requests/${id}` : `permission_requests/${id}`;
+      const base = {
+        approval_stage: etapaAnterior,
+        devolucion_desde: etapaActual,
+        devolucion_por: nombreAdmin,
+        devolucion_timestamp: Date.now(),
+        motivo_devolucion: motivo.trim(),
+      };
+      if (tipo === 'permisos') Object.assign(base, { estado: 'sin_responder', confirmada_empleado: false, respondida_lgallegos: false, aprobado_lgallegos: false });
+      else Object.assign(base, { respondida: false, confirmada_empleado: false, cancelado: false });
+      await update(ref(database, path), base);
+      alert(indice > 0 ? `↩️ Solicitud devuelta a ${approvalStageLabel(etapaAnterior)}.` : '↩️ Solicitud devuelta a la persona solicitante.');
+      window.buscarVacPerm();
+    } catch (e) { alert('❌ No se pudo devolver la solicitud: ' + e.message); }
+  };
 
   function vacGetEstado(sol) {
     const hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -2571,17 +2701,12 @@
     const estado  = document.getElementById('vpEstado').value;
     const rol     = document.getElementById('vpRol').value.toUpperCase();
     const plaza   = document.getElementById('vpPlaza').value.toUpperCase();
-    const buscar  = document.getElementById('vpUsuario').value.toLowerCase();
+    const buscar  = document.getElementById('vpUsuario').value;
     const fechaIni = document.getElementById('vpFechaIni').value;
     const fechaFin = document.getElementById('vpFechaFin').value;
-    const terminos = buscar ? buscar.split(',').map(t => t.trim()).filter(Boolean) : [];
     const tsStart = fechaIni ? new Date(fechaIni + 'T00:00:00').getTime() : 0;
     const tsEnd   = fechaFin ? new Date(fechaFin + 'T23:59:59').getTime() : Infinity;
-    const coincideUsuario = (nombre, correo) => {
-      if (terminos.length === 0) return true;
-      const n = (nombre||'').toLowerCase(), c = (correo||'').toLowerCase();
-      return terminos.some(t => n.includes(t) || c.includes(t));
-    };
+    const coincideUsuario = (nombre, correo) => vpCoincideUsuarioFlexible(buscar, nombre, correo);
     const coincideFecha = ts => (!fechaIni && !fechaFin) || (ts >= tsStart && ts <= tsEnd);
     _vpData = [];
     try {
@@ -2702,7 +2827,7 @@
       else if (esRH) estadoCfg = VAC_RH_ESTADO_CFG[s._estadoKey] || { label: s._estadoKey, color:'#555', bg:'#eee' };
       else        estadoCfg = PERM_ESTADO_CFG[s._estadoKey] || PERM_ESTADO_CFG.sin_responder;
       const estadoBadge = `<span style="background:${estadoCfg.bg};color:${estadoCfg.color};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${estadoCfg.label}</span>`;
-      const etapa = (esVac || esPerm) ? approvalStageLabel(s.approval_stage) : '—';
+      const etapa = (esVac || esPerm) ? vpEtapaVisible(s, s._estadoKey) : '—';
       const etapaBadge = etapa === '—'
         ? '<span style="color:#9CA3AF">—</span>'
         : `<span style="background:#F3E5F5;color:#6B21A8;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${etapa}</span>`;
@@ -2736,13 +2861,17 @@
         const horario = s.dia_completo ? '—' : `${s.hora_inicio||'?'} - ${s.hora_salida||'?'}`;
         detalle = `<div style="font-size:12px">${horario}</div><div style="font-size:11px;color:#7A8C7A;max-width:180px;word-break:break-word">${s.motivo||'—'}</div>`;
       }
+      const esFinalizada = ['aprobado_final', 'confirmada', 'activo', 'gozados'].includes(s._estadoKey) || s.visto_bueno_cleon || s.approval_stage === 'completado';
+      const accionesFlujo = (esVac || esPerm) && vpPuedeGestionarFlujo() && !esFinalizada
+        ? `<button onclick="window.vpAprobarFlujo('${s.id}','${s._tipo}')" style="padding:5px 10px;background:#1A7A3C;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">✅ Aprobar</button><button onclick="window.vpDevolverFlujo('${s.id}','${s._tipo}')" style="padding:5px 10px;background:#E65100;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">↩ Devolver</button>`
+        : '';
       let acciones;
       if (esVac) {
-        acciones = `<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button><button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+        acciones = `${accionesFlujo}<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button><button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
       } else if (esRH) {
         acciones = `<button data-rhid="${s.id}" onclick="window.deleteVacPermById(this,'rh')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
       } else {
-        acciones = `<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+        acciones = `${accionesFlujo}<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
       }
       html += `<tr style="background:${bg};border-bottom:1px solid #E8F5E9">
         <td style="padding:10px 12px">${tipoBadge}</td>
