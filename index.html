@@ -473,6 +473,10 @@
           <h3>📍 Registros fuera de sucursal <span id="outsideBranchBadge" style="font-size:12px;font-weight:700"></span></h3>
           <div id="outsideBranchReport" style="color:#7A8C7A;font-size:13px">Busca un período para analizar ubicaciones.</div>
         </div>
+        <div class="chart-card" style="grid-column: 1 / -1">
+          <h3>🚗 Rutas de viajes <span id="tripRoutesBadge" style="font-size:12px;font-weight:700"></span></h3>
+          <div id="tripRoutesReport" style="color:#7A8C7A;font-size:13px">Busca un período para analizar rutas de viaje.</div>
+        </div>
       </div>
     </div>
 
@@ -752,6 +756,20 @@
   </div>
 </div>
 
+<!-- ── Mapa de rutas de viajes ── -->
+<div class="modal-overlay" id="tripRoutesMapModal" style="z-index:1200">
+  <div class="modal-box" style="width:min(1200px,96vw);max-width:none;height:min(780px,92vh);display:flex;flex-direction:column;padding:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0;color:#1A2E1A">🚗 Rutas de viajes del período</h3>
+        <div style="font-size:12px;color:#64748B;margin-top:4px">Punto A es el inicio; Punto B es el fin. El color identifica la sucursal del usuario.</div>
+      </div>
+      <button class="modal-close" onclick="window.closeTripRoutesMap()" style="background:#6B7280">✕ Cerrar</button>
+    </div>
+    <div id="tripRoutesMap" style="flex:1;min-height:360px;border-radius:12px;border:1px solid #D0DDD0;overflow:hidden"></div>
+  </div>
+</div>
+
 <!-- Firebase SDK -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script type="module">
@@ -955,6 +973,12 @@
           const fecha_viaje = ts
             ? String(ts.getDate()).padStart(2,'0') + '/' + String(ts.getMonth()+1).padStart(2,'0') + '/' + ts.getFullYear()
             : null;
+          const coincideViaje = terminos.length === 0 || terminos.some(t => {
+            const nombreViaje = String(u.nombre_completo || '').toLowerCase();
+            const correoViaje = String(u.correo || '').toLowerCase();
+            return nombreViaje.includes(t) || correoViaje.includes(t);
+          });
+          if (!coincideViaje || (filtroRol && String(u.rol || '').toUpperCase() !== filtroRol) || (filtroPlz && String(u.plaza || '').toUpperCase() !== filtroPlz)) return;
           viajesParaAlertas.push({
             id: c.key,
             uid: v.user_uid,
@@ -964,6 +988,11 @@
             hora_inicio,
             fecha_viaje,
             timestamp_inicio: v.timestamp_inicio || null,
+            timestamp_fin: v.timestamp_fin || null,
+            latitud_inicio: v.latitud_inicio,
+            longitud_inicio: v.longitud_inicio,
+            latitud_fin: v.latitud_fin,
+            longitud_fin: v.longitud_fin,
             km_inicio: v.km_inicio,
             km_fin: v.km_fin,
           });
@@ -972,6 +1001,7 @@
     } catch(e) { /* Si falla la carga de viajes, alertas de viaje quedarán vacías */ }
 
     renderAlerts(registrosParaAlertas, viajesParaAlertas);
+    renderTripRoutesReport(viajesParaAlertas);
   }
 
   // ── Stats ──────────────────────────────────────────────────────────────────
@@ -1079,11 +1109,17 @@
       const marker = L.circleMarker([record.lat, record.lng], {
         radius: 9, color, weight: 2, fillColor: color, fillOpacity: 0.85,
       }).addTo(outsideBranchMapInstance);
-      marker.bindPopup(`<div style="min-width:210px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:#1A2E1A;font-size:14px">${escapeMapHtml(record.nombre)}</div><div style="margin-top:6px"><b>Sucursal:</b> ${escapeMapHtml(record.plaza)}<br><b>Rol:</b> ${escapeMapHtml(record.rol)}<br><b>Fecha y hora:</b> ${escapeMapHtml(formatRecordDateTime(record.timestamp))}<br><b>Tipo:</b> ${escapeMapHtml(record.tipo)}<br><b>Distancia:</b> ${Math.round(record.meters)} m</div><a href="https://www.google.com/maps?q=${record.lat},${record.lng}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:9px;color:#1565C0;font-weight:700">📍 Abrir en Google Maps</a></div>`);
+      const fotoAccion = record.tieneFoto
+        ? `<button onclick="window.openMapAttendancePhoto('${record.id}')" style="margin-top:10px;padding:6px 9px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:700">📷 Ver foto</button>`
+        : '<div style="margin-top:9px;color:#7A8C7A;font-size:12px">📷 Sin foto disponible</div>';
+      marker.bindPopup(`<div style="min-width:210px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:#1A2E1A;font-size:14px">${escapeMapHtml(record.nombre)}</div><div style="margin-top:6px"><b>Sucursal:</b> ${escapeMapHtml(record.plaza)}<br><b>Rol:</b> ${escapeMapHtml(record.rol)}<br><b>Fecha y hora:</b> ${escapeMapHtml(formatRecordDateTime(record.timestamp))}<br><b>Tipo de registro:</b> ${escapeMapHtml(record.tipo)}<br><b>Distancia:</b> ${Math.round(record.meters)} m</div>${fotoAccion}</div>`);
       bounds.push([record.lat, record.lng]);
       if (!shownCenters.has(record.plaza) && BRANCH_CENTERS[record.plaza]) {
         shownCenters.add(record.plaza);
         const center = BRANCH_CENTERS[record.plaza];
+        L.marker([center.lat, center.lng], {
+          icon: L.divIcon({ className: '', html: '<div style="font-size:25px;line-height:30px;text-align:center;text-shadow:0 1px 3px #fff">🏠</div>', iconSize: [30, 30], iconAnchor: [15, 15] }),
+        }).addTo(outsideBranchMapInstance).bindPopup(`<b>🏠 Sucursal ${escapeMapHtml(record.plaza)}</b><br>Centro de referencia<br>Radio permitido: ${OUTSIDE_BRANCH_RADIUS_METERS} m`);
         L.circle([center.lat, center.lng], { radius: OUTSIDE_BRANCH_RADIUS_METERS, color, weight: 2, dashArray: '5 5', fillColor: color, fillOpacity: 0.12 }).addTo(outsideBranchMapInstance).bindPopup(`<b>Centro ${escapeMapHtml(record.plaza)}</b><br>Radio permitido: ${OUTSIDE_BRANCH_RADIUS_METERS} m`);
         bounds.push([center.lat, center.lng]);
       }
@@ -1091,6 +1127,92 @@
     if (bounds.length) outsideBranchMapInstance.fitBounds(bounds, { padding: [42, 42], maxZoom: 17 });
     setTimeout(() => outsideBranchMapInstance?.invalidateSize(), 60);
   };
+
+  window.openMapAttendancePhoto = async function(recordId) {
+    const record = allRecords.find(item => item.id === recordId);
+    if (!record) { alert('No se encontró el registro de asistencia.'); return; }
+    window.closeOutsideBranchMap();
+    if (record.foto_base64) {
+      window.openPhotoFromSrc(recordId, `data:image/jpeg;base64,${record.foto_base64}`);
+      return;
+    }
+    try {
+      const snap = await get(ref(database, `attendance_photos/${recordId}/foto_base64`));
+      if (!snap.exists()) throw new Error('Foto no disponible');
+      record.foto_base64 = snap.val();
+      window.openPhotoFromSrc(recordId, `data:image/jpeg;base64,${record.foto_base64}`);
+    } catch (e) {
+      alert('❌ No se pudo cargar la foto de asistencia.');
+    }
+  };
+
+  function validCoordinates(lat, lng) {
+    return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+  }
+
+  function formatTripDateTime(timestamp) {
+    return timestamp ? formatRecordDateTime(timestamp) : 'Sin registro';
+  }
+
+  window.closeTripRoutesMap = function() {
+    document.getElementById('tripRoutesMapModal').classList.remove('active');
+  };
+
+  window.openTripRoutesMap = function() {
+    const modal = document.getElementById('tripRoutesMapModal');
+    const mapElement = document.getElementById('tripRoutesMap');
+    const trips = window.__mappableTrips || [];
+    modal.classList.add('active');
+    if (window.tripRoutesMapInstance) {
+      window.tripRoutesMapInstance.remove();
+      window.tripRoutesMapInstance = null;
+    }
+    if (!window.L) {
+      mapElement.innerHTML = '<div style="padding:24px;color:#B91C1C">❌ No se pudo cargar el componente del mapa. Revisa tu conexión e inténtalo de nuevo.</div>';
+      return;
+    }
+    const map = L.map('tripRoutesMap', { zoomControl: true }).setView([22.4, -98.2], 5);
+    window.tripRoutesMapInstance = map;
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+    const bounds = [];
+    trips.forEach(trip => {
+      const color = BRANCH_MAP_COLORS[trip.plaza] || '#334155';
+      const inicio = [Number(trip.latitud_inicio), Number(trip.longitud_inicio)];
+      const puntoA = L.circleMarker(inicio, { radius: 9, color, weight: 2, fillColor: color, fillOpacity: 0.9 }).addTo(map);
+      puntoA.bindPopup(`<div style="min-width:220px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:#1A2E1A;font-size:14px">Punto A · Inicio de viaje</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(trip.nombre)}<br><b>Sucursal:</b> ${escapeMapHtml(trip.plaza)}<br><b>Rol:</b> ${escapeMapHtml(trip.puesto)}<br><b>Fecha y hora:</b> ${escapeMapHtml(formatTripDateTime(trip.timestamp_inicio))}<br><b>Ubicación:</b> ${inicio[0].toFixed(6)}, ${inicio[1].toFixed(6)}</div></div>`);
+      bounds.push(inicio);
+      if (validCoordinates(trip.latitud_fin, trip.longitud_fin)) {
+        const fin = [Number(trip.latitud_fin), Number(trip.longitud_fin)];
+        const seMovio = distanceInMeters(inicio[0], inicio[1], fin[0], fin[1]) > 5;
+        if (seMovio) {
+          const puntoB = L.circleMarker(fin, { radius: 9, color, weight: 2, fillColor: '#FFFFFF', fillOpacity: 1 }).addTo(map);
+          puntoB.bindPopup(`<div style="min-width:220px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:#1A2E1A;font-size:14px">Punto B · Fin de viaje</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(trip.nombre)}<br><b>Sucursal:</b> ${escapeMapHtml(trip.plaza)}<br><b>Rol:</b> ${escapeMapHtml(trip.puesto)}<br><b>Fecha y hora:</b> ${escapeMapHtml(formatTripDateTime(trip.timestamp_fin))}<br><b>Ubicación:</b> ${fin[0].toFixed(6)}, ${fin[1].toFixed(6)}</div></div>`);
+          L.polyline([inicio, fin], { color, weight: 3, opacity: 0.85, dashArray: '9 8' }).addTo(map);
+          bounds.push(fin);
+        }
+      }
+    });
+    if (bounds.length) map.fitBounds(bounds, { padding: [42, 42], maxZoom: 17 });
+    setTimeout(() => map.invalidateSize(), 60);
+  };
+
+  function renderTripRoutesReport(trips) {
+    const report = document.getElementById('tripRoutesReport');
+    const badge = document.getElementById('tripRoutesBadge');
+    if (!report || !badge) return;
+    const mappable = trips.filter(trip => validCoordinates(trip.latitud_inicio, trip.longitud_inicio)).map(trip => ({
+      ...trip,
+      plaza: branchKey(trip.plaza) || 'SIN PLAZA',
+    }));
+    window.__mappableTrips = mappable;
+    badge.textContent = mappable.length ? `(${mappable.length})` : '(0)';
+    badge.style.color = mappable.length ? '#1565C0' : '#7A8C7A';
+    const conFin = mappable.filter(trip => validCoordinates(trip.latitud_fin, trip.longitud_fin) && distanceInMeters(Number(trip.latitud_inicio), Number(trip.longitud_inicio), Number(trip.latitud_fin), Number(trip.longitud_fin)) > 5).length;
+    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:${mappable.length ? '#1A2E1A' : '#7A8C7A'};font-size:13px">${mappable.length ? `Se detectaron <b>${mappable.length}</b> viajes con Punto A y <b>${conFin}</b> con Punto B distinto.` : 'No hay viajes con ubicación inicial dentro del período actual.'}</div><button onclick="window.openTripRoutesMap()" style="padding:8px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Mapear viajes</button></div>`;
+  }
 
   function renderOutsideBranchReport(records) {
     const report = document.getElementById('outsideBranchReport');
@@ -1106,6 +1228,7 @@
       const meters = distanceInMeters(center.lat, center.lng, lat, lng);
       if (meters <= OUTSIDE_BRANCH_RADIUS_METERS) return null;
       return {
+        id: record.id,
         nombre: user.nombre_completo || user.correo || record.user_uid || 'Usuario desconocido',
         rol: String(user.rol || user.puesto || '—').toUpperCase(),
         plaza,
@@ -1114,6 +1237,7 @@
         meters,
         lat,
         lng,
+        tieneFoto: Boolean(record.foto_base64 || record.tiene_foto_nueva),
       };
     }).filter(Boolean).sort((a, b) => b.timestamp - a.timestamp);
 
