@@ -1104,6 +1104,21 @@
     }).addTo(outsideBranchMapInstance);
     const bounds = [];
     const shownCenters = new Set();
+    const addBranchCenter = (plaza) => {
+      const branch = branchKey(plaza);
+      const center = BRANCH_CENTERS[branch];
+      if (shownCenters.has(branch) || !center) return;
+      shownCenters.add(branch);
+      const color = BRANCH_MAP_COLORS[branch] || '#334155';
+      L.marker([center.lat, center.lng], {
+        icon: L.divIcon({ className: '', html: '<div style="font-size:25px;line-height:30px;text-align:center;text-shadow:0 1px 3px #fff">🏠</div>', iconSize: [30, 30], iconAnchor: [15, 15] }),
+      }).addTo(outsideBranchMapInstance).bindPopup(`<b>🏠 Sucursal ${escapeMapHtml(branch)}</b><br>Centro de referencia<br>Radio permitido: ${OUTSIDE_BRANCH_RADIUS_METERS} m`);
+      L.circle([center.lat, center.lng], { radius: OUTSIDE_BRANCH_RADIUS_METERS, color, weight: 2, dashArray: '5 5', fillColor: color, fillOpacity: 0.12 }).addTo(outsideBranchMapInstance).bindPopup(`<b>Centro ${escapeMapHtml(branch)}</b><br>Radio permitido: ${OUTSIDE_BRANCH_RADIUS_METERS} m`);
+      bounds.push([center.lat, center.lng]);
+    };
+
+    // Si se filtró una plaza, su centro debe verse aunque no tenga incidencias.
+    addBranchCenter(document.getElementById('filtroPlaza')?.value);
     records.forEach(record => {
       const color = BRANCH_MAP_COLORS[record.plaza] || '#334155';
       const marker = L.circleMarker([record.lat, record.lng], {
@@ -1114,15 +1129,7 @@
         : '<div style="margin-top:9px;color:#7A8C7A;font-size:12px">📷 Sin foto disponible</div>';
       marker.bindPopup(`<div style="min-width:210px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:#1A2E1A;font-size:14px">${escapeMapHtml(record.nombre)}</div><div style="margin-top:6px"><b>Sucursal:</b> ${escapeMapHtml(record.plaza)}<br><b>Rol:</b> ${escapeMapHtml(record.rol)}<br><b>Fecha y hora:</b> ${escapeMapHtml(formatRecordDateTime(record.timestamp))}<br><b>Tipo de registro:</b> ${escapeMapHtml(record.tipo)}<br><b>Distancia:</b> ${Math.round(record.meters)} m</div>${fotoAccion}</div>`);
       bounds.push([record.lat, record.lng]);
-      if (!shownCenters.has(record.plaza) && BRANCH_CENTERS[record.plaza]) {
-        shownCenters.add(record.plaza);
-        const center = BRANCH_CENTERS[record.plaza];
-        L.marker([center.lat, center.lng], {
-          icon: L.divIcon({ className: '', html: '<div style="font-size:25px;line-height:30px;text-align:center;text-shadow:0 1px 3px #fff">🏠</div>', iconSize: [30, 30], iconAnchor: [15, 15] }),
-        }).addTo(outsideBranchMapInstance).bindPopup(`<b>🏠 Sucursal ${escapeMapHtml(record.plaza)}</b><br>Centro de referencia<br>Radio permitido: ${OUTSIDE_BRANCH_RADIUS_METERS} m`);
-        L.circle([center.lat, center.lng], { radius: OUTSIDE_BRANCH_RADIUS_METERS, color, weight: 2, dashArray: '5 5', fillColor: color, fillOpacity: 0.12 }).addTo(outsideBranchMapInstance).bindPopup(`<b>Centro ${escapeMapHtml(record.plaza)}</b><br>Radio permitido: ${OUTSIDE_BRANCH_RADIUS_METERS} m`);
-        bounds.push([center.lat, center.lng]);
-      }
+      addBranchCenter(record.plaza);
     });
     if (bounds.length) outsideBranchMapInstance.fitBounds(bounds, { padding: [42, 42], maxZoom: 17 });
     setTimeout(() => outsideBranchMapInstance?.invalidateSize(), 60);
