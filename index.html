@@ -468,6 +468,10 @@
           <h3>🚗 Km Recorridos por Empleado</h3>
           <div class="chart-wrapper"><canvas id="chartKm"></canvas></div>
         </div>
+        <div class="chart-card" style="grid-column: 1 / -1">
+          <h3>📍 Registros fuera de sucursal <span id="outsideBranchBadge" style="font-size:12px;font-weight:700"></span></h3>
+          <div id="outsideBranchReport" style="color:#7A8C7A;font-size:13px">Busca un período para analizar ubicaciones.</div>
+        </div>
       </div>
     </div>
 
@@ -903,6 +907,7 @@
     renderStats(filtered);
     renderCards(filtered);
     await renderCharts(filtered);
+    renderOutsideBranchReport(filtered);
 
     // ── Alertas: usar allRecords (sin filtros de usuario/rol/plaza) para detectar inconsistencias
     // Construir lista de registros con campos que espera renderAlerts
@@ -983,6 +988,87 @@
   function fmtHour(ms) {
     const d = new Date(ms);
     return d.getHours() + d.getMinutes() / 60;
+  }
+
+  const BRANCH_CENTERS = Object.freeze({
+    TAMPICO: { lat: 22.215320268499323, lng: -97.85653390774698 },
+    MADERO: { lat: 22.24682372144996, lng: -97.83522941759638 },
+    MANTE: { lat: 22.74144646763066, lng: -98.97059166512844 },
+    POZA: { lat: 20.528546528468063, lng: -97.4609005361834 },
+    TUXPAN: { lat: 20.954258202408006, lng: -97.40715934602541 },
+    XALAPA: { lat: 19.530054469716152, lng: -96.93056813264971 },
+    PAPANTLA: { lat: 20.446621566302696, lng: -97.320248781573 },
+    VALLES: { lat: 21.984947792267917, lng: -99.01363557708692 },
+    SALTILLO: { lat: 25.426106868912875, lng: -100.99998187595173 },
+    ADMINISTRATIVO: { lat: 22.26003917417471, lng: -97.87560221464567 },
+  });
+  const OUTSIDE_BRANCH_RADIUS_METERS = 25;
+
+  function branchKey(plaza) {
+    return String(plaza || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function distanceInMeters(lat1, lng1, lat2, lng2) {
+    const earthRadius = 6371000;
+    const toRadians = degrees => degrees * Math.PI / 180;
+    const dLat = toRadians(lat2 - lat1);
+    const dLng = toRadians(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
+    return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function formatRecordDateTime(timestamp) {
+    const d = new Date(timestamp);
+    const fecha = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const hora = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return `${fecha} ${hora}`;
+  }
+
+  function renderOutsideBranchReport(records) {
+    const report = document.getElementById('outsideBranchReport');
+    const badge = document.getElementById('outsideBranchBadge');
+    if (!report || !badge) return;
+    const outside = records.map(record => {
+      const user = usersMap[record.user_uid] || {};
+      const plaza = branchKey(user.plaza);
+      const center = BRANCH_CENTERS[plaza];
+      const lat = Number(record.latitud);
+      const lng = Number(record.longitud);
+      if (!center || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const meters = distanceInMeters(center.lat, center.lng, lat, lng);
+      if (meters <= OUTSIDE_BRANCH_RADIUS_METERS) return null;
+      return {
+        nombre: user.nombre_completo || user.correo || record.user_uid || 'Usuario desconocido',
+        rol: String(user.rol || user.puesto || '—').toUpperCase(),
+        plaza,
+        tipo: record.tipo === 'SALIDA' ? 'Salida' : 'Entrada',
+        timestamp: record.timestamp,
+        meters,
+        lat,
+        lng,
+      };
+    }).filter(Boolean).sort((a, b) => b.timestamp - a.timestamp);
+
+    badge.textContent = outside.length ? `(${outside.length})` : '(0)';
+    badge.style.color = outside.length ? '#B91C1C' : '#1A7A3C';
+    if (!outside.length) {
+      report.innerHTML = `<div style="padding:12px 0;color:#1A7A3C;font-weight:700">✅ No se encontraron entradas ni salidas a más de ${OUTSIDE_BRANCH_RADIUS_METERS} metros de la sucursal dentro de los filtros actuales.</div>`;
+      return;
+    }
+    const rows = outside.map(item => {
+      const maps = `https://www.google.com/maps?q=${item.lat},${item.lng}`;
+      const tipoColor = item.tipo === 'Entrada' ? '#1A7A3C' : '#C2410C';
+      return `<tr style="border-bottom:1px solid #E5E7EB">
+        <td style="padding:9px 10px;font-weight:700">${item.nombre}</td>
+        <td style="padding:9px 10px">${item.plaza}</td>
+        <td style="padding:9px 10px">${item.rol}</td>
+        <td style="padding:9px 10px;white-space:nowrap">${formatRecordDateTime(item.timestamp)}</td>
+        <td style="padding:9px 10px;color:${tipoColor};font-weight:700">${item.tipo}</td>
+        <td style="padding:9px 10px;color:#B91C1C;font-weight:700;text-align:right">${Math.round(item.meters)} m</td>
+        <td style="padding:9px 10px"><a href="${maps}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:5px 9px;background:#1565C0;color:#fff;border-radius:7px;text-decoration:none;font-size:11px;font-weight:700">📍 Ver ubicación</a></td>
+      </tr>`;
+    }).join('');
+    report.innerHTML = `<div style="margin-bottom:10px;color:#7A3E00;font-size:12px">Se muestran registros a más de ${OUTSIDE_BRANCH_RADIUS_METERS} metros del punto de referencia de su sucursal.</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px"><thead><tr style="background:#FFF7ED;color:#7C2D12;text-align:left"><th style="padding:9px 10px">Usuario</th><th style="padding:9px 10px">Sucursal</th><th style="padding:9px 10px">Rol</th><th style="padding:9px 10px">Fecha y hora</th><th style="padding:9px 10px">Tipo</th><th style="padding:9px 10px;text-align:right">Distancia</th><th style="padding:9px 10px">Ubicación</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   async function renderCharts(records) {
