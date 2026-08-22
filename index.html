@@ -403,6 +403,7 @@
         <button class="btn-download" id="btnFotosAsistencia" onclick="downloadFotosAsistencia()" title="Haz una búsqueda primero" disabled style="opacity:0.4;cursor:not-allowed">📷 Fotos Asistencia</button>
         <button class="btn-download km" id="btnFotosKm" onclick="downloadFotosKm()" title="Haz una búsqueda primero" disabled style="opacity:0.4;cursor:not-allowed">🚗 Fotos Km</button>
         <button class="btn-export" style="background:#0D7A5F" onclick="window.showVacPerm()">📋 Vac &amp; Permisos</button>
+        <button class="btn-export" style="background:#7C3AED" onclick="window.showActivities()">📋 Actividades</button>
         <button class="btn-export" style="background:#B91C1C" onclick="window.showEliminarRegistros()">🗑 Eliminar Registros</button>
         <button id="btnAlfredo" class="btn-export" style="background:#1565C0;display:none" onclick="window.showAlfredo()">👤 Alfredo</button>
       </div>
@@ -490,6 +491,44 @@
         <div class="loading">⏳ Cargando datos...</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ── Actividades de Cobranza y Prospección ── -->
+<div id="activitiesSection" style="display:none;padding:24px 32px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <h2 style="margin:0;color:#6D28D9;font-size:20px">📋 Actividades</h2>
+      <p id="activityScopeNote" style="margin:5px 0 0;color:#667085;font-size:13px">Consulta los registros operativos de cobranza y prospección.</p>
+    </div>
+    <button onclick="window.closeActivities()" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Volver</button>
+  </div>
+
+  <div class="filter-card" style="margin-bottom:18px">
+    <h2 style="color:#6D28D9">Filtros de actividades</h2>
+    <div class="filter-row">
+      <div class="filter-group"><label>Fecha inicial</label><input type="date" id="activityStartDate" /></div>
+      <div class="filter-group"><label>Fecha final</label><input type="date" id="activityEndDate" /></div>
+      <div class="filter-group"><label>Tipo</label><select id="activityType"><option value="">Todos</option><option value="COBRANZA">Cobranza</option><option value="PROSPECCION">Prospección</option></select></div>
+      <div class="filter-group"><label>Gestión / resultado</label><input id="activityAction" placeholder="Ej. Promesa de pago" style="min-width:180px" /></div>
+      <div class="filter-group"><label>Rol</label><select id="activityRole"><option value="">Todos</option><option value="GERENTE">Gerente</option><option value="LIDER A">Líder A</option><option value="LIDER B">Líder B</option><option value="LIDER C">Líder C</option><option value="CANJES">Canjes</option><option value="GESTOR">Gestor</option><option value="GESTOR DE COBRANZA">Gestor de cobranza</option></select></div>
+      <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
+      <div class="filter-group"><label>Buscar usuario</label><input id="activityUser" placeholder="Nombre o correo..." style="min-width:210px" /></div>
+      <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
+      <button id="deleteActivitiesBtn" class="btn-export" style="background:#B91C1C;display:none" onclick="window.deleteActivitiesByRange()">🗑 Eliminar resultado</button>
+    </div>
+  </div>
+
+  <div class="stats" style="margin-bottom:18px">
+    <div class="stat-card" style="border-left-color:#6D28D9"><div class="stat-num" id="activityTotal" style="color:#6D28D9">—</div><div class="stat-label">Actividades encontradas</div></div>
+    <div class="stat-card green"><div class="stat-num" id="activityCobranza">—</div><div class="stat-label">Cobranza</div></div>
+    <div class="stat-card" style="border-left-color:#2563EB"><div class="stat-num" id="activityProspeccion" style="color:#2563EB">—</div><div class="stat-label">Prospección</div></div>
+    <div class="stat-card" style="border-left-color:#F59E0B"><div class="stat-num" id="activityEvidence" style="color:#D97706">—</div><div class="stat-label">Con evidencia</div></div>
+  </div>
+
+  <div class="records-card">
+    <div class="records-header"><h2 style="color:#6D28D9">Registros de actividades</h2><span class="record-count" id="activityRecordCount"></span></div>
+    <div id="activitiesTableContainer"><div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div></div>
   </div>
 </div>
 
@@ -1724,6 +1763,206 @@
     document.getElementById('modalImg').style.display = '';
     _origClose && _origClose();
     document.getElementById('photoModal').classList.remove('active');
+  };
+
+  // ── Actividades de Cobranza y Prospección ────────────────────────────────────
+  let _activitiesData = [];
+  let _activitiesFiltered = [];
+  let _activityProfile = null;
+
+  function activityText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function normaliseActivityText(value) {
+    return String(value || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  }
+
+  function matchesActivityUser(record, rawQuery) {
+    const terms = String(rawQuery || '').split(',').map(x => normaliseActivityText(x)).filter(Boolean);
+    if (!terms.length) return true;
+    const haystack = normaliseActivityText(`${record.nombre_usuario || ''} ${record.correo_usuario || ''}`);
+    return terms.some(term => term.split(/\s+/).every(token => haystack.includes(token)));
+  }
+
+  function activityDateInput(timestamp) {
+    const d = new Date(Number(timestamp || 0));
+    if (Number.isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function activityCanManageAll() {
+    const email = String(auth.currentUser?.email || '').toLowerCase();
+    return ['cleon@fredinero.com', 'soporte@fredinero.com', 'alfredo@fredinero.com'].includes(email);
+  }
+
+  function activityIsManagerScope() {
+    return normaliseActivityText(_activityProfile?.rol) === 'GERENTE' && !activityCanManageAll();
+  }
+
+  function isInManagerActivityScope(record) {
+    if (!activityIsManagerScope()) return true;
+    const sameUser = record.user_uid === auth.currentUser?.uid || record.uid === auth.currentUser?.uid;
+    const samePlaza = normaliseActivityText(record.plaza) === normaliseActivityText(_activityProfile?.plaza);
+    return sameUser || samePlaza;
+  }
+
+  window.showActivities = async function() {
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('vacPermSection').style.display = 'none';
+    const alf = document.getElementById('alfredoSection'); if (alf) alf.style.display = 'none';
+    document.getElementById('activitiesSection').style.display = 'block';
+    const today = new Date();
+    const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+    document.getElementById('activityStartDate').value = activityDateInput(weekAgo.getTime());
+    document.getElementById('activityEndDate').value = activityDateInput(today.getTime());
+    document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div>';
+    try {
+      const profileSnap = await get(ref(database, `users/${auth.currentUser.uid}`));
+      _activityProfile = profileSnap.val() || {};
+    } catch { _activityProfile = {}; }
+    const scopeNote = document.getElementById('activityScopeNote');
+    if (activityIsManagerScope()) {
+      scopeNote.textContent = `Como gerente se muestran tus actividades y las de tu equipo de ${_activityProfile.plaza || 'tu plaza'}.`;
+    } else {
+      scopeNote.textContent = 'Consulta los registros operativos de cobranza y prospección.';
+    }
+    document.getElementById('deleteActivitiesBtn').style.display = activityCanManageAll() ? '' : 'none';
+  };
+
+  window.closeActivities = function() {
+    document.getElementById('activitiesSection').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  };
+
+  window.searchActivities = async function() {
+    const startValue = document.getElementById('activityStartDate').value;
+    const endValue = document.getElementById('activityEndDate').value;
+    if (!startValue || !endValue) { alert('Selecciona fecha inicial y fecha final.'); return; }
+    const start = new Date(startValue + 'T00:00:00').getTime();
+    const end = new Date(endValue + 'T23:59:59.999').getTime();
+    if (start > end) { alert('La fecha inicial no puede ser posterior a la fecha final.'); return; }
+    document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">⏳ Cargando actividades...</div>';
+    try {
+      let snap;
+      try {
+        snap = await get(query(ref(database, 'gestor_activities'), orderByChild('created_at'), startAt(start), endAt(end)));
+      } catch (indexedError) {
+        // Compatibilidad durante la transición, mientras se publica el índice de created_at.
+        snap = await get(ref(database, 'gestor_activities'));
+      }
+      _activitiesData = [];
+      if (snap.exists()) snap.forEach(child => {
+        const record = child.val() || {};
+        const timestamp = Number(record.created_at || record.timestamp || 0);
+        if (timestamp >= start && timestamp <= end && isInManagerActivityScope(record)) _activitiesData.push({ id: child.key, ...record });
+      });
+      _activitiesData.sort((a, b) => Number(b.created_at || b.timestamp || 0) - Number(a.created_at || a.timestamp || 0));
+      window.renderActivities();
+    } catch (error) {
+      document.getElementById('activitiesTableContainer').innerHTML = `<div class="loading" style="color:#B91C1C">❌ Error al cargar actividades: ${activityText(error.message)}</div>`;
+    }
+  };
+
+  window.renderActivities = function() {
+    const type = document.getElementById('activityType').value;
+    const role = normaliseActivityText(document.getElementById('activityRole').value);
+    const plaza = normaliseActivityText(document.getElementById('activityPlaza').value);
+    const action = normaliseActivityText(document.getElementById('activityAction').value);
+    const userSearch = document.getElementById('activityUser').value;
+    _activitiesFiltered = _activitiesData.filter(record => {
+      const recordType = normaliseActivityText(record.tipo);
+      const recordRole = normaliseActivityText(record.rol);
+      const recordPlaza = normaliseActivityText(record.plaza);
+      const searchable = normaliseActivityText([
+        record.gestion_realizada, record.tipo_accion, record.nombre_contacto, record.nombre_prospecto,
+        record.motivos_no_cita && record.motivos_no_cita.join(' '), record.comentarios, record.observaciones,
+      ].filter(Boolean).join(' '));
+      return (!type || recordType === type) && (!role || recordRole === role) && (!plaza || recordPlaza === plaza)
+        && (!action || searchable.includes(action)) && matchesActivityUser(record, userSearch);
+    });
+    document.getElementById('activityTotal').textContent = _activitiesFiltered.length;
+    document.getElementById('activityCobranza').textContent = _activitiesFiltered.filter(x => x.tipo === 'COBRANZA').length;
+    document.getElementById('activityProspeccion').textContent = _activitiesFiltered.filter(x => x.tipo === 'PROSPECCION').length;
+    document.getElementById('activityEvidence').textContent = _activitiesFiltered.filter(x => x.tiene_evidencia).length;
+    document.getElementById('activityRecordCount').textContent = `${_activitiesFiltered.length} registro(s)`;
+
+    const container = document.getElementById('activitiesTableContainer');
+    if (!_activitiesFiltered.length) {
+      container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No hay actividades con esos filtros.</div></div>';
+      return;
+    }
+    container.innerHTML = `<div class="record-list">${_activitiesFiltered.map(record => {
+      const cobranza = record.tipo === 'COBRANZA';
+      const responsible = activityText(record.nombre_usuario || 'Sin nombre');
+      const counterpart = activityText(record.nombre_contacto || record.nombre_prospecto || 'Sin nombre');
+      const mainAction = activityText(record.gestion_realizada || record.tipo_accion || 'Sin detalle');
+      const typeColor = cobranza ? '#15803D' : '#2563EB';
+      const typeBg = cobranza ? '#DCFCE7' : '#DBEAFE';
+      const subDetail = cobranza
+        ? `${activityText(record.se_visita_a || '—')}${record.numero_cliente ? ` · Cliente ${activityText(record.numero_cliente)}` : ''}`
+        : `${record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : `Sin cita${record.motivos_no_cita?.length ? ` · ${activityText(record.motivos_no_cita.join(', '))}` : ''}`}`;
+      return `<div class="rec-card" style="border-left-color:${typeColor};align-items:flex-start">
+        <div class="tipo-badge" style="background:${typeBg};color:${typeColor}">${cobranza ? 'Cobranza' : 'Prospección'}</div>
+        <div class="rec-info"><div class="rec-nombre">${counterpart}</div><div class="rec-correo">${responsible} · ${activityText(record.correo_usuario || '—')}</div>
+          <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span><span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
+          <div style="font-size:12px;color:#667085;margin-top:7px">${subDetail}</div></div>
+        <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(record.created_at || record.timestamp)}</div>
+          <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button>${record.tiene_evidencia ? `<button class="btn-accion btn-foto" title="Ver evidencia" onclick="window.viewActivityEvidence('${record.id}')">📷</button>` : ''}${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}</div></div>
+      </div>`;
+    }).join('')}</div>`;
+  };
+
+  window.viewActivityDetail = function(id) {
+    const record = _activitiesFiltered.find(x => x.id === id); if (!record) return;
+    const rows = record.tipo === 'COBRANZA'
+      ? [['Se atiende a', record.se_visita_a], ['Número de cliente', record.numero_cliente], ['Nombre', record.nombre_contacto], ['Gestión', record.gestion_realizada], ['Monto', record.monto], ['Folio', record.folio_recibo], ['Fecha de promesa', record.fecha_promesa], ['Comentarios', record.comentarios]]
+      : [['Prospecto', record.nombre_prospecto], ['Dirección', record.direccion], ['Teléfono', record.telefono], ['Acción', record.tipo_accion], ['Cita agendada', record.se_agenda_cita ? 'Sí' : 'No'], ['Fecha / hora de cita', `${record.fecha_cita || '—'} ${record.hora_cita || ''}`], ['Motivos', Array.isArray(record.motivos_no_cita) ? record.motivos_no_cita.join(', ') : '—'], ['Observaciones', record.observaciones]];
+    const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div style="margin-bottom:7px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
+    document.getElementById('modalTitle').textContent = `Actividad de ${record.tipo === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
+    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
+    document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.6"><div style="background:#F3F4F6;padding:10px;border-radius:8px;margin-bottom:12px"><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Rol / plaza:</b> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}</div>${detail}</div>`;
+    document.getElementById('photoModal').classList.add('active');
+  };
+
+  window.viewActivityEvidence = async function(id) {
+    const record = _activitiesFiltered.find(x => x.id === id); if (!record) return;
+    document.getElementById('modalTitle').textContent = 'Evidencia de actividad';
+    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
+    document.getElementById('modalInfo').innerHTML = '<div style="padding:28px;text-align:center;color:#667085">⏳ Cargando evidencia...</div>';
+    document.getElementById('photoModal').classList.add('active');
+    try {
+      const snap = await get(ref(database, `gestor_photos/${id}/foto_base64`));
+      if (!snap.exists()) throw new Error('No se encontró la evidencia asociada.');
+      document.getElementById('modalImg').src = `data:image/jpeg;base64,${snap.val()}`;
+      document.getElementById('modalImg').style.display = '';
+      document.getElementById('modalInfo').innerHTML = `<b>Actividad:</b> ${activityText(record.tipo)}<br><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}`;
+    } catch (error) {
+      document.getElementById('modalInfo').innerHTML = `<div style="color:#B91C1C;padding:18px">❌ ${activityText(error.message)}</div>`;
+    }
+  };
+
+  window.openActivityMap = function(id) {
+    const record = _activitiesFiltered.find(x => x.id === id); if (!record || record.latitud == null || record.longitud == null) return;
+    window.open(`https://www.google.com/maps?q=${record.latitud},${record.longitud}`, '_blank', 'noopener');
+  };
+
+  window.deleteActivitiesByRange = async function() {
+    if (!activityCanManageAll()) { alert('No tienes permiso para eliminar actividades.'); return; }
+    const startValue = document.getElementById('activityStartDate').value;
+    const endValue = document.getElementById('activityEndDate').value;
+    if (!startValue || !endValue) { alert('Selecciona el rango de fechas antes de eliminar.'); return; }
+    if (!_activitiesFiltered.length) { alert('No hay actividades en el resultado actual para eliminar.'); return; }
+    if (!confirm(`Eliminar ${_activitiesFiltered.length} actividad(es) del resultado actual y toda su evidencia asociada. Esta acción no se puede deshacer.`)) return;
+    try {
+      const updates = {};
+      _activitiesFiltered.forEach(record => { updates[`gestor_activities/${record.id}`] = null; updates[`gestor_photos/${record.id}`] = null; });
+      await update(ref(database), updates);
+      alert(`✅ Se eliminaron ${_activitiesFiltered.length} actividad(es) y sus evidencias asociadas.`);
+      await window.searchActivities();
+    } catch (error) { alert(`❌ No se pudieron eliminar las actividades: ${error.message}`); }
   };
 
   // ── Export CSV Vehículos ───────────────────────────────────────────────────
