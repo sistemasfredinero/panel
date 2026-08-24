@@ -2086,6 +2086,25 @@
     }
   };
 
+  window.viewActivityEvidenceFromRoute = async function(id) {
+    const record = _activitiesFiltered.find(x => x.id === id); if (!record) return;
+    const photoModal = document.getElementById('photoModal');
+    photoModal.style.zIndex = '1300';
+    document.getElementById('modalTitle').textContent = 'Evidencia de actividad';
+    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
+    document.getElementById('modalInfo').innerHTML = '<div style="padding:28px;text-align:center;color:#667085">⏳ Cargando evidencia...</div>';
+    photoModal.classList.add('active');
+    try {
+      const snap = await get(ref(database, `gestor_photos/${id}/foto_base64`));
+      if (!snap.exists()) throw new Error('No se encontró la evidencia asociada.');
+      document.getElementById('modalImg').src = `data:image/jpeg;base64,${snap.val()}`;
+      document.getElementById('modalImg').style.display = '';
+      document.getElementById('modalInfo').innerHTML = `<b>Actividad:</b> ${activityText(record.tipo)}<br><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}`;
+    } catch (error) {
+      document.getElementById('modalInfo').innerHTML = `<div style="color:#B91C1C;padding:18px">❌ ${activityText(error.message)}</div>`;
+    }
+  };
+
   window.openActivityMap = function(id) {
     const record = _activitiesFiltered.find(x => x.id === id); if (!record || record.latitud == null || record.longitud == null) return;
     window.open(`https://www.google.com/maps?q=${record.latitud},${record.longitud}`, '_blank', 'noopener');
@@ -2279,8 +2298,12 @@
         const typeStyle = activityRouteTypeStyle(record.tipo);
         const offset = activityMarkerOffset(group.records, index);
         const segment = index ? group.segments[index - 1] : null;
+        const isRouteBoundary = index === 0 || index === group.records.length - 1;
+        const evidenceAction = record.tiene_evidencia
+          ? `<button onclick="window.viewActivityEvidenceFromRoute('${record.id}')" style="margin-top:10px;padding:6px 9px;background:#2563EB;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:700">🖼️ Ver imagen</button>`
+          : '<div style="margin-top:9px;color:#7A8C7A;font-size:12px">🖼️ Sin imagen asociada</div>';
         const marker = L.marker(point, { icon: L.divIcon({ className: '', html: `<div style="width:27px;height:27px;border-radius:50%;background:${typeStyle.color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);color:#fff;font:800 11px/21px Segoe UI,Arial,sans-serif;text-align:center;transform:translate(${offset.x}px,${offset.y}px)">${pointLabel}</div>`, iconSize: [27, 27], iconAnchor: [13, 13] }) }).addTo(map);
-        marker.bindPopup(`<div style="min-width:220px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:${typeStyle.color};font-size:14px">Punto ${pointLabel} · ${typeStyle.label}</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(record.nombre_usuario || '—')}<br><b>Día:</b> ${escapeMapHtml(groupDate)}<br><b>Hora:</b> ${escapeMapHtml(formatRecordDateTime(record.created_at || record.timestamp))}<br><b>Actividad:</b> ${escapeMapHtml(detail)}<br><b>Plaza:</b> ${escapeMapHtml(record.plaza || '—')}<br>${segment ? `<b>Tramo ${activityRoutePointLabel(segment.fromIndex)} → ${pointLabel}:</b> ${formatActivityDistance(segment.meters)}<br>` : '<b>Inicio de ruta diaria</b><br>'}<b>Ubicación:</b> ${latitude.toFixed(6)}, ${longitude.toFixed(6)}</div></div>`);
+        marker.bindPopup(`<div style="min-width:230px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:${typeStyle.color};font-size:14px">Punto ${pointLabel} · ${typeStyle.label}</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(record.nombre_usuario || '—')}<br><b>Rol:</b> ${escapeMapHtml(record.rol || '—')}<br><b>Día y hora:</b> ${escapeMapHtml(formatRecordDateTime(record.created_at || record.timestamp))}<br><b>Actividad:</b> ${escapeMapHtml(detail)}<br><b>Plaza:</b> ${escapeMapHtml(record.plaza || '—')}<br>${segment ? `<b>Tramo ${activityRoutePointLabel(segment.fromIndex)} → ${pointLabel}:</b> ${formatActivityDistance(segment.meters)}<br>` : '<b>Inicio de ruta diaria</b><br>'}${isRouteBoundary ? `<div style="margin-top:7px;padding:7px 8px;background:#EEF2FF;border-radius:6px;color:#3730A3"><b>Distancia total de la ruta:</b> ${formatActivityDistance(group.totalMeters)}</div>` : ''}<b>Ubicación:</b> ${latitude.toFixed(6)}, ${longitude.toFixed(6)}${evidenceAction}</div></div>`);
         routePoints.push(point);
         bounds.push(point);
       });
