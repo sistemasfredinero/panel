@@ -421,13 +421,6 @@
         <div class="module-features"><span class="module-feature">Cobranza</span><span class="module-feature">Prospección</span><span class="module-feature">Evidencia</span></div>
         <div class="module-cta"><span>Ir a actividades</span><span>→</span></div>
       </button>
-      <button id="operationalMonitoringCard" class="module-card module-attendance" style="display:none" onclick="window.showOperationalMonitoring()">
-        <div class="module-topline"><div class="module-icon">⌖</div><span class="module-tag">Control de campo</span></div>
-        <h2>Monitoreo<br>Operativo</h2>
-        <p>Consulta la ubicación operativa reciente, alertas de GPS y el mapa de personal en campo.</p>
-        <div class="module-features"><span class="module-feature">Cada 7 min</span><span class="module-feature">Alertas GPS</span><span class="module-feature">4 días</span></div>
-        <div class="module-cta"><span>Ver monitoreo</span><span>→</span></div>
-      </button>
     </div>
   </section>
 
@@ -624,18 +617,6 @@
     <div id="prospectCalendarLegend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
     <div id="prospectCalendarGrid" style="min-width:920px;display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:8px"></div>
   </div>
-</div>
-
-<div id="operationalMonitoringSection" style="display:none;padding:24px 32px">
-  <div class="filter-card" style="margin-bottom:18px">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap">
-      <div><h2 style="margin-bottom:6px">⌖ Monitoreo operativo</h2><p style="margin:0;color:#64748B;font-size:13px">Ubicaciones de personal operativo registradas cada 7 minutos. Se conservan únicamente cuatro días.</p></div>
-      <button class="btn-primary" onclick="window.loadOperationalMonitoring()">↻ Actualizar mapa</button>
-    </div>
-  </div>
-  <div id="operationalAlerts" style="margin-bottom:18px"></div>
-  <div id="operationalTrackingMap" style="height:560px;border-radius:16px;border:1px solid #DDE7E1;overflow:hidden;background:#F8FAFC"></div>
-  <div id="operationalTrackingList" style="margin-top:18px"></div>
 </div>
 
 <!-- ── Vacaciones & Permisos unificado ── -->
@@ -949,12 +930,6 @@
 
   let allRecords = [];
   let usersMap   = {};
-  const OPERATIONAL_MONITORING_EMAILS = new Set(['jaguayo@fredinero.com', 'alfredo@fredinero.com', 'soporte@fredinero.com']);
-  let operationalTrackingMapInstance = null;
-
-  function canViewOperationalMonitoring() {
-    return OPERATIONAL_MONITORING_EMAILS.has(String(auth.currentUser?.email || '').trim().toLowerCase());
-  }
 
   // ── Auth ───────────────────────────────────────────────────────────────────
   window.cerrarSesion = async function() {
@@ -983,7 +958,6 @@
       document.getElementById('app').style.display = 'block';
       document.getElementById('moduleLanding').style.display = 'block';
       document.getElementById('attendanceWorkspace').style.display = 'none';
-      document.getElementById('operationalMonitoringCard').style.display = canViewOperationalMonitoring() ? '' : 'none';
       setPanelHeader('home');
       document.getElementById('adminName').textContent = user.email;
       setDefaultDates();
@@ -1029,13 +1003,12 @@
 
   window.openAttendanceWorkspace = function() {
     document.getElementById('moduleLanding').style.display = 'none';
-    const tracking = document.getElementById('operationalMonitoringSection'); if (tracking) tracking.style.display = 'none';
     document.getElementById('attendanceWorkspace').style.display = 'block';
     setPanelHeader('attendance');
   };
 
   window.showPanelHome = function() {
-    ['vacPermSection', 'activitiesSection', 'operationalMonitoringSection', 'alfredoSection', 'eliminarRegistrosSection'].forEach(id => {
+    ['vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection'].forEach(id => {
       const section = document.getElementById(id);
       if (section) section.style.display = 'none';
     });
@@ -1043,68 +1016,6 @@
     document.getElementById('attendanceWorkspace').style.display = 'none';
     document.getElementById('moduleLanding').style.display = 'block';
     setPanelHeader('home');
-  };
-
-  window.showOperationalMonitoring = async function() {
-    if (!canViewOperationalMonitoring()) { alert('Este apartado es exclusivo para Contraloría, Alfredo y Soporte.'); return; }
-    document.getElementById('app').style.display = 'block';
-    document.getElementById('moduleLanding').style.display = 'none';
-    document.getElementById('attendanceWorkspace').style.display = 'none';
-    document.getElementById('activitiesSection').style.display = 'none';
-    document.getElementById('vacPermSection').style.display = 'none';
-    const alfredo = document.getElementById('alfredoSection'); if (alfredo) alfredo.style.display = 'none';
-    document.getElementById('operationalMonitoringSection').style.display = 'block';
-    setPanelHeader('attendance');
-    document.getElementById('headerModuleTitle').textContent = 'Monitoreo Operativo';
-    document.getElementById('headerModuleCopy').textContent = 'Ubicación reciente, incidencias de GPS y personal operativo en campo.';
-    await window.loadOperationalMonitoring();
-  };
-
-  window.loadOperationalMonitoring = async function() {
-    if (!canViewOperationalMonitoring()) return;
-    const mapContainer = document.getElementById('operationalTrackingMap');
-    const alertsContainer = document.getElementById('operationalAlerts');
-    const listContainer = document.getElementById('operationalTrackingList');
-    mapContainer.innerHTML = '<div style="padding:24px;color:#64748B">⏳ Cargando ubicación operativa...</div>';
-    alertsContainer.innerHTML = '';
-    listContainer.innerHTML = '';
-    try {
-      const [statusSnap, alertsSnap] = await Promise.all([
-        get(ref(database, 'operational_tracking_status')),
-        get(ref(database, 'operational_tracking_alerts')),
-      ]);
-      const statuses = [];
-      if (statusSnap.exists()) statusSnap.forEach(child => statuses.push({ id: child.key, ...(child.val() || {}) }));
-      statuses.sort((a, b) => Number(b.actualizado_en || b.timestamp || 0) - Number(a.actualizado_en || a.timestamp || 0));
-      const alerts = [];
-      if (alertsSnap.exists()) alertsSnap.forEach(child => {
-        const alert = { id: child.key, ...(child.val() || {}) };
-        if (!alert.resuelto && Number(alert.timestamp || 0) >= Date.now() - 4 * 24 * 60 * 60 * 1000) alerts.push(alert);
-      });
-      alerts.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
-      alertsContainer.innerHTML = alerts.length
-        ? `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:14px 16px;color:#991B1B"><strong>⚠️ ${alerts.length} alerta(s) de GPS desactivado</strong><div style="margin-top:7px;font-size:13px">${alerts.slice(0, 6).map(item => `${activityText(item.nombre_usuario || item.correo_usuario || 'Usuario')} · ${activityText(item.plaza || 'Sin plaza')} · ${new Date(Number(item.timestamp)).toLocaleString('es-MX')}`).join('<br>')}</div></div>`
-        : '<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;padding:13px 16px;color:#065F46;font-weight:700">✓ Sin alertas activas de GPS en los últimos cuatro días.</div>';
-      if (operationalTrackingMapInstance) { operationalTrackingMapInstance.remove(); operationalTrackingMapInstance = null; }
-      mapContainer.innerHTML = '';
-      if (typeof L === 'undefined') throw new Error('No se pudo cargar el mapa.');
-      operationalTrackingMapInstance = L.map('operationalTrackingMap', { zoomControl: true }).setView([22.4, -98.2], 6);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(operationalTrackingMapInstance);
-      const bounds = [];
-      statuses.forEach(item => {
-        const lat = Number(item.latitud), lng = Number(item.longitud);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-        const gpsOk = item.gps_activo !== false;
-        const color = gpsOk ? '#15803D' : '#B91C1C';
-        L.circleMarker([lat, lng], { radius: 10, color: '#fff', weight: 2, fillColor: color, fillOpacity: .95 }).addTo(operationalTrackingMapInstance)
-          .bindPopup(`<div style="min-width:220px"><strong>${activityText(item.nombre_usuario || item.correo_usuario || 'Usuario')}</strong><br><span>${activityText(item.rol || 'Sin rol')} · ${activityText(item.plaza || 'Sin plaza')}</span><br><span>Último registro: ${new Date(Number(item.actualizado_en || item.timestamp)).toLocaleString('es-MX')}</span><br><span>GPS: ${gpsOk ? 'Activo' : 'Desactivado'}</span><br><span>Precisión: ${item.precision_metros != null ? `${Math.round(item.precision_metros)} m` : '—'}</span></div>`);
-        bounds.push([lat, lng]);
-      });
-      if (bounds.length) operationalTrackingMapInstance.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
-      listContainer.innerHTML = `<div class="records-card"><div class="records-header"><h2>Última ubicación por colaborador</h2><span class="record-count">${statuses.length} colaborador(es)</span></div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#F8FAFC;color:#475569"><th style="padding:10px;text-align:left">Colaborador</th><th style="padding:10px;text-align:left">Rol</th><th style="padding:10px;text-align:left">Plaza</th><th style="padding:10px;text-align:left">Último registro</th><th style="padding:10px;text-align:left">GPS</th></tr></thead><tbody>${statuses.map(item => `<tr style="border-top:1px solid #EEF2F7"><td style="padding:10px;font-weight:700">${activityText(item.nombre_usuario || item.correo_usuario || '—')}</td><td style="padding:10px">${activityText(item.rol || '—')}</td><td style="padding:10px">${activityText(item.plaza || '—')}</td><td style="padding:10px">${new Date(Number(item.actualizado_en || item.timestamp)).toLocaleString('es-MX')}</td><td style="padding:10px;color:${item.gps_activo !== false ? '#15803D' : '#B91C1C'};font-weight:700">${item.gps_activo !== false ? 'Activo' : 'Desactivado'}</td></tr>`).join('')}</tbody></table></div></div>`;
-    } catch (error) {
-      mapContainer.innerHTML = `<div style="padding:24px;color:#B91C1C">❌ ${activityText(error.message || 'No se pudo cargar el monitoreo.')}</div>`;
-    }
   };
 
   // ── Default dates ──────────────────────────────────────────────────────────
