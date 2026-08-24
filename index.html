@@ -586,7 +586,6 @@
       <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
       <div class="filter-group"><label>Buscar usuario</label><input id="activityUser" placeholder="Nombre o correo..." style="min-width:210px" /></div>
       <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
-      <button id="mapActivityRoutesBtn" class="btn-export" style="background:#2563EB;display:none" onclick="window.openActivityRoutesMap()">🗺️ Mapear rutas</button>
       <button id="deleteActivitiesBtn" class="btn-export" style="background:#B91C1C;display:none" onclick="window.deleteActivitiesByRange()">🗑 Eliminar resultado</button>
     </div>
   </div>
@@ -1959,7 +1958,6 @@
     document.getElementById('activityEndDate').value = activityDateInput(today.getTime());
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div>';
     document.getElementById('activityRoutesReport').style.display = 'none';
-    document.getElementById('mapActivityRoutesBtn').style.display = 'none';
     try {
       const profileSnap = await get(ref(database, `users/${auth.currentUser.uid}`));
       _activityProfile = profileSnap.val() || {};
@@ -2248,20 +2246,15 @@
 
   function renderActivityRoutesReport(records) {
     const report = document.getElementById('activityRoutesReport');
-    const button = document.getElementById('mapActivityRoutesBtn');
     const groups = buildActivityRouteGroups(records);
     const pointCount = groups.reduce((total, group) => total + group.records.length, 0);
-    const totalMeters = groups.reduce((total, group) => total + group.totalMeters, 0);
     window.__activityRouteGroups = groups;
     if (!groups.length) {
       report.style.display = 'none';
-      button.style.display = 'none';
       return;
     }
     report.style.display = '';
-    button.style.display = '';
-    button.textContent = `🗺️ Mapear rutas (${pointCount})`;
-    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px"><b>${pointCount}</b> actividad(es) con ubicación forman <b>${groups.length}</b> ruta(s), agrupadas por usuario y día.<br><span style="color:#64748B">Distancia acumulada entre puntos: <b>${formatActivityDistance(totalMeters)}</b> <span style="font-size:11px">(estimación GPS en línea recta)</span></span></div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Ver rutas en mapa</button></div>`;
+    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px"><b>${pointCount}</b> actividad(es) con ubicación forman <b>${groups.length}</b> ruta(s), agrupadas por usuario y día.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Ver rutas en mapa</button></div>`;
   }
 
   window.closeActivityRoutesMap = function() {
