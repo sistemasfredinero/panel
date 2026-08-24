@@ -586,6 +586,7 @@
       <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
       <div class="filter-group"><label>Buscar usuario</label><input id="activityUser" placeholder="Nombre o correo..." style="min-width:210px" /></div>
       <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
+      <button id="mapActivityRoutesBtn" class="btn-export" style="background:#2563EB;display:none" onclick="window.openActivityRoutesMap()">🗺️ Mapear rutas</button>
       <button id="deleteActivitiesBtn" class="btn-export" style="background:#B91C1C;display:none" onclick="window.deleteActivitiesByRange()">🗑 Eliminar resultado</button>
     </div>
   </div>
@@ -596,6 +597,8 @@
     <div class="stat-card" style="border-left-color:#2563EB"><div class="stat-num" id="activityProspeccion" style="color:#2563EB">—</div><div class="stat-label">Prospección</div></div>
     <div class="stat-card" style="border-left-color:#F59E0B"><div class="stat-num" id="activityEvidence" style="color:#D97706">—</div><div class="stat-label">Con evidencia</div></div>
   </div>
+
+  <div id="activityRoutesReport" style="display:none;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:12px;padding:14px 16px;margin-bottom:18px"></div>
 
   <div class="records-card">
     <div class="records-header"><h2 style="color:#6D28D9">Registros de actividades</h2><span class="record-count" id="activityRecordCount"></span></div>
@@ -871,6 +874,20 @@
       <button class="modal-close" onclick="window.closeTripRoutesMap()" style="background:#6B7280">✕ Cerrar</button>
     </div>
     <div id="tripRoutesMap" style="flex:1;min-height:360px;border-radius:12px;border:1px solid #D0DDD0;overflow:hidden"></div>
+  </div>
+</div>
+
+<!-- ── Mapa de rutas de actividades ── -->
+<div class="modal-overlay" id="activityRoutesMapModal" style="z-index:1200">
+  <div class="modal-box" style="width:min(1200px,96vw);max-width:none;height:min(780px,92vh);display:flex;flex-direction:column;padding:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0;color:#4C1D95">🗺️ Rutas de actividades del período</h3>
+        <div style="font-size:12px;color:#64748B;margin-top:4px">Cada línea punteada reúne las actividades de un mismo usuario durante un mismo día, en el orden en que fueron registradas.</div>
+      </div>
+      <button class="modal-close" onclick="window.closeActivityRoutesMap()" style="background:#6B7280">✕ Cerrar</button>
+    </div>
+    <div id="activityRoutesMap" style="flex:1;min-height:360px;border-radius:12px;border:1px solid #C7D2FE;overflow:hidden"></div>
   </div>
 </div>
 
@@ -1886,6 +1903,8 @@
   let _activitiesData = [];
   let _activitiesFiltered = [];
   let _activityProfile = null;
+  let activityRoutesMapInstance = null;
+  const ACTIVITY_ROUTE_COLORS = ['#7C3AED', '#2563EB', '#059669', '#EA580C', '#DC2626', '#0891B2', '#BE123C', '#4F46E5', '#65A30D', '#A16207'];
 
   function activityText(value) {
     return String(value == null ? '' : value)
@@ -1939,6 +1958,8 @@
     document.getElementById('activityStartDate').value = activityDateInput(weekAgo.getTime());
     document.getElementById('activityEndDate').value = activityDateInput(today.getTime());
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div>';
+    document.getElementById('activityRoutesReport').style.display = 'none';
+    document.getElementById('mapActivityRoutesBtn').style.display = 'none';
     try {
       const profileSnap = await get(ref(database, `users/${auth.currentUser.uid}`));
       _activityProfile = profileSnap.val() || {};
@@ -2008,6 +2029,7 @@
     document.getElementById('activityProspeccion').textContent = _activitiesFiltered.filter(x => x.tipo === 'PROSPECCION').length;
     document.getElementById('activityEvidence').textContent = _activitiesFiltered.filter(x => x.tiene_evidencia).length;
     document.getElementById('activityRecordCount').textContent = `${_activitiesFiltered.length} registro(s)`;
+    renderActivityRoutesReport(_activitiesFiltered);
 
     const container = document.getElementById('activitiesTableContainer');
     if (!_activitiesFiltered.length) {
@@ -2030,7 +2052,7 @@
           <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span><span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
           <div style="font-size:12px;color:#667085;margin-top:7px">${subDetail}</div></div>
         <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(record.created_at || record.timestamp)}</div>
-          <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button>${record.tiene_evidencia ? `<button class="btn-accion btn-foto" title="Ver evidencia" onclick="window.viewActivityEvidence('${record.id}')">📷</button>` : ''}${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}</div></div>
+          <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button>${record.tiene_evidencia ? `<button class="btn-accion btn-foto" title="Ver evidencia" onclick="window.viewActivityEvidence('${record.id}')">📷</button>` : ''}${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
       </div>`;
     }).join('')}</div>`;
   };
@@ -2069,6 +2091,19 @@
     window.open(`https://www.google.com/maps?q=${record.latitud},${record.longitud}`, '_blank', 'noopener');
   };
 
+  window.deleteActivity = async function(id) {
+    if (!activityCanManageAll()) { alert('No tienes permiso para eliminar actividades.'); return; }
+    const record = _activitiesFiltered.find(x => x.id === id);
+    if (!record) { alert('No se encontró la actividad a eliminar.'); return; }
+    const counterpart = record.nombre_contacto || record.nombre_prospecto || 'Sin nombre';
+    if (!confirm(`Eliminar la actividad de ${counterpart} y toda su evidencia asociada. Esta acción no se puede deshacer.`)) return;
+    try {
+      await update(ref(database), { [`gestor_activities/${id}`]: null, [`gestor_photos/${id}`]: null });
+      alert('✅ Actividad y evidencia asociada eliminadas por completo.');
+      await window.searchActivities();
+    } catch (error) { alert(`❌ No se pudo eliminar la actividad: ${error.message}`); }
+  };
+
   window.deleteActivitiesByRange = async function() {
     if (!activityCanManageAll()) { alert('No tienes permiso para eliminar actividades.'); return; }
     const startValue = document.getElementById('activityStartDate').value;
@@ -2083,6 +2118,100 @@
       alert(`✅ Se eliminaron ${_activitiesFiltered.length} actividad(es) y sus evidencias asociadas.`);
       await window.searchActivities();
     } catch (error) { alert(`❌ No se pudieron eliminar las actividades: ${error.message}`); }
+  };
+
+  function activityRouteIdentity(record) {
+    return String(record.user_uid || record.uid || record.correo_usuario || record.nombre_usuario || 'sin-usuario').trim().toLowerCase();
+  }
+
+  function activityRoutePointLabel(index) {
+    return index < 26 ? String.fromCharCode(65 + index) : String(index + 1);
+  }
+
+  function activityRouteColor(groupKey) {
+    let hash = 0;
+    for (let index = 0; index < groupKey.length; index += 1) hash = ((hash << 5) - hash) + groupKey.charCodeAt(index) | 0;
+    return ACTIVITY_ROUTE_COLORS[Math.abs(hash) % ACTIVITY_ROUTE_COLORS.length];
+  }
+
+  function buildActivityRouteGroups(records) {
+    const grouped = new Map();
+    records.filter(record => validCoordinates(record.latitud, record.longitud)).forEach(record => {
+      const timestamp = Number(record.created_at || record.timestamp || 0);
+      const day = activityDateInput(timestamp) || 'Sin fecha';
+      const key = `${activityRouteIdentity(record)}::${day}`;
+      if (!grouped.has(key)) grouped.set(key, { key, day, records: [] });
+      grouped.get(key).records.push(record);
+    });
+    return Array.from(grouped.values()).map(group => {
+      group.records.sort((a, b) => Number(a.created_at || a.timestamp || 0) - Number(b.created_at || b.timestamp || 0));
+      const first = group.records[0] || {};
+      return { ...group, color: activityRouteColor(group.key), nombre: first.nombre_usuario || 'Sin nombre', correo: first.correo_usuario || '—', plaza: first.plaza || 'Sin plaza' };
+    }).sort((a, b) => a.day.localeCompare(b.day) || a.nombre.localeCompare(b.nombre));
+  }
+
+  function renderActivityRoutesReport(records) {
+    const report = document.getElementById('activityRoutesReport');
+    const button = document.getElementById('mapActivityRoutesBtn');
+    const groups = buildActivityRouteGroups(records);
+    const pointCount = groups.reduce((total, group) => total + group.records.length, 0);
+    window.__activityRouteGroups = groups;
+    if (!groups.length) {
+      report.style.display = 'none';
+      button.style.display = 'none';
+      return;
+    }
+    report.style.display = '';
+    button.style.display = '';
+    button.textContent = `🗺️ Mapear rutas (${pointCount})`;
+    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px"><b>${pointCount}</b> actividad(es) con ubicación forman <b>${groups.length}</b> ruta(s), agrupadas por usuario y día.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Ver rutas en mapa</button></div>`;
+  }
+
+  window.closeActivityRoutesMap = function() {
+    document.getElementById('activityRoutesMapModal').classList.remove('active');
+  };
+
+  window.openActivityRoutesMap = function() {
+    const modal = document.getElementById('activityRoutesMapModal');
+    const mapElement = document.getElementById('activityRoutesMap');
+    const groups = window.__activityRouteGroups || [];
+    if (!groups.length) { alert('No hay actividades con ubicación para mapear en el resultado actual.'); return; }
+    modal.classList.add('active');
+    if (activityRoutesMapInstance) { activityRoutesMapInstance.remove(); activityRoutesMapInstance = null; }
+    if (!window.L) {
+      mapElement.innerHTML = '<div style="padding:24px;color:#B91C1C">❌ No se pudo cargar el componente del mapa. Revisa tu conexión e inténtalo de nuevo.</div>';
+      return;
+    }
+    const map = L.map('activityRoutesMap', { zoomControl: true }).setView([22.4, -98.2], 5);
+    activityRoutesMapInstance = map;
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    const bounds = [];
+    const legendRows = [];
+    groups.forEach(group => {
+      const groupDate = group.day === 'Sin fecha' ? group.day : group.day.split('-').reverse().join('/');
+      legendRows.push(`<div style="display:flex;align-items:center;gap:7px;margin:4px 0"><span style="width:18px;border-top:3px dashed ${group.color}"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)} · ${group.records.length} punto(s)</span></div>`);
+      const routePoints = [];
+      group.records.forEach((record, index) => {
+        const latitude = Number(record.latitud);
+        const longitude = Number(record.longitud);
+        const point = [latitude, longitude];
+        const pointLabel = activityRoutePointLabel(index);
+        const detail = record.gestion_realizada || record.tipo_accion || 'Sin detalle';
+        const marker = L.marker(point, { icon: L.divIcon({ className: '', html: `<div style="width:29px;height:29px;border-radius:50%;background:${group.color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);color:#fff;font:800 12px/23px Segoe UI,Arial,sans-serif;text-align:center">${pointLabel}</div>`, iconSize: [29, 29], iconAnchor: [14, 14] }) }).addTo(map);
+        marker.bindPopup(`<div style="min-width:220px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:${group.color};font-size:14px">Punto ${pointLabel} · Actividad</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(record.nombre_usuario || '—')}<br><b>Día:</b> ${escapeMapHtml(groupDate)}<br><b>Hora:</b> ${escapeMapHtml(formatRecordDateTime(record.created_at || record.timestamp))}<br><b>Tipo:</b> ${escapeMapHtml(record.tipo || '—')}<br><b>Actividad:</b> ${escapeMapHtml(detail)}<br><b>Plaza:</b> ${escapeMapHtml(record.plaza || '—')}<br><b>Ubicación:</b> ${latitude.toFixed(6)}, ${longitude.toFixed(6)}</div></div>`);
+        routePoints.push(point);
+        bounds.push(point);
+      });
+      if (routePoints.length > 1) L.polyline(routePoints, { color: group.color, weight: 3, opacity: 0.9, dashArray: '9 8' }).addTo(map);
+    });
+    L.control({ position: 'bottomright' }).onAdd = function() {
+      const legend = L.DomUtil.create('div');
+      legend.style.cssText = 'background:#fff;padding:9px 11px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);max-height:170px;overflow:auto;font:12px Segoe UI,Arial,sans-serif;color:#334155';
+      legend.innerHTML = `<div style="font-weight:800;margin-bottom:5px;color:#312E81">Rutas visibles</div>${legendRows.join('')}`;
+      return legend;
+    }.addTo(map);
+    if (bounds.length) map.fitBounds(bounds, { padding: [42, 42], maxZoom: 17 });
+    setTimeout(() => map.invalidateSize(), 60);
   };
 
   // ── Export CSV Vehículos ───────────────────────────────────────────────────
