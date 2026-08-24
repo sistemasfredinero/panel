@@ -2134,6 +2134,48 @@
     return ACTIVITY_ROUTE_COLORS[Math.abs(hash) % ACTIVITY_ROUTE_COLORS.length];
   }
 
+  function formatActivityDistance(meters) {
+    if (!Number.isFinite(meters) || meters <= 0) return '0 m';
+    return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(2)} km`;
+  }
+
+  function calculateActivityRouteMetrics(records) {
+    const segments = [];
+    let totalMeters = 0;
+    for (let index = 1; index < records.length; index += 1) {
+      const previous = records[index - 1];
+      const current = records[index];
+      const meters = distanceInMeters(Number(previous.latitud), Number(previous.longitud), Number(current.latitud), Number(current.longitud));
+      segments.push({ fromIndex: index - 1, toIndex: index, meters });
+      totalMeters += meters;
+    }
+    return { segments, totalMeters };
+  }
+
+  function activityMarkerOffset(records, index) {
+    if (!index) return { x: 0, y: 0 };
+    const previous = records[index - 1];
+    const current = records[index];
+    const isClose = distanceInMeters(Number(previous.latitud), Number(previous.longitud), Number(current.latitud), Number(current.longitud)) < 25;
+    if (!isClose) return { x: 0, y: 0 };
+    const offsets = [[12, -12], [-12, 12], [12, 12], [-12, -12], [18, 0], [-18, 0], [0, 18], [0, -18]];
+    const [x, y] = offsets[(index - 1) % offsets.length];
+    return { x, y };
+  }
+
+  function focusActivityRoutesMap(map, bounds) {
+    if (!bounds.length) return;
+    if (bounds.length === 1) { map.setView(bounds[0], 19); return; }
+    const latitudes = bounds.map(point => point[0]);
+    const longitudes = bounds.map(point => point[1]);
+    const diagonalMeters = distanceInMeters(Math.min(...latitudes), Math.min(...longitudes), Math.max(...latitudes), Math.max(...longitudes));
+    const center = [(Math.min(...latitudes) + Math.max(...latitudes)) / 2, (Math.min(...longitudes) + Math.max(...longitudes)) / 2];
+    if (diagonalMeters < 125) { map.setView(center, 19); return; }
+    if (diagonalMeters < 400) { map.setView(center, 18); return; }
+    if (diagonalMeters < 1500) { map.setView(center, 16); return; }
+    map.fitBounds(bounds, { padding: [52, 52], maxZoom: 15 });
+  }
+
   function buildActivityRouteGroups(records) {
     const grouped = new Map();
     records.filter(record => validCoordinates(record.latitud, record.longitud)).forEach(record => {
@@ -2146,7 +2188,8 @@
     return Array.from(grouped.values()).map(group => {
       group.records.sort((a, b) => Number(a.created_at || a.timestamp || 0) - Number(b.created_at || b.timestamp || 0));
       const first = group.records[0] || {};
-      return { ...group, color: activityRouteColor(group.key), nombre: first.nombre_usuario || 'Sin nombre', correo: first.correo_usuario || '—', plaza: first.plaza || 'Sin plaza' };
+      const metrics = calculateActivityRouteMetrics(group.records);
+      return { ...group, ...metrics, color: activityRouteColor(group.key), nombre: first.nombre_usuario || 'Sin nombre', correo: first.correo_usuario || '—', plaza: first.plaza || 'Sin plaza' };
     }).sort((a, b) => a.day.localeCompare(b.day) || a.nombre.localeCompare(b.nombre));
   }
 
@@ -2155,6 +2198,7 @@
     const button = document.getElementById('mapActivityRoutesBtn');
     const groups = buildActivityRouteGroups(records);
     const pointCount = groups.reduce((total, group) => total + group.records.length, 0);
+    const totalMeters = groups.reduce((total, group) => total + group.totalMeters, 0);
     window.__activityRouteGroups = groups;
     if (!groups.length) {
       report.style.display = 'none';
@@ -2164,7 +2208,7 @@
     report.style.display = '';
     button.style.display = '';
     button.textContent = `🗺️ Mapear rutas (${pointCount})`;
-    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px"><b>${pointCount}</b> actividad(es) con ubicación forman <b>${groups.length}</b> ruta(s), agrupadas por usuario y día.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Ver rutas en mapa</button></div>`;
+    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px"><b>${pointCount}</b> actividad(es) con ubicación forman <b>${groups.length}</b> ruta(s), agrupadas por usuario y día.<br><span style="color:#64748B">Distancia acumulada entre puntos: <b>${formatActivityDistance(totalMeters)}</b> <span style="font-size:11px">(estimación GPS en línea recta)</span></span></div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Ver rutas en mapa</button></div>`;
   }
 
   window.closeActivityRoutesMap = function() {
@@ -2185,11 +2229,12 @@
     const map = L.map('activityRoutesMap', { zoomControl: true }).setView([22.4, -98.2], 5);
     activityRoutesMapInstance = map;
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
     const bounds = [];
     const legendRows = [];
     groups.forEach(group => {
       const groupDate = group.day === 'Sin fecha' ? group.day : group.day.split('-').reverse().join('/');
-      legendRows.push(`<div style="display:flex;align-items:center;gap:7px;margin:4px 0"><span style="width:18px;border-top:3px dashed ${group.color}"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)} · ${group.records.length} punto(s)</span></div>`);
+      legendRows.push(`<div style="display:flex;align-items:center;gap:7px;margin:4px 0"><span style="width:18px;border-top:3px dashed ${group.color}"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)}<br>${group.records.length} punto(s) · <b>${formatActivityDistance(group.totalMeters)}</b></span></div>`);
       const routePoints = [];
       group.records.forEach((record, index) => {
         const latitude = Number(record.latitud);
@@ -2197,12 +2242,17 @@
         const point = [latitude, longitude];
         const pointLabel = activityRoutePointLabel(index);
         const detail = record.gestion_realizada || record.tipo_accion || 'Sin detalle';
-        const marker = L.marker(point, { icon: L.divIcon({ className: '', html: `<div style="width:29px;height:29px;border-radius:50%;background:${group.color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);color:#fff;font:800 12px/23px Segoe UI,Arial,sans-serif;text-align:center">${pointLabel}</div>`, iconSize: [29, 29], iconAnchor: [14, 14] }) }).addTo(map);
-        marker.bindPopup(`<div style="min-width:220px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:${group.color};font-size:14px">Punto ${pointLabel} · Actividad</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(record.nombre_usuario || '—')}<br><b>Día:</b> ${escapeMapHtml(groupDate)}<br><b>Hora:</b> ${escapeMapHtml(formatRecordDateTime(record.created_at || record.timestamp))}<br><b>Tipo:</b> ${escapeMapHtml(record.tipo || '—')}<br><b>Actividad:</b> ${escapeMapHtml(detail)}<br><b>Plaza:</b> ${escapeMapHtml(record.plaza || '—')}<br><b>Ubicación:</b> ${latitude.toFixed(6)}, ${longitude.toFixed(6)}</div></div>`);
+        const offset = activityMarkerOffset(group.records, index);
+        const segment = index ? group.segments[index - 1] : null;
+        const marker = L.marker(point, { icon: L.divIcon({ className: '', html: `<div style="width:26px;height:26px;border-radius:50%;background:${group.color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);color:#fff;font:800 11px/20px Segoe UI,Arial,sans-serif;text-align:center;transform:translate(${offset.x}px,${offset.y}px)">${pointLabel}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
+        marker.bindPopup(`<div style="min-width:220px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:${group.color};font-size:14px">Punto ${pointLabel} · Actividad</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(record.nombre_usuario || '—')}<br><b>Día:</b> ${escapeMapHtml(groupDate)}<br><b>Hora:</b> ${escapeMapHtml(formatRecordDateTime(record.created_at || record.timestamp))}<br><b>Tipo:</b> ${escapeMapHtml(record.tipo || '—')}<br><b>Actividad:</b> ${escapeMapHtml(detail)}<br><b>Plaza:</b> ${escapeMapHtml(record.plaza || '—')}<br>${segment ? `<b>Tramo ${activityRoutePointLabel(segment.fromIndex)} → ${pointLabel}:</b> ${formatActivityDistance(segment.meters)}<br>` : '<b>Inicio de ruta diaria</b><br>'}<b>Ubicación:</b> ${latitude.toFixed(6)}, ${longitude.toFixed(6)}</div></div>`);
         routePoints.push(point);
         bounds.push(point);
       });
-      if (routePoints.length > 1) L.polyline(routePoints, { color: group.color, weight: 3, opacity: 0.9, dashArray: '9 8' }).addTo(map);
+      if (routePoints.length > 1) {
+        L.polyline(routePoints, { color: '#FFFFFF', weight: 7, opacity: 0.95 }).addTo(map);
+        L.polyline(routePoints, { color: group.color, weight: 4, opacity: 0.95, dashArray: '11 8' }).addTo(map);
+      }
     });
     L.control({ position: 'bottomright' }).onAdd = function() {
       const legend = L.DomUtil.create('div');
@@ -2210,7 +2260,7 @@
       legend.innerHTML = `<div style="font-weight:800;margin-bottom:5px;color:#312E81">Rutas visibles</div>${legendRows.join('')}`;
       return legend;
     }.addTo(map);
-    if (bounds.length) map.fitBounds(bounds, { padding: [42, 42], maxZoom: 17 });
+    focusActivityRoutesMap(map, bounds);
     setTimeout(() => map.invalidateSize(), 60);
   };
 
