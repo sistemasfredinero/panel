@@ -587,6 +587,7 @@
       <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
       <button class="btn-export" style="background:#15803D" onclick="window.exportActivitiesCsv('COBRANZA')">⬇ Exportar Cobranza</button>
       <button class="btn-export" style="background:#2563EB" onclick="window.exportActivitiesCsv('PROSPECCION')">⬇ Exportar Prospección</button>
+      <button id="prospectCalendarBtn" class="btn-export" style="background:#0F766E;display:none" onclick="window.openProspectAppointmentsCalendar()">🗓️ Calendario de citas</button>
       <button id="deleteActivitiesBtn" class="btn-export" style="background:#B91C1C;display:none" onclick="window.deleteActivitiesByRange()">🗑 Eliminar resultado</button>
     </div>
   </div>
@@ -603,6 +604,18 @@
   <div class="records-card">
     <div class="records-header"><h2 style="color:#6D28D9">Registros de actividades</h2><span class="record-count" id="activityRecordCount"></span></div>
     <div id="activitiesTableContainer"><div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div></div>
+  </div>
+</div>
+
+<div id="prospectCalendarModal" style="display:none;position:fixed;inset:0;z-index:1250;background:#F8FAFC;overflow:auto;padding:22px">
+  <div style="max-width:1440px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
+      <div><div style="font-size:23px;font-weight:900;color:#0F172A">🗓️ Calendario de citas de Prospección</div><div id="prospectCalendarSub" style="font-size:13px;color:#64748B;margin-top:4px">Citas programadas por sucursal.</div></div>
+      <button class="btn-export" style="background:#64748B" onclick="window.closeProspectAppointmentsCalendar()">✕ Cerrar calendario</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:#fff;border:1px solid #DCE7E2;border-radius:14px;padding:12px 14px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(-1)">← Mes anterior</button><div id="prospectCalendarTitle" style="font-size:19px;font-weight:900;color:#0F172A;text-transform:capitalize"></div><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(1)">Mes siguiente →</button></div>
+    <div id="prospectCalendarLegend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+    <div id="prospectCalendarGrid" style="min-width:920px;display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:8px"></div>
   </div>
 </div>
 
@@ -1899,6 +1912,12 @@
   let _activitiesFiltered = [];
   let _activityProfile = null;
   let activityRoutesMapInstance = null;
+  let _prospectCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  let _prospectCalendarAppointments = [];
+  const PROSPECT_CALENDAR_COLORS = {
+    TAMPICO: '#2563EB', MADERO: '#7C3AED', MANTE: '#059669', POZA: '#EA580C', TUXPAN: '#DC2626',
+    XALAPA: '#0891B2', PAPANTLA: '#BE123C', VALLES: '#4F46E5', SALTILLO: '#65A30D', ADMINISTRATIVO: '#A16207',
+  };
   const ACTIVITY_ROUTE_COLORS = ['#7C3AED', '#2563EB', '#059669', '#EA580C', '#DC2626', '#0891B2', '#BE123C', '#4F46E5', '#65A30D', '#A16207'];
 
   function activityText(value) {
@@ -1933,6 +1952,10 @@
     return normaliseActivityText(_activityProfile?.rol) === 'GERENTE' && !activityCanManageAll();
   }
 
+  function activityIsAdministrative() {
+    return normaliseActivityText(_activityProfile?.rol) === 'ADMINISTRATIVO';
+  }
+
   function isInManagerActivityScope(record) {
     if (!activityIsManagerScope()) return true;
     const sameUser = record.user_uid === auth.currentUser?.uid || record.uid === auth.currentUser?.uid;
@@ -1965,6 +1988,7 @@
       scopeNote.textContent = PANEL_HEADER_CONTENT.activities.copy;
     }
     document.getElementById('deleteActivitiesBtn').style.display = activityCanManageAll() ? '' : 'none';
+    document.getElementById('prospectCalendarBtn').style.display = activityIsAdministrative() ? '' : 'none';
   };
 
   window.closeActivities = function() {
@@ -1999,6 +2023,72 @@
     } catch (error) {
       document.getElementById('activitiesTableContainer').innerHTML = `<div class="loading" style="color:#B91C1C">❌ Error al cargar actividades: ${activityText(error.message)}</div>`;
     }
+  };
+
+  function prospectDateKey(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
+  function prospectTime(timestamp) { return new Date(Number(timestamp || 0)).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false }); }
+  function prospectColor(plaza) { return PROSPECT_CALENDAR_COLORS[normaliseActivityText(plaza)] || '#64748B'; }
+
+  async function loadProspectCalendar() {
+    const month = _prospectCalendarMonth;
+    const start = new Date(month.getFullYear(), month.getMonth(), 1).getTime();
+    const end = new Date(month.getFullYear(), month.getMonth() + 1, 1).getTime() - 1;
+    const grid = document.getElementById('prospectCalendarGrid');
+    grid.innerHTML = '<div style="grid-column:1/-1;background:#fff;padding:24px;border-radius:12px;color:#64748B">⏳ Cargando citas programadas...</div>';
+    try {
+      let snap;
+      try { snap = await get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(start), endAt(end))); }
+      catch { snap = await get(ref(database, 'gestor_activities')); }
+      _prospectCalendarAppointments = [];
+      if (snap.exists()) snap.forEach(child => {
+        const record = child.val() || {};
+        const appointmentAt = Number(record.cita_timestamp || 0);
+        const isScheduled = record.se_agenda_cita === true || record.se_agenda_cita === 'SI';
+        if (normaliseActivityText(record.tipo) === 'PROSPECCION' && isScheduled && appointmentAt >= start && appointmentAt <= end && normaliseActivityText(record.estado_cita) !== 'CANCELADA') _prospectCalendarAppointments.push({ id: child.key, ...record });
+      });
+      _prospectCalendarAppointments.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
+      renderProspectCalendar();
+    } catch (error) {
+      grid.innerHTML = `<div style="grid-column:1/-1;background:#FEF2F2;padding:24px;border-radius:12px;color:#B91C1C">❌ No se pudieron cargar las citas: ${activityText(error.message)}</div>`;
+    }
+  }
+
+  function renderProspectCalendar() {
+    const month = _prospectCalendarMonth;
+    const title = month.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+    document.getElementById('prospectCalendarTitle').textContent = title;
+    document.getElementById('prospectCalendarSub').textContent = `${_prospectCalendarAppointments.length} cita(s) programada(s) en ${title}. Los colores corresponden a la plaza.`;
+    const plazas = Array.from(new Set(_prospectCalendarAppointments.map(item => normaliseActivityText(item.plaza) || 'SIN PLAZA'))).sort();
+    document.getElementById('prospectCalendarLegend').innerHTML = plazas.map(plaza => `<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #E2E8F0;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;color:#334155"><span style="width:10px;height:10px;border-radius:50%;background:${prospectColor(plaza)}"></span>${activityText(plaza)}</span>`).join('') || '<span style="color:#64748B;font-size:13px">No hay citas programadas para este mes.</span>';
+    const headers = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => `<div style="padding:9px 10px;font-size:12px;font-weight:900;color:#475569;text-align:center">${day}</div>`).join('');
+    const offset = (month.getDay() + 6) % 7;
+    const totalDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < offset; i += 1) cells.push('<div style="min-height:132px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
+    for (let day = 1; day <= totalDays; day += 1) {
+      const dateKey = prospectDateKey(new Date(month.getFullYear(), month.getMonth(), day));
+      const events = _prospectCalendarAppointments.filter(item => prospectDateKey(new Date(Number(item.cita_timestamp))) === dateKey);
+      const eventHtml = events.map(item => `<button title="Abrir detalle de cita" onclick="window.viewProspectCalendarAppointment('${item.id}')" style="width:100%;text-align:left;margin-top:6px;border:0;border-left:4px solid ${prospectColor(item.plaza)};background:#fff;padding:7px 8px;border-radius:7px;box-shadow:0 1px 2px rgba(15,23,42,.08);cursor:pointer;color:#172033"><div style="font-size:11px;font-weight:900">${activityText(prospectTime(item.cita_timestamp))} · ${activityText(item.nombre_prospecto || 'Prospecto')}</div><div style="font-size:10px;color:#64748B;margin-top:2px">${activityText(item.plaza || 'Sin plaza')} · ${activityText(item.responsable_cita_nombre || item.nombre_usuario || 'Sin responsable')}</div></button>`).join('');
+      cells.push(`<div style="min-height:132px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:9px;overflow:hidden"><div style="font-size:13px;font-weight:900;color:${events.length ? '#0F172A' : '#94A3B8'}">${day}</div>${eventHtml}</div>`);
+    }
+    const tail = (7 - ((offset + totalDays) % 7)) % 7;
+    for (let i = 0; i < tail; i += 1) cells.push('<div style="min-height:132px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
+    document.getElementById('prospectCalendarGrid').innerHTML = headers + cells.join('');
+  }
+
+  window.openProspectAppointmentsCalendar = async function() {
+    if (!activityIsAdministrative()) { alert('El calendario de citas es exclusivo para usuarios ADMINISTRATIVO.'); return; }
+    document.getElementById('prospectCalendarModal').style.display = 'block';
+    await loadProspectCalendar();
+  };
+  window.closeProspectAppointmentsCalendar = function() { document.getElementById('prospectCalendarModal').style.display = 'none'; };
+  window.moveProspectCalendar = async function(delta) { _prospectCalendarMonth = new Date(_prospectCalendarMonth.getFullYear(), _prospectCalendarMonth.getMonth() + Number(delta || 0), 1); await loadProspectCalendar(); };
+  window.viewProspectCalendarAppointment = function(id) {
+    const record = _prospectCalendarAppointments.find(item => item.id === id); if (!record) return;
+    document.getElementById('modalTitle').textContent = 'Cita de Prospección';
+    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
+    document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.65"><div style="background:#ECFDF5;padding:11px;border-radius:9px;margin-bottom:12px"><b>Prospecto:</b> ${activityText(record.nombre_prospecto || '—')}<br><b>Fecha y hora:</b> ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}<br><b>Plaza:</b> ${activityText(record.plaza || '—')}<br><b>Responsable:</b> ${activityText(record.responsable_cita_nombre || record.nombre_usuario || '—')}<br><b>Gerente:</b> ${activityText(record.gerente_cita_nombre || 'Sin gerente asignado')}</div><div><b>Acción:</b> ${activityText(record.tipo_accion || '—')}</div><div><b>Teléfono:</b> ${activityText(record.telefono || '—')}</div><div><b>Dirección:</b> ${activityText(record.direccion || '—')}</div><div><b>Referido interno:</b> ${activityText(record.referido_interno || '—')}</div><div><b>Observaciones:</b> ${activityText(record.observaciones || '—')}</div></div>`;
+    document.getElementById('photoModal').classList.add('active');
   };
 
   window.renderActivities = function() {
@@ -2073,7 +2163,7 @@
     ];
     const specificFields = type === 'COBRANZA'
       ? [['se_visita_a', 'Se atiende a'], ['numero_cliente', 'Número de cliente'], ['nombre_contacto', 'Nombre'], ['gestion_realizada', 'Gestión realizada'], ['comentarios', 'Comentarios'], ['monto', 'Monto depositado'], ['folio_recibo', 'Folio de recibo o comprobante'], ['fecha_promesa', 'Fecha comprometida de promesa']]
-      : [['nombre_prospecto', 'Nombre completo del prospecto'], ['direccion', 'Dirección'], ['telefono', 'Teléfono'], ['tipo_accion', 'Tipo de acción'], ['se_agenda_cita', 'Se agenda cita'], ['fecha_cita', 'Fecha de cita'], ['hora_cita', 'Hora de cita'], ['motivos_no_cita', 'Motivos de no cita'], ['observaciones', 'Observaciones']];
+      : [['nombre_prospecto', 'Nombre completo del prospecto'], ['direccion', 'Dirección'], ['telefono', 'Teléfono'], ['referido_interno', 'Referido interno'], ['tipo_accion', 'Tipo de acción'], ['se_agenda_cita', 'Se agenda cita'], ['fecha_cita', 'Fecha de cita'], ['hora_cita', 'Hora de cita'], ['cita_timestamp', 'Marca de tiempo de cita'], ['estado_cita', 'Estado de cita'], ['responsable_cita_nombre', 'Responsable de cita'], ['gerente_cita_nombre', 'Gerente de cita'], ['motivos_no_cita', 'Motivos de no cita'], ['observaciones', 'Observaciones'], ['hilo_prospecto', 'Hilo de prospecto'], ['prospecto_raiz_id', 'ID de prospecto raíz'], ['seguimiento_de', 'Seguimiento de'], ['numero_seguimiento', 'Número de seguimiento'], ['es_seguimiento', 'Es seguimiento'], ['cambio_de_opinion', 'Cambió de opinión']];
     const definedFields = [...commonFields, ...specificFields];
     const knownKeys = new Set(definedFields.map(([key]) => key));
     const extraKeys = Array.from(new Set(selected.flatMap(record => Object.keys(record).filter(key => !knownKeys.has(key))))).sort();
@@ -2099,7 +2189,7 @@
     const record = _activitiesFiltered.find(x => x.id === id); if (!record) return;
     const rows = record.tipo === 'COBRANZA'
       ? [['Se atiende a', record.se_visita_a], ['Número de cliente', record.numero_cliente], ['Nombre', record.nombre_contacto], ['Gestión', record.gestion_realizada], ['Monto', record.monto], ['Folio', record.folio_recibo], ['Fecha de promesa', record.fecha_promesa], ['Comentarios', record.comentarios]]
-      : [['Prospecto', record.nombre_prospecto], ['Dirección', record.direccion], ['Teléfono', record.telefono], ['Acción', record.tipo_accion], ['Cita agendada', record.se_agenda_cita ? 'Sí' : 'No'], ['Fecha / hora de cita', `${record.fecha_cita || '—'} ${record.hora_cita || ''}`], ['Motivos', Array.isArray(record.motivos_no_cita) ? record.motivos_no_cita.join(', ') : '—'], ['Observaciones', record.observaciones]];
+      : [['Prospecto', record.nombre_prospecto], ['Dirección', record.direccion], ['Teléfono', record.telefono], ['Referido interno', record.referido_interno], ['Acción', record.tipo_accion], ['Cita agendada', record.se_agenda_cita ? 'Sí' : 'No'], ['Fecha / hora de cita', `${record.fecha_cita || '—'} ${record.hora_cita || ''}`], ['Responsable de cita', record.responsable_cita_nombre], ['Gerente de cita', record.gerente_cita_nombre], ['Motivos', Array.isArray(record.motivos_no_cita) ? record.motivos_no_cita.join(', ') : '—'], ['Observaciones', record.observaciones], ['Seguimiento', record.es_seguimiento ? `Sí · #${record.numero_seguimiento || '—'}` : 'Registro inicial']];
     const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div style="margin-bottom:7px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
     document.getElementById('modalTitle').textContent = `Actividad de ${record.tipo === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
     document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
