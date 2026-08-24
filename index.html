@@ -625,7 +625,7 @@
           <option value="">Todos</option>
           <option value="vacaciones">🏖 Vacaciones</option>
           <option value="permisos">📝 Permisos</option>
-          <option value="vac_rh">💼 Vac. RH (Cleon)</option>
+          <option id="vpTypeCleon" value="vac_rh" style="display:none">💼 Vac. RH (Cleon)</option>
         </select>
       </div>
       <div>
@@ -650,7 +650,7 @@
             <option value="perm_aprobado_final">Aprobado Final</option>
             <option value="perm_cancelado">Cancelado</option>
           </optgroup>
-          <optgroup label="Vac. RH (Cleon)">
+          <optgroup id="vpCleonStatusGroup" label="Vac. RH (Cleon)" style="display:none">
             <option value="vacrh_pendiente_alfredo">Pendiente Alfredo</option>
             <option value="vacrh_aprobada_alfredo">Aprobada</option>
             <option value="vacrh_rechazada_alfredo">Rechazada</option>
@@ -696,7 +696,6 @@
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="window.buscarVacPerm()" style="padding:9px 22px;background:#0D7A5F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🔍 Buscar</button>
       <button onclick="window.exportVacPermExcel()" style="padding:9px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
-      <button id="btnAlfredoRequests" onclick="window.showAlfredo()" style="display:none;padding:9px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">👤 Solicitudes de Cleon</button>
       <button onclick="window.showEliminarVacaciones()" style="padding:9px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Vacaciones</button>
       <button onclick="window.showEliminarPermisos()" style="padding:9px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Permisos</button>
     </div>
@@ -951,11 +950,6 @@
       setDefaultDates();
       document.getElementById('tableContainer').innerHTML =
         '<div class="loading" style="color:#888">🔍 Usa los filtros y presiona <strong>Buscar</strong> para cargar los registros.</div>';
-      // Mostrar solicitudes de Cleon únicamente dentro de Vacaciones y Permisos para Alfredo.
-      const btnAlfredo = document.getElementById('btnAlfredoRequests');
-      if (btnAlfredo) {
-        btnAlfredo.style.display = (user.email.toLowerCase() === 'alfredo@fredinero.com') ? '' : 'none';
-      }
     } else {
       document.getElementById('loginOverlay').style.display = 'flex';
       document.getElementById('app').style.display = 'none';
@@ -3619,6 +3613,15 @@
   // ════════════════════════════════════════════════════════════════════════════
 
   let _vpData = [];
+  const VP_CLEON_EMAIL = 'cleon@fredinero.com';
+
+  function vpIsAlfredo() {
+    return String(auth.currentUser?.email || '').trim().toLowerCase() === 'alfredo@fredinero.com';
+  }
+
+  function vpIsCleonRequest(record) {
+    return String(record.correo || record.user_email || '').trim().toLowerCase() === VP_CLEON_EMAIL;
+  }
 
   window.showVacPerm = function() {
     document.getElementById('app').style.display = 'block';
@@ -3627,6 +3630,10 @@
     document.getElementById('activitiesSection').style.display = 'none';
     document.getElementById('alfredoSection').style.display = 'none';
     document.getElementById('vacPermSection').style.display = 'block';
+    const canSeeCleon = vpIsAlfredo();
+    document.getElementById('vpTypeCleon').style.display = canSeeCleon ? '' : 'none';
+    document.getElementById('vpCleonStatusGroup').style.display = canSeeCleon ? '' : 'none';
+    if (!canSeeCleon && document.getElementById('vpTipo').value === 'vac_rh') document.getElementById('vpTipo').value = '';
     setPanelHeader('requests');
     const hoy = new Date();
     const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - hoy.getDay() + 1);
@@ -3656,6 +3663,7 @@
     const tsEnd   = fechaFin ? new Date(fechaFin + 'T23:59:59').getTime() : Infinity;
     const coincideUsuario = (nombre, correo) => vpCoincideUsuarioFlexible(buscar, nombre, correo);
     const coincideFecha = ts => (!fechaIni && !fechaFin) || (ts >= tsStart && ts <= tsEnd);
+    const canSeeCleon = vpIsAlfredo();
     _vpData = [];
     try {
       if (tipo === '' || tipo === 'vacaciones') {
@@ -3663,6 +3671,7 @@
         if (snapVac.exists()) {
           snapVac.forEach(child => {
             const s = { id: child.key, _tipo: 'vacaciones', ...child.val() };
+            if (!canSeeCleon && vpIsCleonRequest(s)) return;
             const estadoVac = vacGetEstado(s);
             if (estado && estado.startsWith('vac_') && estadoVac !== estado.replace('vac_','')) return;
             if (estado && estado.startsWith('perm_')) return;
@@ -3679,8 +3688,10 @@
         if (snapPerm.exists()) {
           snapPerm.forEach(child => {
             const s = { id: child.key, _tipo: 'permisos', ...child.val() };
+            const isCleonForAlfredo = vpIsCleonRequest(s);
+            if (!canSeeCleon && isCleonForAlfredo) return;
             // Usar permGetEstado (igual que la app móvil) para estado calculado correcto
-            const estadoPerm = permGetEstado(s);
+            const estadoPerm = isCleonForAlfredo ? (s.alfredo_estado || s.alfredo_visto || permGetEstado(s)) : permGetEstado(s);
             if (estado && estado.startsWith('perm_') && estadoPerm !== estado.replace('perm_','')) return;
             if (estado && estado.startsWith('vac_')) return;
             if (rol   && (s.rol  ||'').toUpperCase() !== rol)   return;
@@ -3688,12 +3699,12 @@
             if (!coincideUsuario(s.nombre_solicitante || s.nombre, s.correo || s.user_email)) return;
             // Permisos usan 'timestamp' (no 'timestamp_creacion')
             if (!coincideFecha(s.timestamp || s.timestamp_creacion || 0)) return;
-            _vpData.push({ ...s, _estadoKey: estadoPerm });
+            _vpData.push({ ...s, _cleonForAlfredo: isCleonForAlfredo, _estadoKey: estadoPerm });
           });
         }
       }
       // ── Cargar Vac. RH de Cleon (cleon_solicitudes/vacaciones) ──
-      if (tipo === '' || tipo === 'vac_rh') {
+      if (canSeeCleon && (tipo === '' || tipo === 'vac_rh')) {
         const snapRH = await get(ref(database, 'cleon_solicitudes/vacaciones'));
         if (snapRH.exists()) {
           snapRH.forEach(child => {
@@ -3761,18 +3772,28 @@
       activo:            { label: 'Activo',             color: '#14532D', bg: '#BBF7D0' },
       gozados:           { label: 'Gozados',            color: '#6B7280', bg: '#F3F4F6' },
     };
+    const CLEON_PERM_ESTADO_CFG = {
+      sin_responder: { label: 'Pendiente Alfredo', color: '#92400E', bg: '#FEF3C7' },
+      propuesta_alfredo: { label: 'Propuesta Alfredo', color: '#1565C0', bg: '#E3F2FD' },
+      contra_propuesta_cleon: { label: 'Contrapropuesta Cleon', color: '#5B21B6', bg: '#EDE9FE' },
+      aprobada_alfredo: { label: 'Aprobado Alfredo', color: '#14532D', bg: '#BBF7D0' },
+      rechazada_alfredo: { label: 'Rechazado Alfredo', color: '#7F1D1D', bg: '#FEE2E2' },
+    };
     _vpData.forEach((s, i) => {
       const esVac  = s._tipo === 'vacaciones';
       const esRH   = s._tipo === 'vac_rh';
       const esPerm = s._tipo === 'permisos';
+      const esCleonForAlfredo = !!s._cleonForAlfredo;
       const bg = i % 2 === 0 ? '#fff' : '#f7fdf9';
       let tipoBadge;
       if (esVac)  tipoBadge = '<span style="background:#F3E5F5;color:#7B1FA2;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">🏖 Vacaciones</span>';
       else if (esRH) tipoBadge = '<span style="background:#E3F2FD;color:#1565C0;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">💼 Vac. RH</span>';
+      else if (esCleonForAlfredo) tipoBadge = '<span style="background:#E3F2FD;color:#1565C0;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">📝 Permiso RH</span>';
       else        tipoBadge = '<span style="background:#D1FAE5;color:#0D7A5F;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700">📝 Permiso</span>';
       let estadoCfg;
       if (esVac)  estadoCfg = VAC_ESTADO_CFG[s._estadoKey]  || { label: s._estadoKey, color:'#555', bg:'#eee' };
       else if (esRH) estadoCfg = VAC_RH_ESTADO_CFG[s._estadoKey] || { label: s._estadoKey, color:'#555', bg:'#eee' };
+      else if (esCleonForAlfredo) estadoCfg = CLEON_PERM_ESTADO_CFG[s._estadoKey] || PERM_ESTADO_CFG[s._estadoKey] || { label: s._estadoKey, color:'#555', bg:'#eee' };
       else        estadoCfg = PERM_ESTADO_CFG[s._estadoKey] || PERM_ESTADO_CFG.sin_responder;
       const estadoBadge = `<span style="background:${estadoCfg.bg};color:${estadoCfg.color};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${estadoCfg.label}</span>`;
       const etapa = (esVac || esPerm) ? vpEtapaVisible(s, s._estadoKey) : '—';
@@ -3810,7 +3831,7 @@
         detalle = `<div style="font-size:12px">${horario}</div><div style="font-size:11px;color:#7A8C7A;max-width:180px;word-break:break-word">${s.motivo||'—'}</div>`;
       }
       const esFinalizada = ['aprobado_final', 'confirmada', 'activo', 'gozados'].includes(s._estadoKey) || s.visto_bueno_cleon || s.approval_stage === 'completado';
-      const accionesFlujo = (esVac || esPerm) && vpPuedeGestionarFlujo() && !esFinalizada
+      const accionesFlujo = (esVac || esPerm) && !esCleonForAlfredo && vpPuedeGestionarFlujo() && !esFinalizada
         ? `<button onclick="window.vpAprobarFlujo('${s.id}','${s._tipo}')" style="padding:5px 10px;background:#1A7A3C;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">✅ Aprobar</button><button onclick="window.vpDevolverFlujo('${s.id}','${s._tipo}')" style="padding:5px 10px;background:#E65100;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">↩ Devolver</button>`
         : '';
       const evidenciaAccion = esPerm && s.tiene_evidencia
@@ -3820,7 +3841,9 @@
       if (esVac) {
         acciones = `${accionesFlujo}<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button><button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
       } else if (esRH) {
-        acciones = `<button data-rhid="${s.id}" onclick="window.deleteVacPermById(this,'rh')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+        acciones = `<button onclick="window.abrirAlfredoModal('${s.id}','vac')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Gestionar</button>`;
+      } else if (esCleonForAlfredo) {
+        acciones = `<button onclick="window.abrirAlfredoModal('${s.id}','perm')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Gestionar</button>`;
       } else {
         acciones = `${accionesFlujo}${evidenciaAccion}<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
       }
@@ -4161,6 +4184,7 @@
   }
 
   window.abrirAlfredoModal = async function(id, tipo) {
+    if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
     // tipo: 'vac' | 'perm'
     _alfredoSolActiva = null;
     let sol;
