@@ -2125,7 +2125,13 @@
   }
 
   function activityRoutePointLabel(index) {
-    return index < 26 ? String.fromCharCode(65 + index) : String(index + 1);
+    return String(index + 1);
+  }
+
+  function activityRouteTypeStyle(type) {
+    return normaliseActivityText(type) === 'PROSPECCION'
+      ? { color: '#2563EB', label: 'Prospección', shortLabel: 'P' }
+      : { color: '#15803D', label: 'Cobranza', shortLabel: 'C' };
   }
 
   function activityRouteColor(groupKey) {
@@ -2215,7 +2221,9 @@
       group.records.sort((a, b) => Number(a.created_at || a.timestamp || 0) - Number(b.created_at || b.timestamp || 0));
       const first = group.records[0] || {};
       const metrics = calculateActivityRouteMetrics(group.records);
-      return { ...group, ...metrics, color: activityRouteColor(group.key), nombre: first.nombre_usuario || 'Sin nombre', correo: first.correo_usuario || '—', plaza: first.plaza || 'Sin plaza' };
+      const cobranzaCount = group.records.filter(record => normaliseActivityText(record.tipo) === 'COBRANZA').length;
+      const prospeccionCount = group.records.filter(record => normaliseActivityText(record.tipo) === 'PROSPECCION').length;
+      return { ...group, ...metrics, cobranzaCount, prospeccionCount, color: activityRouteColor(group.key), nombre: first.nombre_usuario || 'Sin nombre', correo: first.correo_usuario || '—', plaza: first.plaza || 'Sin plaza' };
     }).sort((a, b) => a.day.localeCompare(b.day) || a.nombre.localeCompare(b.nombre));
   }
 
@@ -2260,7 +2268,7 @@
     const legendRows = [];
     groups.forEach(group => {
       const groupDate = group.day === 'Sin fecha' ? group.day : group.day.split('-').reverse().join('/');
-      legendRows.push(`<div style="display:flex;align-items:center;gap:7px;margin:4px 0"><span style="width:18px;border-top:3px dashed ${group.color}"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)}<br>${group.records.length} punto(s) · <b>${formatActivityDistance(group.totalMeters)}</b></span></div>`);
+      legendRows.push(`<div style="display:flex;align-items:center;gap:7px;margin:4px 0"><span style="width:18px;border-top:3px dashed ${group.color}"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)}<br>${group.records.length} punto(s) · <b>${formatActivityDistance(group.totalMeters)}</b><br><span style="color:#15803D">● ${group.cobranzaCount} Cobranza</span> <span style="color:#2563EB">● ${group.prospeccionCount} Prospección</span></span></div>`);
       const routePoints = [];
       group.records.forEach((record, index) => {
         const latitude = Number(record.latitud);
@@ -2268,10 +2276,11 @@
         const point = [latitude, longitude];
         const pointLabel = activityRoutePointLabel(index);
         const detail = record.gestion_realizada || record.tipo_accion || 'Sin detalle';
+        const typeStyle = activityRouteTypeStyle(record.tipo);
         const offset = activityMarkerOffset(group.records, index);
         const segment = index ? group.segments[index - 1] : null;
-        const marker = L.marker(point, { icon: L.divIcon({ className: '', html: `<div style="width:26px;height:26px;border-radius:50%;background:${group.color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);color:#fff;font:800 11px/20px Segoe UI,Arial,sans-serif;text-align:center;transform:translate(${offset.x}px,${offset.y}px)">${pointLabel}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map);
-        marker.bindPopup(`<div style="min-width:220px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:${group.color};font-size:14px">Punto ${pointLabel} · Actividad</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(record.nombre_usuario || '—')}<br><b>Día:</b> ${escapeMapHtml(groupDate)}<br><b>Hora:</b> ${escapeMapHtml(formatRecordDateTime(record.created_at || record.timestamp))}<br><b>Tipo:</b> ${escapeMapHtml(record.tipo || '—')}<br><b>Actividad:</b> ${escapeMapHtml(detail)}<br><b>Plaza:</b> ${escapeMapHtml(record.plaza || '—')}<br>${segment ? `<b>Tramo ${activityRoutePointLabel(segment.fromIndex)} → ${pointLabel}:</b> ${formatActivityDistance(segment.meters)}<br>` : '<b>Inicio de ruta diaria</b><br>'}<b>Ubicación:</b> ${latitude.toFixed(6)}, ${longitude.toFixed(6)}</div></div>`);
+        const marker = L.marker(point, { icon: L.divIcon({ className: '', html: `<div style="width:27px;height:27px;border-radius:50%;background:${typeStyle.color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);color:#fff;font:800 11px/21px Segoe UI,Arial,sans-serif;text-align:center;transform:translate(${offset.x}px,${offset.y}px)">${pointLabel}</div>`, iconSize: [27, 27], iconAnchor: [13, 13] }) }).addTo(map);
+        marker.bindPopup(`<div style="min-width:220px;font-family:Segoe UI,Arial,sans-serif"><div style="font-weight:800;color:${typeStyle.color};font-size:14px">Punto ${pointLabel} · ${typeStyle.label}</div><div style="margin-top:6px"><b>Usuario:</b> ${escapeMapHtml(record.nombre_usuario || '—')}<br><b>Día:</b> ${escapeMapHtml(groupDate)}<br><b>Hora:</b> ${escapeMapHtml(formatRecordDateTime(record.created_at || record.timestamp))}<br><b>Actividad:</b> ${escapeMapHtml(detail)}<br><b>Plaza:</b> ${escapeMapHtml(record.plaza || '—')}<br>${segment ? `<b>Tramo ${activityRoutePointLabel(segment.fromIndex)} → ${pointLabel}:</b> ${formatActivityDistance(segment.meters)}<br>` : '<b>Inicio de ruta diaria</b><br>'}<b>Ubicación:</b> ${latitude.toFixed(6)}, ${longitude.toFixed(6)}</div></div>`);
         routePoints.push(point);
         bounds.push(point);
       });
@@ -2283,7 +2292,7 @@
     L.control({ position: 'bottomright' }).onAdd = function() {
       const legend = L.DomUtil.create('div');
       legend.style.cssText = 'background:#fff;padding:9px 11px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);max-height:170px;overflow:auto;font:12px Segoe UI,Arial,sans-serif;color:#334155';
-      legend.innerHTML = `<div style="font-weight:800;margin-bottom:5px;color:#312E81">Rutas visibles</div>${legendRows.join('')}`;
+      legend.innerHTML = `<div style="font-weight:800;margin-bottom:5px;color:#312E81">Rutas visibles</div><div style="margin-bottom:7px;font-size:11px"><span style="color:#15803D">● Punto verde: Cobranza</span><br><span style="color:#2563EB">● Punto azul: Prospección</span></div>${legendRows.join('')}`;
       return legend;
     }.addTo(map);
     focusActivityRoutesMap(map, bounds);
