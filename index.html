@@ -484,7 +484,6 @@
         <button class="btn-download" id="btnFotosAsistencia" onclick="downloadFotosAsistencia()" title="Haz una búsqueda primero" disabled style="opacity:0.4;cursor:not-allowed">📷 Fotos Asistencia</button>
         <button class="btn-download km" id="btnFotosKm" onclick="downloadFotosKm()" title="Haz una búsqueda primero" disabled style="opacity:0.4;cursor:not-allowed">🚗 Fotos Km</button>
         <button class="btn-export" style="background:#B91C1C" onclick="window.showEliminarRegistros()">🗑 Eliminar Registros</button>
-        <button id="btnAlfredo" class="btn-export" style="background:#1565C0;display:none" onclick="window.showAlfredo()">👤 Alfredo</button>
       </div>
     </div>
 
@@ -697,6 +696,7 @@
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="window.buscarVacPerm()" style="padding:9px 22px;background:#0D7A5F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🔍 Buscar</button>
       <button onclick="window.exportVacPermExcel()" style="padding:9px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
+      <button id="btnAlfredoRequests" onclick="window.showAlfredo()" style="display:none;padding:9px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">👤 Solicitudes de Cleon</button>
       <button onclick="window.showEliminarVacaciones()" style="padding:9px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Vacaciones</button>
       <button onclick="window.showEliminarPermisos()" style="padding:9px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Permisos</button>
     </div>
@@ -747,7 +747,7 @@
     <h2 style="margin:0;color:#1565C0;font-size:20px">👤 Solicitudes de RH — Alfredo</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button onclick="window.loadAlfredoSolicitudes()" style="padding:8px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">↻ Actualizar</button>
-      <button onclick="document.getElementById('alfredoSection').style.display='none';document.getElementById('app').style.display='block'" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Volver</button>
+      <button onclick="window.closeAlfredo()" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Vacaciones y Permisos</button>
     </div>
   </div>
   <div style="background:#E3F2FD;border:1.5px solid #90CAF9;border-radius:12px;padding:14px;margin-bottom:20px;color:#1565C0;font-size:13px">
@@ -951,8 +951,8 @@
       setDefaultDates();
       document.getElementById('tableContainer').innerHTML =
         '<div class="loading" style="color:#888">🔍 Usa los filtros y presiona <strong>Buscar</strong> para cargar los registros.</div>';
-      // Mostrar botón Alfredo solo para alfredo@fredinero.com
-      const btnAlfredo = document.getElementById('btnAlfredo');
+      // Mostrar solicitudes de Cleon únicamente dentro de Vacaciones y Permisos para Alfredo.
+      const btnAlfredo = document.getElementById('btnAlfredoRequests');
       if (btnAlfredo) {
         btnAlfredo.style.display = (user.email.toLowerCase() === 'alfredo@fredinero.com') ? '' : 'none';
       }
@@ -3625,6 +3625,7 @@
     document.getElementById('moduleLanding').style.display = 'none';
     document.getElementById('attendanceWorkspace').style.display = 'none';
     document.getElementById('activitiesSection').style.display = 'none';
+    document.getElementById('alfredoSection').style.display = 'none';
     document.getElementById('vacPermSection').style.display = 'block';
     setPanelHeader('requests');
     const hoy = new Date();
@@ -4018,13 +4019,22 @@
   };
 
   window.showAlfredo = function() {
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('vacacionesSection') && (document.getElementById('vacacionesSection').style.display = 'none');
-    document.getElementById('permisosSection') && (document.getElementById('permisosSection').style.display = 'none');
-    document.getElementById('eliminarRegistrosSection') && (document.getElementById('eliminarRegistrosSection').style.display = 'none');
+    const email = String(auth.currentUser?.email || '').trim().toLowerCase();
+    if (email !== 'alfredo@fredinero.com') { alert('Este apartado es exclusivo para Alfredo.'); return; }
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('moduleLanding').style.display = 'none';
+    document.getElementById('attendanceWorkspace').style.display = 'none';
+    document.getElementById('activitiesSection').style.display = 'none';
+    document.getElementById('vacPermSection').style.display = 'none';
     document.getElementById('alfredoSection').style.display = 'block';
+    setPanelHeader('requests');
     _alfredoTab = 'vacaciones';
     window.setAlfredoTab('vacaciones');
+  };
+
+  window.closeAlfredo = function() {
+    document.getElementById('alfredoSection').style.display = 'none';
+    window.showVacPerm();
   };
 
   window.loadAlfredoSolicitudes = async function() {
