@@ -586,6 +586,8 @@
       <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
       <div class="filter-group"><label>Buscar usuario</label><input id="activityUser" placeholder="Nombre o correo..." style="min-width:210px" /></div>
       <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
+      <button class="btn-export" style="background:#15803D" onclick="window.exportActivitiesCsv('COBRANZA')">⬇ Exportar Cobranza</button>
+      <button class="btn-export" style="background:#2563EB" onclick="window.exportActivitiesCsv('PROSPECCION')">⬇ Exportar Prospección</button>
       <button id="deleteActivitiesBtn" class="btn-export" style="background:#B91C1C;display:none" onclick="window.deleteActivitiesByRange()">🗑 Eliminar resultado</button>
     </div>
   </div>
@@ -2053,6 +2055,50 @@
           <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button>${record.tiene_evidencia ? `<button class="btn-accion btn-foto" title="Ver evidencia" onclick="window.viewActivityEvidence('${record.id}')">📷</button>` : ''}${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
       </div>`;
     }).join('')}</div>`;
+  };
+
+  function activityExportValue(value) {
+    if (value === undefined || value === null) return '';
+    if (Array.isArray(value)) return value.join(' | ');
+    if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  window.exportActivitiesCsv = function(type) {
+    const selected = _activitiesFiltered.filter(record => normaliseActivityText(record.tipo) === type);
+    const typeName = type === 'COBRANZA' ? 'Cobranza' : 'Prospección';
+    if (!selected.length) {
+      alert(`No hay registros de ${typeName} en el resultado actual. Ajusta los filtros y presiona Buscar.`);
+      return;
+    }
+    const commonFields = [
+      ['id', 'ID de actividad'], ['uid', 'UID'], ['user_uid', 'UID de usuario'], ['nombre_usuario', 'Nombre de usuario'], ['correo_usuario', 'Correo de usuario'], ['rol', 'Rol'], ['plaza', 'Plaza'],
+      ['tipo', 'Tipo de actividad'], ['fecha_hora_registro', 'Fecha y hora de registro'], ['created_at', 'Marca de tiempo de creación'], ['timestamp', 'Marca de tiempo'],
+      ['latitud', 'Latitud'], ['longitud', 'Longitud'], ['tiene_evidencia', 'Tiene evidencia'], ['ruta_evidencia', 'Ruta de evidencia'], ['editable', 'Editable'],
+    ];
+    const specificFields = type === 'COBRANZA'
+      ? [['se_visita_a', 'Se atiende a'], ['numero_cliente', 'Número de cliente'], ['nombre_contacto', 'Nombre'], ['gestion_realizada', 'Gestión realizada'], ['comentarios', 'Comentarios'], ['monto', 'Monto depositado'], ['folio_recibo', 'Folio de recibo o comprobante'], ['fecha_promesa', 'Fecha comprometida de promesa']]
+      : [['nombre_prospecto', 'Nombre completo del prospecto'], ['direccion', 'Dirección'], ['telefono', 'Teléfono'], ['tipo_accion', 'Tipo de acción'], ['se_agenda_cita', 'Se agenda cita'], ['fecha_cita', 'Fecha de cita'], ['hora_cita', 'Hora de cita'], ['motivos_no_cita', 'Motivos de no cita'], ['observaciones', 'Observaciones']];
+    const definedFields = [...commonFields, ...specificFields];
+    const knownKeys = new Set(definedFields.map(([key]) => key));
+    const extraKeys = Array.from(new Set(selected.flatMap(record => Object.keys(record).filter(key => !knownKeys.has(key))))).sort();
+    const columns = [...definedFields, ...extraKeys.map(key => [key, key])];
+    const rows = selected.map(record => columns.map(([key]) => {
+      if (key === 'fecha_hora_registro') return formatRecordDateTime(record.created_at || record.timestamp);
+      if (key === 'ruta_evidencia') return record.tiene_evidencia ? `gestor_photos/${record.id}/foto_base64` : '';
+      return activityExportValue(record[key]);
+    }));
+    const csv = [columns.map(([, label]) => csvQ(label)).join(','), ...rows.map(row => row.map(csvQ).join(','))].join('\n');
+    const start = document.getElementById('activityStartDate').value || 'sin-fecha-inicial';
+    const end = document.getElementById('activityEndDate').value || 'sin-fecha-final';
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `actividades_${type.toLowerCase()}_${start}_a_${end}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   window.viewActivityDetail = function(id) {
