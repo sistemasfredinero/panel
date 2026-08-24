@@ -2176,6 +2176,32 @@
     map.fitBounds(bounds, { padding: [52, 52], maxZoom: 15 });
   }
 
+  function addActivityPrecisionControl(map, bounds) {
+    const precisionControl = L.control({ position: 'topright' });
+    precisionControl.onAdd = function() {
+      const box = L.DomUtil.create('div');
+      box.style.cssText = 'background:#fff;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);padding:9px 10px;font:12px Segoe UI,Arial,sans-serif;color:#312E81;min-width:170px';
+      box.innerHTML = `<div style="font-weight:800;margin-bottom:6px">🔎 Zoom de precisión</div><div style="display:flex;align-items:center;gap:5px"><input id="activityRouteZoomInput" type="number" min="3" max="22" step="1" value="${map.getZoom()}" style="width:52px;border:1px solid #C7D2FE;border-radius:5px;padding:4px 5px;font:700 12px Segoe UI,Arial,sans-serif"><button id="activityRouteZoomApply" style="border:0;border-radius:5px;background:#4F46E5;color:#fff;padding:5px 7px;font-weight:700;cursor:pointer">Aplicar</button></div><div id="activityRouteScaleHint" style="color:#64748B;margin-top:6px;font-size:11px">22 ≈ escala de 2 m</div><button id="activityRouteZoomAuto" style="margin-top:7px;border:0;background:transparent;color:#4F46E5;padding:0;font:700 11px Segoe UI,Arial,sans-serif;cursor:pointer">↺ Ajuste automático</button>`;
+      L.DomEvent.disableClickPropagation(box);
+      L.DomEvent.disableScrollPropagation(box);
+      return box;
+    };
+    precisionControl.addTo(map);
+    const input = document.getElementById('activityRouteZoomInput');
+    const apply = document.getElementById('activityRouteZoomApply');
+    const auto = document.getElementById('activityRouteZoomAuto');
+    const updateInput = () => { if (input) input.value = String(map.getZoom()); };
+    const applyZoom = () => {
+      const requested = Math.round(Number(input?.value));
+      if (!Number.isFinite(requested)) return;
+      map.setZoom(Math.max(3, Math.min(22, requested)));
+    };
+    apply?.addEventListener('click', applyZoom);
+    input?.addEventListener('keydown', event => { if (event.key === 'Enter') applyZoom(); });
+    auto?.addEventListener('click', () => focusActivityRoutesMap(map, bounds));
+    map.on('zoomend', updateInput);
+  }
+
   function buildActivityRouteGroups(records) {
     const grouped = new Map();
     records.filter(record => validCoordinates(record.latitud, record.longitud)).forEach(record => {
@@ -2226,9 +2252,9 @@
       mapElement.innerHTML = '<div style="padding:24px;color:#B91C1C">❌ No se pudo cargar el componente del mapa. Revisa tu conexión e inténtalo de nuevo.</div>';
       return;
     }
-    const map = L.map('activityRoutesMap', { zoomControl: true }).setView([22.4, -98.2], 5);
+    const map = L.map('activityRoutesMap', { zoomControl: true, maxZoom: 22 }).setView([22.4, -98.2], 5);
     activityRoutesMapInstance = map;
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
     const bounds = [];
     const legendRows = [];
@@ -2261,6 +2287,7 @@
       return legend;
     }.addTo(map);
     focusActivityRoutesMap(map, bounds);
+    addActivityPrecisionControl(map, bounds);
     setTimeout(() => map.invalidateSize(), 60);
   };
 
