@@ -2158,7 +2158,7 @@
       container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No hay actividades con esos filtros.</div></div>';
       return;
     }
-    container.innerHTML = `<div class="record-list">${_activitiesFiltered.map(record => {
+    const renderActivityCard = (record) => {
       const cobranza = record.tipo === 'COBRANZA';
       const responsible = activityText(record.nombre_usuario || 'Sin nombre');
       const counterpart = activityText(record.nombre_contacto || record.nombre_prospecto || 'Sin nombre');
@@ -2176,7 +2176,30 @@
         <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(record.created_at || record.timestamp)}</div>
           <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button>${record.tiene_evidencia ? `<button class="btn-accion btn-foto" title="Ver evidencia" onclick="window.viewActivityEvidence('${record.id}')">📷</button>` : ''}${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
       </div>`;
-    }).join('')}</div>`;
+    };
+    if (!activityIsManagerScope()) {
+      container.innerHTML = `<div class="record-list">${_activitiesFiltered.map(renderActivityCard).join('')}</div>`;
+      return;
+    }
+    const groups = new Map();
+    _activitiesFiltered.forEach(record => {
+      const date = new Date(Number(record.created_at || record.timestamp || 0));
+      const dayKey = Number.isNaN(date.getTime()) ? 'SIN_FECHA' : date.toISOString().slice(0, 10);
+      const userKey = String(record.user_uid || record.uid || record.correo_usuario || record.nombre_usuario || 'SIN_USUARIO');
+      const key = `${dayKey}|${userKey}`;
+      if (!groups.has(key)) groups.set(key, { dayKey, userKey, records: [] });
+      groups.get(key).records.push(record);
+    });
+    const groupHtml = Array.from(groups.values()).sort((a, b) => {
+      const timeA = Number(a.records[0]?.created_at || a.records[0]?.timestamp || 0);
+      const timeB = Number(b.records[0]?.created_at || b.records[0]?.timestamp || 0);
+      return timeB - timeA;
+    }).map(group => {
+      const lead = group.records[0] || {};
+      const dayLabel = group.dayKey === 'SIN_FECHA' ? 'Sin fecha' : new Date(`${group.dayKey}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+      return `<section style="margin-bottom:18px;border:1px solid #DCE7E0;border-radius:14px;overflow:hidden;background:#fff"><div style="padding:13px 15px;background:#F0FDF4;border-bottom:1px solid #D1FAE5;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><div style="font-size:14px;font-weight:900;color:#166534">${activityText(lead.nombre_usuario || 'Colaborador')}</div><div style="font-size:12px;color:#4B6B57;margin-top:2px">${activityText(lead.rol || 'Sin rol')} · ${activityText(lead.plaza || 'Sin plaza')} · ${dayLabel}</div></div><span style="background:#DCFCE7;color:#166534;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900">${group.records.length} actividad(es)</span></div><div class="record-list">${group.records.map(renderActivityCard).join('')}</div></section>`;
+    }).join('');
+    container.innerHTML = `<div style="padding:0 0 2px"><div style="font-size:13px;color:#475569;margin:0 0 12px">Vista agrupada por colaborador y día para facilitar la revisión de tu equipo.</div>${groupHtml}</div>`;
   };
 
   function activityExportValue(value) {
@@ -2201,7 +2224,7 @@
     ];
     const specificFields = type === 'COBRANZA'
       ? [['se_visita_a', 'Se atiende a'], ['numero_cliente', 'Número de cliente'], ['nombre_contacto', 'Nombre'], ['gestion_realizada', 'Gestión realizada'], ['comentarios', 'Comentarios'], ['monto', 'Monto depositado'], ['folio_recibo', 'Folio de recibo o comprobante'], ['fecha_promesa', 'Fecha comprometida de promesa']]
-      : [['nombre_prospecto', 'Nombre completo del prospecto'], ['direccion', 'Dirección'], ['telefono', 'Teléfono'], ['referido_interno', 'Referido interno'], ['tipo_accion', 'Tipo de acción'], ['se_agenda_cita', 'Se agenda cita'], ['fecha_cita', 'Fecha de cita'], ['hora_cita', 'Hora de cita'], ['cita_timestamp', 'Marca de tiempo de cita'], ['estado_cita', 'Estado de cita'], ['responsable_cita_nombre', 'Responsable de cita'], ['gerente_cita_nombre', 'Gerente de cita'], ['motivos_no_cita', 'Motivos de no cita'], ['observaciones', 'Observaciones'], ['hilo_prospecto', 'Hilo de prospecto'], ['prospecto_raiz_id', 'ID de prospecto raíz'], ['seguimiento_de', 'Seguimiento de'], ['numero_seguimiento', 'Número de seguimiento'], ['es_seguimiento', 'Es seguimiento'], ['cambio_de_opinion', 'Cambió de opinión']];
+      : [['nombre_prospecto', 'Nombre completo del prospecto'], ['direccion', 'Dirección'], ['telefono', 'Teléfono'], ['referido_interno', 'Referido interno'], ['tipo_prospeccion', 'Tipo de Prospección'], ['tipo_prospeccion_otro', 'Otro tipo de Prospección'], ['tipo_accion', 'Tipo de acción'], ['se_agenda_cita', 'Se agenda cita'], ['fecha_cita', 'Fecha de cita'], ['hora_cita', 'Hora de cita'], ['cita_timestamp', 'Marca de tiempo de cita'], ['estado_cita', 'Estado de cita'], ['responsable_cita_nombre', 'Responsable de cita'], ['gerente_cita_nombre', 'Gerente de cita'], ['motivos_no_cita', 'Motivos de no cita'], ['observaciones', 'Observaciones'], ['hilo_prospecto', 'Hilo de prospecto'], ['prospecto_raiz_id', 'ID de prospecto raíz'], ['seguimiento_de', 'Seguimiento de'], ['numero_seguimiento', 'Número de seguimiento'], ['es_seguimiento', 'Es seguimiento'], ['cambio_de_opinion', 'Cambió de opinión']];
     const definedFields = [...commonFields, ...specificFields];
     const knownKeys = new Set(definedFields.map(([key]) => key));
     const extraKeys = Array.from(new Set(selected.flatMap(record => Object.keys(record).filter(key => !knownKeys.has(key))))).sort();
@@ -2227,7 +2250,7 @@
     const record = _activitiesFiltered.find(x => x.id === id); if (!record) return;
     const rows = record.tipo === 'COBRANZA'
       ? [['Se atiende a', record.se_visita_a], ['Número de cliente', record.numero_cliente], ['Nombre', record.nombre_contacto], ['Gestión', record.gestion_realizada], ['Monto', record.monto], ['Folio', record.folio_recibo], ['Fecha de promesa', record.fecha_promesa], ['Comentarios', record.comentarios]]
-      : [['Prospecto', record.nombre_prospecto], ['Dirección', record.direccion], ['Teléfono', record.telefono], ['Referido interno', record.referido_interno], ['Acción', record.tipo_accion], ['Cita agendada', record.se_agenda_cita ? 'Sí' : 'No'], ['Fecha / hora de cita', `${record.fecha_cita || '—'} ${record.hora_cita || ''}`], ['Responsable de cita', record.responsable_cita_nombre], ['Gerente de cita', record.gerente_cita_nombre], ['Motivos', Array.isArray(record.motivos_no_cita) ? record.motivos_no_cita.join(', ') : '—'], ['Observaciones', record.observaciones], ['Seguimiento', record.es_seguimiento ? `Sí · #${record.numero_seguimiento || '—'}` : 'Registro inicial']];
+      : [['Prospecto', record.nombre_prospecto], ['Dirección', record.direccion], ['Teléfono', record.telefono], ['Referido interno', record.referido_interno], ['Tipo de Prospección', record.tipo_prospeccion], ['Otro tipo de Prospección', record.tipo_prospeccion_otro], ['Acción', record.tipo_accion], ['Cita agendada', record.se_agenda_cita ? 'Sí' : 'No'], ['Fecha / hora de cita', `${record.fecha_cita || '—'} ${record.hora_cita || ''}`], ['Responsable de cita', record.responsable_cita_nombre], ['Gerente de cita', record.gerente_cita_nombre], ['Motivos', Array.isArray(record.motivos_no_cita) ? record.motivos_no_cita.join(', ') : '—'], ['Observaciones', record.observaciones], ['Seguimiento', record.es_seguimiento ? `Sí · #${record.numero_seguimiento || '—'}` : 'Registro inicial']];
     const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div style="margin-bottom:7px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
     document.getElementById('modalTitle').textContent = `Actividad de ${record.tipo === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
     document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
