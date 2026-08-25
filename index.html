@@ -2047,6 +2047,16 @@
     const tooltip = document.getElementById('activityPerformanceTooltip');
     if (tooltip) tooltip.style.display = 'none';
   };
+  window.tidyActivityDataReading = function() {
+    const container = document.getElementById('activityPerformanceContainer');
+    if (!container) return;
+    const readingCard = Array.from(container.querySelectorAll('article')).find(article => article.querySelector('div')?.textContent?.trim() === 'Lectura para retroalimentación');
+    if (!readingCard) return;
+    const title = readingCard.querySelector('div');
+    if (title) title.textContent = 'Lectura de datos';
+    const readingBody = Array.from(readingCard.children).find(element => element.textContent.includes('Usa estos datos para conversar sobre cobertura, seguimiento y cumplimiento'));
+    Array.from(readingBody?.children || []).find(element => element.textContent.includes('Usa estos datos para conversar sobre cobertura, seguimiento y cumplimiento'))?.remove();
+  };
 
   window.showActivities = async function() {
     document.getElementById('app').style.display = 'block';
@@ -2083,7 +2093,9 @@
   }
 
   window.initializeActivityGraphics = function(details) {
-    if (details?.open) window.renderActivityPerformanceDashboard();
+    if (!details?.open) return;
+    window.renderActivityPerformanceDashboard();
+    window.tidyActivityDataReading();
   };
   window.openPendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', true); };
   window.closePendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', false); };
@@ -2547,7 +2559,10 @@
     renderActivityRoutesReport(_activitiesFiltered);
     const graphics = document.getElementById('activityGraphicsSection');
     const graphicsContainer = document.getElementById('activityPerformanceContainer');
-    if (graphics?.open) window.renderActivityPerformanceDashboard();
+    if (graphics?.open) {
+      window.renderActivityPerformanceDashboard();
+      window.tidyActivityDataReading();
+    }
     else if (graphicsContainer) graphicsContainer.textContent = 'La búsqueda cambió. Abre este bloque para cargar el análisis general actualizado.';
 
     const container = document.getElementById('activitiesTableContainer');
