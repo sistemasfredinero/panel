@@ -635,6 +635,15 @@
     </div>
   </details>
 
+  <details id="activityPerformanceSection" style="margin-bottom:18px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:14px;overflow:hidden">
+    <summary style="cursor:pointer;padding:15px 17px;color:#166534;font-weight:900;font-size:15px">📈 Análisis general de desempeño del resultado filtrado</summary>
+    <div style="padding:0 17px 17px">
+      <p style="margin:0 0 12px;color:#166534;font-size:13px;line-height:1.45">Tablero comparativo para retroalimentar la operación. Solo usa la búsqueda actual y no realiza consultas adicionales a Firebase.</p>
+      <button class="btn-export" style="background:#15803D" onclick="window.renderActivityPerformanceDashboard()">📊 Generar análisis general</button>
+      <div id="activityPerformanceContainer" style="margin-top:15px;color:#166534;font-size:13px">Primero realiza una búsqueda y después genera el análisis.</div>
+    </div>
+  </details>
+
   <div id="activityRoutesReport" style="display:none;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:12px;padding:14px 16px;margin-bottom:18px"></div>
 
   <div class="records-card">
@@ -2227,6 +2236,53 @@
           ['Referido interno', 'Prospecciones que reportaron recomendación interna.', makeCounts([], '', (_value, record) => String(record.referido_interno || '').trim() ? 'Con referido interno' : 'Sin referido interno')]
         ];
     container.innerHTML = `<div style="font-weight:900;color:#1D4ED8;margin-bottom:4px">Respuestas de ${type === 'COBRANZA' ? 'Cobranza' : 'Prospección'} · ${records.length} registro(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los porcentajes corresponden únicamente al resultado que cargaste con los filtros actuales.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">${fields.map(([title, subtitle, entries]) => pie(title, subtitle, entries)).join('')}</div>`;
+  };
+
+  window.renderActivityPerformanceDashboard = function() {
+    const container = document.getElementById('activityPerformanceContainer');
+    const records = _activitiesData || [];
+    if (!records.length) {
+      container.innerHTML = '<div style="background:#fff;border:1px solid #BBF7D0;border-radius:10px;padding:14px;color:#166534">No hay actividades en la búsqueda actual. Ajusta filtros y presiona Buscar antes de generar el análisis.</div>';
+      return;
+    }
+    const paymentActions = new Set(['PROMESA DE PAGO', 'RENUENCIA DE PAGO', 'RECEPCION DE PAGO', 'COMPROBACION DE PAGO']);
+    const userStats = new Map();
+    const plazaStats = new Map();
+    const dayStats = new Map();
+    let cobranza = 0, prospeccion = 0, citas = 0, altas = 0, payments = 0;
+    records.forEach(record => {
+      const type = normaliseActivityText(record.tipo || record.activity_type);
+      const uid = String(record.user_uid || record.uid || record.correo_usuario || record.nombre_usuario || 'SIN_USUARIO');
+      const name = record.nombre_usuario || record.nombre || record.email_usuario || 'Usuario sin nombre';
+      const role = record.rol || record.role || 'Sin rol';
+      const plaza = normaliseActivityText(record.plaza) || 'SIN PLAZA';
+      const timestamp = Number(record.created_at || record.timestamp || 0);
+      const day = activityDateInput(timestamp) || 'Sin fecha';
+      if (!userStats.has(uid)) userStats.set(uid, { uid, name, role, plaza, cobranza: 0, prospeccion: 0, total: 0, citas: 0, altas: 0, pagos: 0 });
+      if (!plazaStats.has(plaza)) plazaStats.set(plaza, { plaza, cobranza: 0, prospeccion: 0, total: 0, citas: 0 });
+      if (!dayStats.has(day)) dayStats.set(day, { day, cobranza: 0, prospeccion: 0, total: 0 });
+      const user = userStats.get(uid), office = plazaStats.get(plaza), daily = dayStats.get(day);
+      [user, office, daily].forEach(item => { item.total += 1; if (type === 'COBRANZA') item.cobranza += 1; if (type === 'PROSPECCION') item.prospeccion += 1; });
+      if (type === 'COBRANZA') cobranza += 1;
+      if (type === 'PROSPECCION') prospeccion += 1;
+      const hasAppointment = record.se_agenda_cita === true || normaliseActivityText(record.se_agenda_cita) === 'SI';
+      if (type === 'PROSPECCION' && hasAppointment) { citas += 1; user.citas += 1; office.citas += 1; }
+      if (type === 'PROSPECCION' && normaliseActivityText(record.estatus_alta || record.estado_alta || record.status_alta) === 'ALTA') { altas += 1; user.altas += 1; }
+      if (type === 'COBRANZA' && paymentActions.has(normaliseActivityText(record.gestion_realizada || record.gestion))) { payments += 1; user.pagos += 1; }
+    });
+    const users = Array.from(userStats.values()).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+    const plazas = Array.from(plazaStats.values()).sort((a, b) => b.total - a.total || a.plaza.localeCompare(b.plaza));
+    const days = Array.from(dayStats.values()).sort((a, b) => a.day.localeCompare(b.day));
+    const maxUser = Math.max(1, ...users.map(item => Math.max(item.cobranza, item.prospeccion)));
+    const maxPlaza = Math.max(1, ...plazas.map(item => Math.max(item.cobranza, item.prospeccion)));
+    const maxDay = Math.max(1, ...days.map(item => item.total));
+    const doubleBars = (items, max, label) => items.map(item => `<div style="padding:10px 0;border-bottom:1px solid #DCFCE7"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><div style="font-size:13px;font-weight:900;color:#14532D;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${activityText(item.name || item.plaza)}">${activityText(item.name || item.plaza)}</div><div style="font-size:11px;color:#64748B">${activityText(item.role || label || '')}</div></div><div style="display:grid;grid-template-columns:92px 1fr 32px;gap:7px;align-items:center;margin-top:7px;font-size:11px"><span style="font-weight:800;color:#15803D">Cobranza</span><span style="height:9px;background:#DCFCE7;border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(item.cobranza / max) * 100}%;background:#16A34A;border-radius:99px"></span></span><b style="text-align:right;color:#166534">${item.cobranza}</b></div><div style="display:grid;grid-template-columns:92px 1fr 32px;gap:7px;align-items:center;margin-top:5px;font-size:11px"><span style="font-weight:800;color:#2563EB">Prospección</span><span style="height:9px;background:#DBEAFE;border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(item.prospeccion / max) * 100}%;background:#2563EB;border-radius:99px"></span></span><b style="text-align:right;color:#1D4ED8">${item.prospeccion}</b></div><div style="font-size:11px;color:#64748B;margin-top:6px">Total: <b>${item.total}</b>${item.citas !== undefined ? ` · Citas: <b>${item.citas}</b>` : ''}${item.altas !== undefined ? ` · Altas: <b>${item.altas}</b>` : ''}</div></div>`).join('');
+    const dailyBars = days.map(day => `<div style="display:grid;grid-template-columns:82px 1fr 32px;gap:7px;align-items:center;padding:7px 0;border-bottom:1px solid #DCFCE7;font-size:11px"><span style="font-weight:800;color:#14532D">${activityText(day.day)}</span><span style="height:12px;background:#DCFCE7;border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(day.total / maxDay) * 100}%;background:linear-gradient(90deg,#16A34A,#2563EB);border-radius:99px"></span></span><b style="text-align:right;color:#14532D">${day.total}</b></div>`).join('');
+    const appointmentRate = prospeccion ? Math.round((citas / prospeccion) * 100) : 0;
+    const conversionRate = citas ? Math.round((altas / citas) * 100) : 0;
+    const topUser = users[0];
+    const topPlaza = plazas[0];
+    container.innerHTML = `<div style="font-weight:900;color:#166534;margin-bottom:4px">Análisis general · ${records.length} actividad(es) filtrada(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los indicadores sirven para retroalimentar carga de trabajo, seguimiento y oportunidades de mejora; no sustituyen metas formales por puesto.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:15px"><div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#14532D">${records.length}</div><div style="font-size:11px;color:#166534">Actividades totales</div></div><div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#16A34A">${cobranza}</div><div style="font-size:11px;color:#166534">Cobranza</div></div><div style="background:#fff;border:1px solid #BFDBFE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#2563EB">${prospeccion}</div><div style="font-size:11px;color:#1D4ED8">Prospección</div></div><div style="background:#fff;border:1px solid #DDD6FE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#6D28D9">${appointmentRate}%</div><div style="font-size:11px;color:#5B21B6">Prospección con cita</div></div><div style="background:#fff;border:1px solid #FEF3C7;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#B45309">${conversionRate}%</div><div style="font-size:11px;color:#92400E">Citas convertidas en alta</div></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px"><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Barras dobles por colaborador</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Cobranza y Prospección por persona en el periodo.</div>${doubleBars(users, maxUser, 'Colaborador')}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Barras dobles por sucursal</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Volumen de Cobranza y Prospección por plaza.</div>${doubleBars(plazas, maxPlaza, 'Sucursal')}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Ritmo diario de operación</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Total de actividades por día del periodo filtrado.</div>${dailyBars}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Lectura para retroalimentación</div><div style="font-size:12px;color:#475569;line-height:1.6;margin-top:8px"><div>• Mayor volumen individual: <b>${activityText(topUser?.name || '—')}</b> con ${topUser?.total || 0} actividad(es).</div><div>• Plaza con mayor volumen: <b>${activityText(topPlaza?.plaza || '—')}</b> con ${topPlaza?.total || 0} actividad(es).</div><div>• Prospecciones que generan cita: <b>${citas} de ${prospeccion}</b> (${appointmentRate}%).</div><div>• Citas con alta registrada: <b>${altas} de ${citas}</b> (${conversionRate}%).</div><div>• Gestiones de pago informadas: <b>${payments}</b>.</div><div style="margin-top:8px;color:#166534;font-weight:800">Usa estos datos para conversar sobre cobertura, seguimiento y cumplimiento, definiendo metas por puesto antes de evaluar desempeño.</div></div></article></div>`;
   };
 
   window.searchActivities = async function() {
