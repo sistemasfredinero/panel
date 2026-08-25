@@ -1161,9 +1161,23 @@
     await renderCharts(filtered);
     renderOutsideBranchReport(filtered);
 
-    // ── Alertas: usar allRecords (sin filtros de usuario/rol/plaza) para detectar inconsistencias
+    // ── Alertas: respetar usuario, rol y plaza de la búsqueda.
+    // El tipo se aplica al resultado de alertas después de emparejar Entradas y Salidas,
+    // para no declarar una inconsistencia falsa cuando se busca solo un tipo de registro.
+    const registrosAlcanceAlertas = allRecords.filter(r => {
+      const u = usersMap[r.user_uid] || {};
+      const nombre = String(u.nombre_completo || '').toLowerCase();
+      const correo = String(u.correo || '').toLowerCase();
+      const userRol = String(u.rol || '').toUpperCase();
+      const userPlaza = String(u.plaza || '').toUpperCase();
+      const coincideUsuario = terminos.length === 0
+        || terminos.some(t => nombre.includes(t) || correo.includes(t));
+      return coincideUsuario
+        && (!filtroRol || userRol === filtroRol)
+        && (!filtroPlz || userPlaza === filtroPlz);
+    });
     // Construir lista de registros con campos que espera renderAlerts
-    const registrosParaAlertas = allRecords.map(r => {
+    const registrosParaAlertas = registrosAlcanceAlertas.map(r => {
       const u = usersMap[r.user_uid] || {};
       const ts = new Date(r.timestamp);
       const fecha = ts.getFullYear() + '-'
@@ -1218,7 +1232,7 @@
       }
     } catch(e) { /* Si falla la carga de viajes, alertas de viaje quedarán vacías */ }
 
-    renderAlerts(registrosParaAlertas, viajesParaAlertas);
+    renderAlerts(registrosParaAlertas, viajesParaAlertas, tipo);
     renderTripRoutesReport(viajesParaAlertas);
   }
 
@@ -3200,7 +3214,7 @@
     arrow.textContent = isOpen ? '\u25bc' : '\u25b2';
   };
 
-  function renderAlerts(registros, viajes) {
+  function renderAlerts(registros, viajes, tipoSeleccionado = '') {
     // Fecha de hoy en formato YYYY-MM-DD (hora local)
     const hoy = (() => {
       const d = new Date();
@@ -3263,8 +3277,13 @@
       }).join('');
     };
 
-    renderList(entradaSinSalida, 'listEntradaSinSalida', 'asistencia');
-    renderList(salidaSinEntrada, 'listSalidaSinEntrada', 'asistencia');
+    const mostrarEntradas = !tipoSeleccionado || tipoSeleccionado === 'ENTRADA';
+    const mostrarSalidas = !tipoSeleccionado || tipoSeleccionado === 'SALIDA';
+    const alertasEntrada = mostrarEntradas ? entradaSinSalida : [];
+    const alertasSalida = mostrarSalidas ? salidaSinEntrada : [];
+
+    renderList(alertasEntrada, 'listEntradaSinSalida', 'asistencia');
+    renderList(alertasSalida, 'listSalidaSinEntrada', 'asistencia');
     renderList(viajeSinFin,      'listViajeSinFin',      'viaje');
 
     // Actualizar badges individuales
@@ -3274,12 +3293,12 @@
       el.textContent = count;
       el.className = 'alert-badge' + (count === 0 ? ' zero' : '');
     };
-    setBadge('badgeEntradaSinSalida', entradaSinSalida.length);
-    setBadge('badgeSalidaSinEntrada', salidaSinEntrada.length);
+    setBadge('badgeEntradaSinSalida', alertasEntrada.length);
+    setBadge('badgeSalidaSinEntrada', alertasSalida.length);
     setBadge('badgeViajeSinFin',      viajeSinFin.length);
 
     // Badge total en el encabezado
-    const total = entradaSinSalida.length + salidaSinEntrada.length + viajeSinFin.length;
+    const total = alertasEntrada.length + alertasSalida.length + viajeSinFin.length;
     const totalBadge = document.getElementById('alertsTotalBadge');
     if (totalBadge) {
       totalBadge.innerHTML = total > 0
