@@ -623,6 +623,18 @@
     </div>
   </details>
 
+  <details id="activityResponseChartsSection" style="margin-bottom:18px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;overflow:hidden">
+    <summary style="cursor:pointer;padding:15px 17px;color:#1D4ED8;font-weight:900;font-size:15px">🥧 Gráficos de respuestas del resultado filtrado</summary>
+    <div style="padding:0 17px 17px">
+      <p style="margin:0 0 12px;color:#1E40AF;font-size:13px;line-height:1.45">Estos gráficos no realizan una consulta nueva: usan únicamente los registros que cargaste con el botón <b>Buscar</b>.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn-export" style="background:#15803D" onclick="window.renderActivityResponseCharts('COBRANZA')">🥧 Respuestas Cobranza</button>
+        <button class="btn-export" style="background:#2563EB" onclick="window.renderActivityResponseCharts('PROSPECCION')">🥧 Respuestas Prospección</button>
+      </div>
+      <div id="activityResponseChartsContainer" style="margin-top:15px;color:#1D4ED8;font-size:13px">Primero realiza una búsqueda y después elige el tipo de respuestas que quieres analizar.</div>
+    </div>
+  </details>
+
   <div id="activityRoutesReport" style="display:none;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:12px;padding:14px 16px;margin-bottom:18px"></div>
 
   <div class="records-card">
@@ -2159,6 +2171,62 @@
     } catch (error) {
       container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:13px;color:#B91C1C">❌ No se pudieron generar los reportes: ${activityText(error.message)}</div>`;
     }
+  };
+
+  window.renderActivityResponseCharts = function(type) {
+    const container = document.getElementById('activityResponseChartsContainer');
+    const records = (_activitiesData || []).filter(record => normaliseActivityText(record.tipo || record.activity_type) === type);
+    if (!records.length) {
+      container.innerHTML = `<div style="background:#fff;border:1px solid #BFDBFE;border-radius:10px;padding:14px;color:#1D4ED8">No hay registros de ${type === 'COBRANZA' ? 'Cobranza' : 'Prospección'} dentro de la búsqueda actual.</div>`;
+      return;
+    }
+    const palette = ['#2563EB', '#16A34A', '#EA580C', '#9333EA', '#DC2626', '#0891B2', '#CA8A04', '#DB2777'];
+    const responseValue = (record, keys, fallback) => {
+      for (const key of keys) {
+        const value = record[key];
+        if (value !== undefined && value !== null && String(value).trim() !== '') return String(value).trim();
+      }
+      return fallback || 'Sin respuesta';
+    };
+    const makeCounts = (keys, fallback, transform) => {
+      const counts = new Map();
+      records.forEach(record => {
+        let value = responseValue(record, keys, fallback);
+        if (transform) value = transform(value, record);
+        value = value || 'Sin respuesta';
+        counts.set(value, (counts.get(value) || 0) + 1);
+      });
+      const ordered = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+      if (ordered.length <= 8) return ordered;
+      const visible = ordered.slice(0, 7);
+      visible.push(['Otros', ordered.slice(7).reduce((sum, [, count]) => sum + count, 0)]);
+      return visible;
+    };
+    const pie = (title, subtitle, entries) => {
+      const total = entries.reduce((sum, [, count]) => sum + count, 0);
+      let cursor = 0;
+      const slices = entries.map(([label, count], index) => {
+        const start = cursor;
+        cursor += (count / total) * 100;
+        return `${palette[index % palette.length]} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
+      }).join(', ');
+      const legend = entries.map(([label, count], index) => `<div style="display:grid;grid-template-columns:10px 1fr auto;gap:7px;align-items:center;font-size:11px;color:#334155"><span style="width:10px;height:10px;border-radius:50%;background:${palette[index % palette.length]}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${activityText(label)}">${activityText(label)}</span><b>${count} · ${Math.round((count / total) * 100)}%</b></div>`).join('');
+      return `<article style="background:#fff;border:1px solid #BFDBFE;border-radius:14px;padding:14px;display:grid;grid-template-columns:128px 1fr;gap:15px;align-items:center;min-width:0"><div style="width:128px;height:128px;border-radius:50%;background:conic-gradient(${slices});position:relative"><span style="position:absolute;inset:27px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;font-weight:900;color:#1E3A8A;padding:8px">${total}<br><small style="font-size:9px;color:#64748B">respuestas</small></span></div><div style="min-width:0"><div style="font-size:14px;font-weight:900;color:#1E3A8A">${title}</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">${subtitle}</div><div style="display:grid;gap:6px">${legend}</div></div></article>`;
+    };
+    const fields = type === 'COBRANZA'
+      ? [
+          ['¿A quién se atendió?', 'Distribución de la persona o referencia visitada.', makeCounts(['se_atiende_a', 'visitado_a', 'persona_atendida'])],
+          ['Gestión realizada', 'Resultado registrado en la actividad de Cobranza.', makeCounts(['gestion_realizada', 'gestion'])],
+          ['Evidencia fotográfica', 'Registros que incluyen evidencia asociada.', makeCounts([], '', (_value, record) => record.has_evidence || record.tiene_evidencia || record.evidencia_fotografica || record.evidencia ? 'Con evidencia' : 'Sin evidencia')]
+        ]
+      : [
+          ['Tipo de Prospección', 'Origen declarado para el prospecto.', makeCounts(['tipo_prospeccion'], 'Sin especificar', (value, record) => normaliseActivityText(value) === 'OTRA' ? (record.tipo_prospeccion_otro || 'Otra') : value)],
+          ['Tipo de acción', 'Medio con el que se realizó la Prospección.', makeCounts(['tipo_accion', 'accion_prospeccion'])],
+          ['¿Se agenda cita?', 'Prospecciones con o sin cita programada.', makeCounts([], '', (_value, record) => (record.se_agenda_cita === true || normaliseActivityText(record.se_agenda_cita) === 'SI') ? 'Sí' : 'No')],
+          ['Motivo sin cita', 'Motivos registrados cuando no se agenda cita.', makeCounts(['motivo_no_cita', 'motivo_no_agenda', 'motivo'])],
+          ['Referido interno', 'Prospecciones que reportaron recomendación interna.', makeCounts([], '', (_value, record) => String(record.referido_interno || '').trim() ? 'Con referido interno' : 'Sin referido interno')]
+        ];
+    container.innerHTML = `<div style="font-weight:900;color:#1D4ED8;margin-bottom:4px">Respuestas de ${type === 'COBRANZA' ? 'Cobranza' : 'Prospección'} · ${records.length} registro(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los porcentajes corresponden únicamente al resultado que cargaste con los filtros actuales.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">${fields.map(([title, subtitle, entries]) => pie(title, subtitle, entries)).join('')}</div>`;
   };
 
   window.searchActivities = async function() {
