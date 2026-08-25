@@ -610,6 +610,19 @@
     </div>
   </details>
 
+  <details id="annualFeedbackSection" style="margin-bottom:18px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden">
+    <summary style="cursor:pointer;padding:15px 17px;color:#5B21B6;font-weight:900;font-size:15px">📊 Retroalimentación anual por sucursal <span style="font-size:12px;font-weight:600">— carga manual</span></summary>
+    <div style="padding:0 17px 17px">
+      <p style="margin:0 0 12px;color:#5B21B6;font-size:13px;line-height:1.45">Consulta anual independiente para revisar actividades por tipo y seguimiento de citas por usuario. No se carga automáticamente al abrir Actividades.</p>
+      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+        <div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Año</label><input id="annualFeedbackYear" type="number" min="2020" max="2099" value="2026" style="width:90px" /></div>
+        <div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Sucursal</label><select id="annualFeedbackPlaza"><option value="">Todas las sucursales</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="MANTE">El Mante</option><option value="SALTILLO">Saltillo</option><option value="POZA">Poza Rica</option><option value="TUXPAN">Tuxpan</option><option value="PAPANTLA">Papantla</option><option value="VALLES">Ciudad Valles</option><option value="XALAPA">Xalapa</option></select></div>
+        <button class="btn-export" style="background:#6D28D9" onclick="window.loadAnnualFeedback()">📈 Cargar retroalimentación anual</button>
+      </div>
+      <div id="annualFeedbackContainer" style="margin-top:15px;color:#5B21B6;font-size:13px">Abre esta sección, elige el año y presiona el botón para generar los reportes.</div>
+    </div>
+  </details>
+
   <div id="activityRoutesReport" style="display:none;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:12px;padding:14px 16px;margin-bottom:18px"></div>
 
   <div class="records-card">
@@ -2075,6 +2088,76 @@
       container.innerHTML = `<div style="font-weight:900;color:#9A3412;margin-bottom:8px">${pending.length} prospección(es) pendiente(s) de alta</div>${rows}`;
     } catch (error) {
       container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:13px;color:#B91C1C">❌ No se pudieron cargar las prospecciones: ${activityText(error.message)}</div>`;
+    }
+  };
+
+  window.loadAnnualFeedback = async function() {
+    const container = document.getElementById('annualFeedbackContainer');
+    const year = Number(document.getElementById('annualFeedbackYear').value);
+    const selectedPlaza = normaliseActivityText(document.getElementById('annualFeedbackPlaza').value);
+    if (!Number.isInteger(year) || year < 2020 || year > 2099) { alert('Indica un año válido.'); return; }
+    container.innerHTML = '<div style="padding:8px 0;color:#5B21B6">⏳ Generando retroalimentación anual...</div>';
+    try {
+      const start = new Date(year, 0, 1).getTime();
+      const end = new Date(year + 1, 0, 1).getTime() - 1;
+      let activitySnap;
+      try { activitySnap = await get(query(ref(database, 'gestor_activities'), orderByChild('created_at'), startAt(start), endAt(end))); }
+      catch { activitySnap = await get(ref(database, 'gestor_activities')); }
+      const usersSnap = await get(ref(database, 'users'));
+      const activities = [];
+      if (activitySnap.exists()) activitySnap.forEach(child => {
+        const record = { id: child.key, ...(child.val() || {}) };
+        const timestamp = Number(record.created_at || record.timestamp || 0);
+        if (timestamp >= start && timestamp <= end) activities.push(record);
+      });
+      const actualRoles = new Set(['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA']);
+      const members = [];
+      if (usersSnap.exists()) usersSnap.forEach(child => {
+        const user = child.val() || {};
+        const role = normaliseActivityText(user.rol);
+        const plaza = normaliseActivityText(user.plaza);
+        const uid = String(user.uid || child.key || '');
+        if (uid && plaza && actualRoles.has(role) && (!selectedPlaza || plaza === selectedPlaza)) members.push({ uid, name: user.nombre_completo || user.nombre || user.correo || 'Sin nombre', role, plaza });
+      });
+      if (!members.length) {
+        container.innerHTML = '<div style="background:#fff;border:1px solid #DDD6FE;border-radius:10px;padding:14px;color:#5B21B6">No hay usuarios operativos configurados para la sucursal seleccionada.</div>';
+        return;
+      }
+      const memberByUid = new Map(members.map(member => [member.uid, member]));
+      const stats = new Map(members.map(member => [member.uid, { ...member, cobranza: 0, prospeccion: 0, citasAlta: 0, citasSinAlta: 0 }]));
+      activities.forEach(record => {
+        const uid = String(record.user_uid || record.uid || '');
+        const member = memberByUid.get(uid);
+        if (!member || normaliseActivityText(record.plaza) !== member.plaza) return;
+        const stat = stats.get(uid);
+        const type = normaliseActivityText(record.tipo || record.activity_type);
+        if (type === 'COBRANZA') stat.cobranza += 1;
+        if (type === 'PROSPECCION') {
+          stat.prospeccion += 1;
+          const scheduled = record.se_agenda_cita === true || record.se_agenda_cita === 'SI';
+          if (scheduled) {
+            const alta = normaliseActivityText(record.estatus_alta || record.estado_alta || record.status_alta) === 'ALTA';
+            if (alta) stat.citasAlta += 1; else stat.citasSinAlta += 1;
+          }
+        }
+      });
+      const plazaGroups = new Map();
+      Array.from(stats.values()).forEach(stat => {
+        if (!plazaGroups.has(stat.plaza)) plazaGroups.set(stat.plaza, []);
+        plazaGroups.get(stat.plaza).push(stat);
+      });
+      const metricRows = (items, firstKey, secondKey, firstLabel, secondLabel, firstColor, secondColor) => {
+        const max = Math.max(1, ...items.flatMap(item => [item[firstKey], item[secondKey]]));
+        return items.sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name)).map(item => `<div style="padding:10px 0;border-bottom:1px solid #E9E5F6"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><div style="font-weight:900;color:#312E81;font-size:13px">${activityText(item.name)}</div><div style="font-size:11px;color:#6B7280">${activityText(item.role)}</div></div><div style="display:grid;grid-template-columns:92px 1fr 30px;gap:7px;align-items:center;margin-top:7px;font-size:11px"><span style="font-weight:800;color:${firstColor}">${firstLabel}</span><span style="height:8px;border-radius:99px;background:#EDE9FE;overflow:hidden"><span style="display:block;height:100%;width:${(item[firstKey] / max) * 100}%;background:${firstColor};border-radius:99px"></span></span><b style="color:${firstColor};text-align:right">${item[firstKey]}</b></div><div style="display:grid;grid-template-columns:92px 1fr 30px;gap:7px;align-items:center;margin-top:5px;font-size:11px"><span style="font-weight:800;color:${secondColor}">${secondLabel}</span><span style="height:8px;border-radius:99px;background:#EDE9FE;overflow:hidden"><span style="display:block;height:100%;width:${(item[secondKey] / max) * 100}%;background:${secondColor};border-radius:99px"></span></span><b style="color:${secondColor};text-align:right">${item[secondKey]}</b></div></div>`).join('');
+      };
+      const reports = Array.from(plazaGroups.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([plaza, items]) => {
+        const total = items.reduce((sum, item) => sum + item.cobranza + item.prospeccion, 0);
+        const totalCitas = items.reduce((sum, item) => sum + item.citasAlta + item.citasSinAlta, 0);
+        return `<section style="margin-top:18px;background:#fff;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden"><div style="padding:14px 16px;background:linear-gradient(135deg,#F5F3FF,#EEF2FF);display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><div><div style="font-size:17px;font-weight:900;color:#4C1D95">${activityText(plaza)}</div><div style="font-size:12px;color:#6D28D9;margin-top:3px">${items.length} usuario(s) operativo(s) configurado(s)</div></div><div style="display:flex;gap:8px"><span style="background:#fff;border:1px solid #DDD6FE;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;color:#5B21B6">${total} actividades</span><span style="background:#fff;border:1px solid #DDD6FE;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;color:#5B21B6">${totalCitas} citas</span></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px;padding:16px"><div style="border:1px solid #E9D5FF;border-radius:12px;padding:13px"><div style="font-weight:900;color:#5B21B6">Retroalimentación de citas</div><div style="font-size:11px;color:#7E22CE;margin:3px 0 8px">Altas versus citas aún sin alta.</div>${metricRows(items, 'citasAlta', 'citasSinAlta', 'Alta', 'Sin alta', '#16A34A', '#EA580C')}</div><div style="border:1px solid #BFDBFE;border-radius:12px;padding:13px"><div style="font-weight:900;color:#1D4ED8">Actividades por tipo</div><div style="font-size:11px;color:#2563EB;margin:3px 0 8px">Cobranza y Prospección por usuario.</div>${metricRows(items, 'cobranza', 'prospeccion', 'Cobranza', 'Prospección', '#15803D', '#2563EB')}</div></div></section>`;
+      }).join('');
+      container.innerHTML = `<div style="font-weight:900;color:#5B21B6">Retroalimentación anual ${year}</div><div style="font-size:12px;color:#6B7280;margin:4px 0 12px">Solo se muestran roles que existen realmente en cada sucursal; si una plaza no tiene Líder C, no aparece una fila vacía.</div>${reports}`;
+    } catch (error) {
+      container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:13px;color:#B91C1C">❌ No se pudieron generar los reportes: ${activityText(error.message)}</div>`;
     }
   };
 
