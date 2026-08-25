@@ -356,6 +356,7 @@
     @media (max-width: 560px) { .module-landing { padding: 30px 16px 36px; } .landing-subtitle { font-size: 14px; } .module-card { padding: 22px; min-height: 285px; } .module-card h2 { margin-top: 26px; } .module-cta { left: 22px; right: 22px; } }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -643,6 +644,7 @@
   <div style="max-width:1320px;margin:0 auto;background:#F8FAFC;border:1px solid #DDD6FE;border-radius:18px;padding:20px;box-shadow:0 24px 60px rgba(15,23,42,.25)">
     <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:900;color:#5B21B6">📈 Retroalimentación anual por sucursal</div><div style="font-size:12px;color:#6D28D9;margin-top:3px">Consulta independiente de actividades por tipo y seguimiento de citas.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closeAnnualFeedbackModal()">✕ Cerrar</button></div>
     <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:15px"><div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Año</label><input id="annualFeedbackYear" type="number" min="2020" max="2099" value="2026" style="width:90px" /></div><div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Sucursal</label><select id="annualFeedbackPlaza"><option value="">Todas las sucursales</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="MANTE">El Mante</option><option value="SALTILLO">Saltillo</option><option value="POZA">Poza Rica</option><option value="TUXPAN">Tuxpan</option><option value="PAPANTLA">Papantla</option><option value="VALLES">Ciudad Valles</option><option value="XALAPA">Xalapa</option></select></div><button class="btn-export" style="background:#6D28D9" onclick="window.loadAnnualFeedback()">📈 Cargar retroalimentación anual</button></div>
+    <div id="annualFeedbackDownloads" style="display:none;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #DDD6FE"><button class="btn-export" style="background:#0F766E;padding:8px 11px;font-size:12px" onclick="window.downloadAnnualFeedbackExcel('CITAS')">⬇ Descargar reporte anual de citas</button><button class="btn-export" style="background:#1D4ED8;padding:8px 11px;font-size:12px" onclick="window.downloadAnnualFeedbackExcel('ACTIVIDADES')">⬇ Descargar reporte anual de actividades</button></div>
     <div id="annualFeedbackContainer" style="margin-top:15px;color:#5B21B6;font-size:13px">Elige el año y presiona el botón para generar los reportes.</div>
   </div>
 </div>
@@ -1946,6 +1948,7 @@
   let _activitiesData = [];
   let _activitiesFiltered = [];
   let _activityProfile = null;
+  let _annualFeedbackExport = null;
   let activityRoutesMapInstance = null;
   let _prospectCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let _prospectCalendarAppointments = [];
@@ -1996,6 +1999,23 @@
     const sameUser = record.user_uid === auth.currentUser?.uid || record.uid === auth.currentUser?.uid;
     const samePlaza = normaliseActivityText(record.plaza) === normaliseActivityText(_activityProfile?.plaza);
     return sameUser || samePlaza;
+  }
+
+  const ANNUAL_FEEDBACK_PLAZAS = [
+    { code: 'TAMPICO', label: 'TAMPICO' }, { code: 'MADERO', label: 'CIUDAD MADERO' },
+    { code: 'VALLES', label: 'CIUDAD VALLES' }, { code: 'MANTE', label: 'EL MANTE' },
+    { code: 'SALTILLO', label: 'SALTILLO' }, { code: 'POZA', label: 'POZA RICA' },
+    { code: 'TUXPAN', label: 'TUXPAN' }, { code: 'PAPANTLA', label: 'PAPANTLA' },
+    { code: 'XALAPA', label: 'XALAPA' }
+  ];
+  const ANNUAL_FEEDBACK_ROLES = [
+    { key: 'GERENTE', label: 'Gerente' }, { key: 'LIDER A', label: 'Líder A' },
+    { key: 'LIDER B', label: 'Líder B' }, { key: 'LIDER C', label: 'Líder C' },
+    { key: 'CANJES', label: 'Canjes' }, { key: 'GESTOR', label: 'Gestor' }
+  ];
+  function annualFeedbackRole(role) {
+    const normalised = normaliseActivityText(role);
+    return normalised === 'GESTOR DE COBRANZA' ? 'GESTOR' : normalised;
   }
 
   window.showActivities = async function() {
@@ -2142,9 +2162,12 @@
 
   window.loadAnnualFeedback = async function() {
     const container = document.getElementById('annualFeedbackContainer');
+    const downloadActions = document.getElementById('annualFeedbackDownloads');
     const year = Number(document.getElementById('annualFeedbackYear').value);
     const selectedPlaza = normaliseActivityText(document.getElementById('annualFeedbackPlaza').value);
     if (!Number.isInteger(year) || year < 2020 || year > 2099) { alert('Indica un año válido.'); return; }
+    _annualFeedbackExport = null;
+    if (downloadActions) downloadActions.style.display = 'none';
     container.innerHTML = '<div style="padding:8px 0;color:#5B21B6">⏳ Generando retroalimentación anual...</div>';
     try {
       const start = new Date(year, 0, 1).getTime();
@@ -2204,10 +2227,69 @@
         const totalCitas = items.reduce((sum, item) => sum + item.citasAlta + item.citasSinAlta, 0);
         return `<section style="margin-top:18px;background:#fff;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden"><div style="padding:14px 16px;background:linear-gradient(135deg,#F5F3FF,#EEF2FF);display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><div><div style="font-size:17px;font-weight:900;color:#4C1D95">${activityText(plaza)}</div><div style="font-size:12px;color:#6D28D9;margin-top:3px">${items.length} usuario(s) operativo(s) configurado(s)</div></div><div style="display:flex;gap:8px"><span style="background:#fff;border:1px solid #DDD6FE;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;color:#5B21B6">${total} actividades</span><span style="background:#fff;border:1px solid #DDD6FE;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;color:#5B21B6">${totalCitas} citas</span></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px;padding:16px"><div style="border:1px solid #E9D5FF;border-radius:12px;padding:13px"><div style="font-weight:900;color:#5B21B6">Retroalimentación de citas</div><div style="font-size:11px;color:#7E22CE;margin:3px 0 8px">Altas versus citas aún sin alta.</div>${metricRows(items, 'citasAlta', 'citasSinAlta', 'Alta', 'Sin alta', '#16A34A', '#EA580C')}</div><div style="border:1px solid #BFDBFE;border-radius:12px;padding:13px"><div style="font-weight:900;color:#1D4ED8">Actividades por tipo</div><div style="font-size:11px;color:#2563EB;margin:3px 0 8px">Cobranza y Prospección por usuario.</div>${metricRows(items, 'cobranza', 'prospeccion', 'Cobranza', 'Prospección', '#15803D', '#2563EB')}</div></div></section>`;
       }).join('');
+      _annualFeedbackExport = { year, selectedPlaza, stats: Array.from(stats.values()) };
+      if (downloadActions) downloadActions.style.display = 'flex';
       container.innerHTML = `<div style="font-weight:900;color:#5B21B6">Retroalimentación anual ${year}</div><div style="font-size:12px;color:#6B7280;margin:4px 0 12px">Solo se muestran roles que existen realmente en cada sucursal; si una plaza no tiene Líder C, no aparece una fila vacía.</div>${reports}`;
     } catch (error) {
+      _annualFeedbackExport = null;
+      if (downloadActions) downloadActions.style.display = 'none';
       container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:13px;color:#B91C1C">❌ No se pudieron generar los reportes: ${activityText(error.message)}</div>`;
     }
+  };
+
+  function annualFeedbackWorksheet(reportType) {
+    const cached = _annualFeedbackExport;
+    if (!cached?.stats?.length) return null;
+    const plazas = ANNUAL_FEEDBACK_PLAZAS.filter(plaza => !cached.selectedPlaza || plaza.code === cached.selectedPlaza);
+    const metrics = reportType === 'CITAS'
+      ? { title: 'Grafico de Retroalimentacion de citas por Año', description: 'Se cuentan cuantas citas se convierten en altas y cuales se quedaron sin respuesta', firstKey: 'citasAlta', secondKey: 'citasSinAlta', firstLabel: 'SI', secondLabel: 'NO', sheetName: 'Retroalimentación Citas', fileName: 'Retroalimentacion_Anual_Citas' }
+      : { title: 'Grafico de Retroalimentacion de actividades por Año', description: 'Se cuentan cuantas actividades por tipo hizo cada quien', firstKey: 'cobranza', secondKey: 'prospeccion', firstLabel: 'COBRANZA', secondLabel: 'PROSPECCION', sheetName: 'Actividades Anuales', fileName: 'Retroalimentacion_Anual_Actividades' };
+    const roles = ANNUAL_FEEDBACK_ROLES.filter(role => cached.stats.some(stat => annualFeedbackRole(stat.role) === role.key && plazas.some(plaza => plaza.code === stat.plaza)));
+    const totalColumns = 1 + (plazas.length * 2);
+    const blankRow = () => Array(totalColumns).fill('');
+    const rows = [blankRow(), blankRow(), blankRow(), blankRow()];
+    rows[0][0] = metrics.title;
+    rows[1][0] = metrics.description;
+    rows[3][0] = 'Rol';
+    plazas.forEach((plaza, index) => {
+      const column = 1 + (index * 2);
+      rows[2][column] = plaza.label;
+      rows[3][column] = metrics.firstLabel;
+      rows[3][column + 1] = metrics.secondLabel;
+    });
+    roles.forEach(role => {
+      const row = blankRow();
+      row[0] = role.label;
+      plazas.forEach((plaza, index) => {
+        const records = cached.stats.filter(stat => stat.plaza === plaza.code && annualFeedbackRole(stat.role) === role.key);
+        if (!records.length) return;
+        const column = 1 + (index * 2);
+        row[column] = records.reduce((sum, record) => sum + Number(record[metrics.firstKey] || 0), 0);
+        row[column + 1] = records.reduce((sum, record) => sum + Number(record[metrics.secondKey] || 0), 0);
+      });
+      rows.push(row);
+    });
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: totalColumns - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: totalColumns - 1 } },
+      ...plazas.map((_, index) => {
+        const column = 1 + (index * 2);
+        return { s: { r: 2, c: column }, e: { r: 2, c: column + 1 } };
+      })
+    ];
+    worksheet['!cols'] = [{ wch: 16 }, ...Array.from({ length: totalColumns - 1 }, () => ({ wch: 14 }))];
+    worksheet['!rows'] = [{ hpt: 25 }, { hpt: 30 }, { hpt: 20 }, { hpt: 20 }];
+    return { worksheet, metrics, selectedPlaza: cached.selectedPlaza || 'TODAS_SUCURSALES', year: cached.year };
+  }
+
+  window.downloadAnnualFeedbackExcel = function(reportType) {
+    if (!window.XLSX) { alert('La biblioteca para generar Excel no está disponible. Recarga la página e inténtalo de nuevo.'); return; }
+    const report = annualFeedbackWorksheet(reportType === 'CITAS' ? 'CITAS' : 'ACTIVIDADES');
+    if (!report) { alert('Primero carga la retroalimentación anual para generar el archivo.'); return; }
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, report.worksheet, report.metrics.sheetName);
+    XLSX.writeFile(workbook, `${report.metrics.fileName}_${report.year}_${report.selectedPlaza}.xlsx`);
   };
 
   window.renderActivityResponseCharts = function(type) {
