@@ -599,48 +599,16 @@
     <div class="stat-card" style="border-left-color:#F59E0B"><div class="stat-num" id="activityEvidence" style="color:#D97706">—</div><div class="stat-label">Con evidencia</div></div>
   </div>
 
-  <div id="activityTodayAppointments" style="margin-bottom:18px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:15px 17px;color:#065F46">⏳ Consultando las citas programadas para hoy...</div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:stretch;margin-bottom:18px">
+    <div id="activityTodayAppointments" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:13px 17px;color:#065F46">⏳ Consultando las citas programadas para hoy...</div>
+    <button class="btn-export" style="background:#EA580C;align-self:center" onclick="window.openPendingProspectsModal()">📌 Pendientes de alta</button>
+  </div>
 
-  <details id="pendingProspectsSection" style="margin-bottom:18px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:14px;overflow:hidden">
-    <summary style="cursor:pointer;padding:15px 17px;color:#9A3412;font-weight:900;font-size:15px">📌 Prospecciones pendientes de alta <span style="font-size:12px;font-weight:600">— carga manual</span></summary>
+  <details id="activityGraphicsSection" style="margin-bottom:18px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden" ontoggle="window.initializeActivityGraphics(this)">
+    <summary style="cursor:pointer;padding:15px 17px;color:#5B21B6;font-weight:900;font-size:15px">📊 Gráficos y análisis del resultado filtrado</summary>
     <div style="padding:0 17px 17px">
-      <p style="margin:0 0 12px;color:#9A3412;font-size:13px;line-height:1.45">Esta consulta no se ejecuta al entrar a Actividades. Carga únicamente las prospecciones cuyo estatus de alta aún no sea <b>ALTA</b>.</p>
-      <button class="btn-export" style="background:#EA580C" onclick="window.loadPendingProspects()">🔄 Cargar prospecciones pendientes</button>
-      <div id="pendingProspectsContainer" style="margin-top:14px;color:#7C2D12;font-size:13px">Abre esta sección y presiona el botón para consultar los registros.</div>
-    </div>
-  </details>
-
-  <details id="annualFeedbackSection" style="margin-bottom:18px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden">
-    <summary style="cursor:pointer;padding:15px 17px;color:#5B21B6;font-weight:900;font-size:15px">📊 Retroalimentación anual por sucursal <span style="font-size:12px;font-weight:600">— carga manual</span></summary>
-    <div style="padding:0 17px 17px">
-      <p style="margin:0 0 12px;color:#5B21B6;font-size:13px;line-height:1.45">Consulta anual independiente para revisar actividades por tipo y seguimiento de citas por usuario. No se carga automáticamente al abrir Actividades.</p>
-      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
-        <div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Año</label><input id="annualFeedbackYear" type="number" min="2020" max="2099" value="2026" style="width:90px" /></div>
-        <div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Sucursal</label><select id="annualFeedbackPlaza"><option value="">Todas las sucursales</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="MANTE">El Mante</option><option value="SALTILLO">Saltillo</option><option value="POZA">Poza Rica</option><option value="TUXPAN">Tuxpan</option><option value="PAPANTLA">Papantla</option><option value="VALLES">Ciudad Valles</option><option value="XALAPA">Xalapa</option></select></div>
-        <button class="btn-export" style="background:#6D28D9" onclick="window.loadAnnualFeedback()">📈 Cargar retroalimentación anual</button>
-      </div>
-      <div id="annualFeedbackContainer" style="margin-top:15px;color:#5B21B6;font-size:13px">Abre esta sección, elige el año y presiona el botón para generar los reportes.</div>
-    </div>
-  </details>
-
-  <details id="activityResponseChartsSection" style="margin-bottom:18px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;overflow:hidden">
-    <summary style="cursor:pointer;padding:15px 17px;color:#1D4ED8;font-weight:900;font-size:15px">🥧 Gráficos de respuestas del resultado filtrado</summary>
-    <div style="padding:0 17px 17px">
-      <p style="margin:0 0 12px;color:#1E40AF;font-size:13px;line-height:1.45">Estos gráficos no realizan una consulta nueva: usan únicamente los registros que cargaste con el botón <b>Buscar</b>.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn-export" style="background:#15803D" onclick="window.renderActivityResponseCharts('COBRANZA')">🥧 Respuestas Cobranza</button>
-        <button class="btn-export" style="background:#2563EB" onclick="window.renderActivityResponseCharts('PROSPECCION')">🥧 Respuestas Prospección</button>
-      </div>
-      <div id="activityResponseChartsContainer" style="margin-top:15px;color:#1D4ED8;font-size:13px">Primero realiza una búsqueda y después elige el tipo de respuestas que quieres analizar.</div>
-    </div>
-  </details>
-
-  <details id="activityPerformanceSection" style="margin-bottom:18px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:14px;overflow:hidden">
-    <summary style="cursor:pointer;padding:15px 17px;color:#166534;font-weight:900;font-size:15px">📈 Análisis general de desempeño del resultado filtrado</summary>
-    <div style="padding:0 17px 17px">
-      <p style="margin:0 0 12px;color:#166534;font-size:13px;line-height:1.45">Tablero comparativo para retroalimentar la operación. Solo usa la búsqueda actual y no realiza consultas adicionales a Firebase.</p>
-      <button class="btn-export" style="background:#15803D" onclick="window.renderActivityPerformanceDashboard()">📊 Generar análisis general</button>
-      <div id="activityPerformanceContainer" style="margin-top:15px;color:#166534;font-size:13px">Primero realiza una búsqueda y después genera el análisis.</div>
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 13px"><p style="margin:0;color:#5B21B6;font-size:13px;line-height:1.45">El análisis general se muestra aquí. Los reportes detallados se abren en una ventana para mantener la pantalla principal limpia.</p><div style="display:flex;gap:7px;flex-wrap:wrap"><button class="btn-export" style="background:#6D28D9;padding:8px 10px;font-size:12px" onclick="window.openAnnualFeedbackModal()">📈 Retroalimentación anual</button><button class="btn-export" style="background:#15803D;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('COBRANZA')">🥧 Respuestas Cobranza</button><button class="btn-export" style="background:#2563EB;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('PROSPECCION')">🥧 Respuestas Prospección</button></div></div>
+      <div id="activityPerformanceContainer" style="color:#166534;font-size:13px">Realiza una búsqueda y abre este bloque para cargar el análisis general.</div>
     </div>
   </details>
 
@@ -661,6 +629,28 @@
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:#fff;border:1px solid #DCE7E2;border-radius:14px;padding:12px 14px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(-1)">← Mes anterior</button><div id="prospectCalendarTitle" style="font-size:19px;font-weight:900;color:#0F172A;text-transform:capitalize"></div><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(1)">Mes siguiente →</button></div>
     <div id="prospectCalendarLegend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
     <div id="prospectCalendarGrid" style="min-width:920px;display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:8px"></div>
+  </div>
+</div>
+
+<div id="pendingProspectsModal" style="display:none;position:fixed;inset:0;z-index:1260;background:rgba(15,23,42,.55);overflow:auto;padding:28px">
+  <div style="max-width:1050px;margin:0 auto;background:#FFF7ED;border:1px solid #FED7AA;border-radius:18px;padding:20px;box-shadow:0 24px 60px rgba(15,23,42,.25)">
+    <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:900;color:#9A3412">📌 Prospecciones pendientes de alta</div><div style="font-size:12px;color:#9A3412;margin-top:3px">Carga manual; no consulta datos al abrir Actividades.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closePendingProspectsModal()">✕ Cerrar</button></div>
+    <div style="margin-top:15px"><button class="btn-export" style="background:#EA580C" onclick="window.loadPendingProspects()">🔄 Cargar prospecciones pendientes</button><div id="pendingProspectsContainer" style="margin-top:14px;color:#7C2D12;font-size:13px">Presiona el botón para consultar los registros.</div></div>
+  </div>
+</div>
+
+<div id="annualFeedbackModal" style="display:none;position:fixed;inset:0;z-index:1260;background:rgba(15,23,42,.55);overflow:auto;padding:28px">
+  <div style="max-width:1320px;margin:0 auto;background:#F8FAFC;border:1px solid #DDD6FE;border-radius:18px;padding:20px;box-shadow:0 24px 60px rgba(15,23,42,.25)">
+    <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:900;color:#5B21B6">📈 Retroalimentación anual por sucursal</div><div style="font-size:12px;color:#6D28D9;margin-top:3px">Consulta independiente de actividades por tipo y seguimiento de citas.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closeAnnualFeedbackModal()">✕ Cerrar</button></div>
+    <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:15px"><div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Año</label><input id="annualFeedbackYear" type="number" min="2020" max="2099" value="2026" style="width:90px" /></div><div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Sucursal</label><select id="annualFeedbackPlaza"><option value="">Todas las sucursales</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="MANTE">El Mante</option><option value="SALTILLO">Saltillo</option><option value="POZA">Poza Rica</option><option value="TUXPAN">Tuxpan</option><option value="PAPANTLA">Papantla</option><option value="VALLES">Ciudad Valles</option><option value="XALAPA">Xalapa</option></select></div><button class="btn-export" style="background:#6D28D9" onclick="window.loadAnnualFeedback()">📈 Cargar retroalimentación anual</button></div>
+    <div id="annualFeedbackContainer" style="margin-top:15px;color:#5B21B6;font-size:13px">Elige el año y presiona el botón para generar los reportes.</div>
+  </div>
+</div>
+
+<div id="activityResponseChartsModal" style="display:none;position:fixed;inset:0;z-index:1260;background:rgba(15,23,42,.55);overflow:auto;padding:28px">
+  <div style="max-width:1320px;margin:0 auto;background:#F8FAFC;border:1px solid #BFDBFE;border-radius:18px;padding:20px;box-shadow:0 24px 60px rgba(15,23,42,.25)">
+    <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div id="activityResponseChartsTitle" style="font-size:20px;font-weight:900;color:#1D4ED8">🥧 Gráficos de respuestas</div><div style="font-size:12px;color:#2563EB;margin-top:3px">Basado exclusivamente en la búsqueda actual.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closeResponseChartsModal()">✕ Cerrar</button></div>
+    <div id="activityResponseChartsContainer" style="margin-top:15px;color:#1D4ED8;font-size:13px">Cargando gráficos...</div>
   </div>
 </div>
 
@@ -2037,6 +2027,44 @@
     await window.loadTodayProspectAppointments();
   };
 
+  function setActivityModalVisibility(id, visible) {
+    const modal = document.getElementById(id);
+    if (modal) modal.style.display = visible ? 'block' : 'none';
+  }
+
+  window.initializeActivityGraphics = function(details) {
+    if (details?.open) window.renderActivityPerformanceDashboard();
+  };
+  window.openPendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', true); };
+  window.closePendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', false); };
+  window.openAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', true); };
+  window.closeAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', false); };
+  window.openResponseChartsModal = function(type) {
+    const normalisedType = normaliseActivityText(type) === 'COBRANZA' ? 'COBRANZA' : 'PROSPECCION';
+    const title = document.getElementById('activityResponseChartsTitle');
+    if (title) title.textContent = `🥧 Respuestas de ${normalisedType === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
+    setActivityModalVisibility('activityResponseChartsModal', true);
+    window.renderActivityResponseCharts(normalisedType);
+  };
+  window.closeResponseChartsModal = function() { setActivityModalVisibility('activityResponseChartsModal', false); };
+
+  ['pendingProspectsModal', 'annualFeedbackModal', 'activityResponseChartsModal'].forEach(id => {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.addEventListener('click', event => {
+      if (event.target !== modal) return;
+      if (id === 'pendingProspectsModal') window.closePendingProspectsModal();
+      if (id === 'annualFeedbackModal') window.closeAnnualFeedbackModal();
+      if (id === 'activityResponseChartsModal') window.closeResponseChartsModal();
+    });
+  });
+  window.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    window.closePendingProspectsModal();
+    window.closeAnnualFeedbackModal();
+    window.closeResponseChartsModal();
+  });
+
   window.loadTodayProspectAppointments = async function() {
     const container = document.getElementById('activityTodayAppointments');
     if (!container) return;
@@ -2403,6 +2431,10 @@
     document.getElementById('activityEvidence').textContent = _activitiesFiltered.filter(x => x.tiene_evidencia).length;
     document.getElementById('activityRecordCount').textContent = `${_activitiesFiltered.length} registro(s)`;
     renderActivityRoutesReport(_activitiesFiltered);
+    const graphics = document.getElementById('activityGraphicsSection');
+    const graphicsContainer = document.getElementById('activityPerformanceContainer');
+    if (graphics?.open) window.renderActivityPerformanceDashboard();
+    else if (graphicsContainer) graphicsContainer.textContent = 'La búsqueda cambió. Abre este bloque para cargar el análisis general actualizado.';
 
     const container = document.getElementById('activitiesTableContainer');
     if (!_activitiesFiltered.length) {
