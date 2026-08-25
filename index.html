@@ -2339,13 +2339,32 @@
     return { worksheet, metrics, selectedPlaza: cached.selectedPlaza || 'TODAS_SUCURSALES', year: cached.year };
   }
 
+  function downloadAnnualFeedbackWorkbook(workbook, fileName) {
+    const workbookBytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array', compression: true });
+    const fileBlob = new Blob([workbookBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileUrl = URL.createObjectURL(fileBlob);
+    const link = document.createElement('a');
+    link.href = fileUrl;
+    link.download = fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1500);
+  }
+
   window.downloadAnnualFeedbackExcel = function(reportType) {
     if (!window.XLSX) { alert('La biblioteca para generar Excel no está disponible. Recarga la página e inténtalo de nuevo.'); return; }
     const report = annualFeedbackWorksheet(reportType === 'CITAS' ? 'CITAS' : 'ACTIVIDADES');
     if (!report) { alert('Primero carga la retroalimentación anual para generar el archivo.'); return; }
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, report.worksheet, report.metrics.sheetName);
-    XLSX.writeFile(workbook, `${report.metrics.fileName}_${report.year}_${report.selectedPlaza}.xlsx`);
+    try {
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, report.worksheet, report.metrics.sheetName);
+      downloadAnnualFeedbackWorkbook(workbook, `${report.metrics.fileName}_${report.year}_${report.selectedPlaza}.xlsx`);
+    } catch (error) {
+      console.error('No se pudo descargar el reporte anual:', error);
+      alert('No se pudo generar el archivo Excel. Inténtalo nuevamente.');
+    }
   };
 
   window.renderActivityResponseCharts = function(type) {
