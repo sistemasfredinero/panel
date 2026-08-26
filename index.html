@@ -327,6 +327,12 @@
     .module-card::after { content: ''; position: absolute; width: 130px; height: 130px; border-radius: 28px; left: -44px; bottom: -57px; border: 1px solid rgba(255,255,255,0.21); transform: rotate(26deg); z-index: -1; }
     .module-card:hover { transform: translateY(-7px); box-shadow: 0 22px 40px rgba(25, 58, 38, 0.23); }
     .module-card:focus-visible { outline: 4px solid #111827; outline-offset: 4px; }
+    .module-card.module-locked { cursor: not-allowed; filter: grayscale(1); opacity: .66; box-shadow: 0 10px 22px rgba(71, 85, 105, .16); }
+    .module-card.module-locked:hover { transform: none; box-shadow: 0 10px 22px rgba(71, 85, 105, .16); }
+    .module-card.module-locked::before { background: rgba(15, 23, 42, .34); }
+    .module-card.module-locked .module-cta { background: rgba(15, 23, 42, .34); border-color: rgba(255,255,255,.2); }
+    .module-lock-badge { display: none; align-items: center; gap: 6px; position: absolute; top: 20px; right: 20px; background: rgba(15, 23, 42, .78); border: 1px solid rgba(255,255,255,.24); color: #fff; border-radius: 999px; padding: 7px 10px; font-size: 11px; font-weight: 800; }
+    .module-card.module-locked .module-lock-badge { display: inline-flex; }
     .module-attendance { background: linear-gradient(145deg, #0B5D32 0%, #1B8E4B 56%, #35AA65 100%); }
     .module-requests { background: linear-gradient(145deg, #075C67 0%, #0D8F89 54%, #2AB08C 100%); }
     .module-activities { background: linear-gradient(145deg, #4A1D91 0%, #7138C5 57%, #9864EA 100%); }
@@ -401,14 +407,16 @@
     <div class="landing-status"><i></i> Panel conectado a la operación en tiempo real</div>
 
     <div class="module-grid">
-      <button class="module-card module-attendance" onclick="window.openAttendanceWorkspace()">
+      <button id="moduleAttendanceCard" class="module-card module-attendance" onclick="window.openAttendanceWorkspace()">
+        <span class="module-lock-badge">🔒 Solo Actividades</span>
         <div class="module-topline"><div class="module-icon">⏱</div><span class="module-tag">Operación diaria</span></div>
         <h2>Asistencias</h2>
         <p>Consulta entradas, salidas, ubicación, fotografías, recorridos y excepciones operativas.</p>
         <div class="module-features"><span class="module-feature">Registros GPS</span><span class="module-feature">Mapas</span><span class="module-feature">Viajes</span></div>
         <div class="module-cta"><span>Ir a asistencias</span><span>→</span></div>
       </button>
-      <button class="module-card module-requests" onclick="window.showVacPerm()">
+      <button id="moduleRequestsCard" class="module-card module-requests" onclick="window.showVacPerm()">
+        <span class="module-lock-badge">🔒 Solo Actividades</span>
         <div class="module-topline"><div class="module-icon">🗓</div><span class="module-tag">Gestión de equipo</span></div>
         <h2>Vacaciones<br>y Permisos</h2>
         <p>Revisa solicitudes, etapas, propuestas, evidencias y avances de autorización.</p>
@@ -967,6 +975,36 @@
 
   let allRecords = [];
   let usersMap   = {};
+  let _panelProfile = {};
+  const PANEL_ACTIVITY_ONLY_ROLES = new Set(['CANJES', 'LIDER A', 'LIDER B', 'LIDER C', 'GESTOR', 'GESTOR DE COBRANZA', 'GERENTE']);
+
+  function panelRole() {
+    return normaliseActivityText(_panelProfile?.rol || _panelProfile?.role || '');
+  }
+
+  function panelIsActivityOnlyUser() {
+    return PANEL_ACTIVITY_ONLY_ROLES.has(panelRole());
+  }
+
+  function panelCanOpenModule(moduleName) {
+    return moduleName === 'activities' || !panelIsActivityOnlyUser();
+  }
+
+  function applyPanelRoleAccess() {
+    const activityOnly = panelIsActivityOnlyUser();
+    [['moduleAttendanceCard', 'attendance'], ['moduleRequestsCard', 'requests']].forEach(([id, moduleName]) => {
+      const card = document.getElementById(id);
+      if (!card) return;
+      const locked = activityOnly && moduleName !== 'activities';
+      card.disabled = locked;
+      card.classList.toggle('module-locked', locked);
+      card.setAttribute('aria-disabled', String(locked));
+    });
+  }
+
+  function showPanelModuleDenied(moduleLabel) {
+    alert(`🔒 Tu rol solo tiene acceso de consulta al módulo Actividades. ${moduleLabel} está bloqueado para tu perfil.`);
+  }
 
   // ── Auth ───────────────────────────────────────────────────────────────────
   window.cerrarSesion = async function() {
@@ -991,12 +1029,17 @@
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
+      try {
+        const profileSnap = await get(ref(database, `users/${user.uid}`));
+        _panelProfile = profileSnap.val() || {};
+      } catch { _panelProfile = {}; }
       document.getElementById('loginOverlay').style.display = 'none';
       document.getElementById('app').style.display = 'block';
       document.getElementById('moduleLanding').style.display = 'block';
       document.getElementById('attendanceWorkspace').style.display = 'none';
       setPanelHeader('home');
       document.getElementById('adminName').textContent = user.email;
+      applyPanelRoleAccess();
       setDefaultDates();
       document.getElementById('tableContainer').innerHTML =
         '<div class="loading" style="color:#888">🔍 Usa los filtros y presiona <strong>Buscar</strong> para cargar los registros.</div>';
@@ -1039,6 +1082,7 @@
   }
 
   window.openAttendanceWorkspace = function() {
+    if (!panelCanOpenModule('attendance')) { showPanelModuleDenied('Asistencias'); return; }
     document.getElementById('moduleLanding').style.display = 'none';
     document.getElementById('attendanceWorkspace').style.display = 'block';
     setPanelHeader('attendance');
@@ -1997,6 +2041,7 @@
   }
 
   function activityCanManageAll() {
+    if (panelIsActivityOnlyUser()) return false;
     const email = String(auth.currentUser?.email || '').toLowerCase();
     return ['cleon@fredinero.com', 'soporte@fredinero.com', 'alfredo@fredinero.com'].includes(email);
   }
@@ -2089,7 +2134,9 @@
     try {
       const profileSnap = await get(ref(database, `users/${auth.currentUser.uid}`));
       _activityProfile = profileSnap.val() || {};
+      _panelProfile = _activityProfile;
     } catch { _activityProfile = {}; }
+    applyPanelRoleAccess();
     const scopeNote = document.getElementById('headerModuleCopy');
     if (activityIsManagerScope()) {
       scopeNote.textContent = `Como gerente se muestran tus actividades y las de tu equipo de ${_activityProfile.plaza || 'tu plaza'}.`;
@@ -4226,6 +4273,7 @@
   }
 
   window.showVacPerm = function() {
+    if (!panelCanOpenModule('requests')) { showPanelModuleDenied('Vacaciones y Permisos'); return; }
     document.getElementById('app').style.display = 'block';
     document.getElementById('moduleLanding').style.display = 'none';
     document.getElementById('attendanceWorkspace').style.display = 'none';
