@@ -431,6 +431,23 @@
         <div class="module-cta"><span>Ir a actividades</span><span>→</span></div>
       </button>
     </div>
+    <button id="privacyAdminEntry" onclick="window.showPrivacyConsentAdmin()" style="display:none;margin-top:20px;width:100%;padding:14px 18px;border:1px solid #C7D7EB;border-radius:14px;background:#F4F8FF;color:#1E3A5F;cursor:pointer;font-size:14px;font-weight:800;text-align:left">
+      🔐 Administración de avisos de privacidad <span style="float:right">Ver aceptaciones →</span>
+    </button>
+  </section>
+
+  <section id="privacyConsentSection" style="display:none;padding:24px 32px">
+    <div class="filter-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <div>
+          <h2 style="margin-bottom:6px">🔐 Aviso de privacidad</h2>
+          <p style="margin:0;color:#5B6F5F;font-size:13px;line-height:20px">Consulta la aceptación por usuario y revoca un consentimiento para exigir su lectura nuevamente en el siguiente inicio de sesión.</p>
+        </div>
+        <button onclick="window.showPanelHome()" style="padding:9px 14px;background:#64748B;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700">← Volver al inicio</button>
+      </div>
+      <div id="privacyConsentSummary" style="margin-top:18px"></div>
+      <div id="privacyConsentTable" style="margin-top:14px"><div style="padding:28px;text-align:center;color:#5B6F5F">Selecciona esta sección para cargar consentimientos.</div></div>
+    </div>
   </section>
 
   <div id="attendanceWorkspace" class="main" style="display:none">
@@ -1002,6 +1019,78 @@
     });
   }
 
+  function privacyIsSupport() {
+    return String(auth.currentUser?.email || '').trim().toLowerCase() === 'soporte@fredinero.com';
+  }
+
+  function applyPrivacyAdminAccess() {
+    const entry = document.getElementById('privacyAdminEntry');
+    if (entry) entry.style.display = privacyIsSupport() ? '' : 'none';
+  }
+
+  function privacyEscape(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+  }
+
+  function privacyFormatDate(timestamp) {
+    if (!timestamp) return '—';
+    const date = new Date(Number(timestamp));
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  window.showPrivacyConsentAdmin = async function() {
+    if (!privacyIsSupport()) { alert('Esta sección es exclusiva para Soporte.'); return; }
+    ['moduleLanding', 'attendanceWorkspace', 'vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection'].forEach(id => {
+      const section = document.getElementById(id);
+      if (section) section.style.display = 'none';
+    });
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('privacyConsentSection').style.display = 'block';
+    setPanelHeader('privacy');
+    const summary = document.getElementById('privacyConsentSummary');
+    const table = document.getElementById('privacyConsentTable');
+    summary.innerHTML = '';
+    table.innerHTML = '<div style="padding:28px;text-align:center;color:#5B6F5F">⏳ Cargando usuarios y consentimientos...</div>';
+    try {
+      const [usersSnap, consentsSnap] = await Promise.all([get(ref(database, 'users')), get(ref(database, 'privacy_consents'))]);
+      const consents = consentsSnap.val() || {};
+      const rows = [];
+      if (usersSnap.exists()) usersSnap.forEach(child => rows.push({ uid: child.key, profile: child.val() || {}, consent: consents[child.key] || null }));
+      Object.entries(consents).forEach(([uid, consent]) => {
+        if (!rows.some(row => row.uid === uid)) rows.push({ uid, profile: {}, consent });
+      });
+      rows.sort((a, b) => String(a.profile.nombre_completo || a.profile.nombre || a.consent?.user_name || '').localeCompare(String(b.profile.nombre_completo || b.profile.nombre || b.consent?.user_name || ''), 'es'));
+      const accepted = rows.filter(row => row.consent?.accepted === true).length;
+      const revoked = rows.filter(row => row.consent && row.consent.accepted !== true).length;
+      const pending = rows.length - accepted - revoked;
+      summary.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap"><span style="padding:8px 12px;border-radius:999px;background:#E8F5E9;color:#1A7A3C;font-weight:800;font-size:12px">✓ ${accepted} aceptaron</span><span style="padding:8px 12px;border-radius:999px;background:#FFF3E0;color:#B45309;font-weight:800;font-size:12px">◷ ${pending} pendientes</span><span style="padding:8px 12px;border-radius:999px;background:#FEE2E2;color:#B91C1C;font-weight:800;font-size:12px">↺ ${revoked} revocados</span></div>`;
+      if (rows.length === 0) { table.innerHTML = '<div style="padding:28px;text-align:center;color:#5B6F5F">No hay usuarios ni consentimientos registrados.</div>'; return; }
+      table.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#EFF6FF;color:#1E3A5F"><th style="padding:10px;text-align:left">Usuario</th><th style="padding:10px;text-align:left">Rol / Plaza</th><th style="padding:10px;text-align:center">Estado</th><th style="padding:10px;text-align:left">Aceptación</th><th style="padding:10px;text-align:center">Versión</th><th style="padding:10px;text-align:center">Acción</th></tr></thead><tbody>${rows.map(row => {
+        const profile = row.profile || {}, consent = row.consent || null;
+        const name = profile.nombre_completo || profile.nombre || consent?.user_name || 'Sin nombre';
+        const email = profile.correo || profile.email || consent?.user_email || '—';
+        const acceptedNow = consent?.accepted === true;
+        const status = acceptedNow ? '<span style="background:#DCFCE7;color:#166534;padding:4px 9px;border-radius:999px;font-weight:800;font-size:11px">Aceptado</span>' : consent ? '<span style="background:#FEE2E2;color:#B91C1C;padding:4px 9px;border-radius:999px;font-weight:800;font-size:11px">Revocado</span>' : '<span style="background:#FFF3E0;color:#B45309;padding:4px 9px;border-radius:999px;font-weight:800;font-size:11px">Pendiente</span>';
+        const action = acceptedNow ? `<button onclick="window.revokePrivacyConsent('${privacyEscape(row.uid)}')" style="padding:6px 10px;background:#B91C1C;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700">Revocar</button>` : '—';
+        return `<tr style="border-bottom:1px solid #E5E7EB"><td style="padding:10px"><div style="font-weight:800;color:#1F2937">${privacyEscape(name)}</div><div style="font-size:11px;color:#64748B">${privacyEscape(email)}</div></td><td style="padding:10px;color:#475569">${privacyEscape(profile.rol || consent?.user_role || '—')}<br><span style="font-size:11px">${privacyEscape(profile.plaza || consent?.user_plaza || '—')}</span></td><td style="padding:10px;text-align:center">${status}</td><td style="padding:10px;color:#475569">${privacyFormatDate(consent?.accepted_at || consent?.revoked_at)}</td><td style="padding:10px;text-align:center;color:#475569">${privacyEscape(consent?.notice_version || '—')}</td><td style="padding:10px;text-align:center">${action}</td></tr>`;
+      }).join('')}</tbody></table></div>`;
+    } catch (error) {
+      table.innerHTML = `<div style="padding:20px;color:#B91C1C;font-weight:700">❌ No se pudieron cargar los consentimientos: ${privacyEscape(error?.message || 'Error desconocido')}</div>`;
+    }
+  };
+
+  window.revokePrivacyConsent = async function(uid) {
+    if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
+    if (!confirm('¿Revocar este consentimiento? En el siguiente inicio de sesión, la persona deberá leer y aceptar nuevamente el aviso de privacidad.')) return;
+    try {
+      await update(ref(database, `privacy_consents/${uid}`), { accepted: false, revoked_at: Date.now(), revoked_by: auth.currentUser?.email || 'soporte@fredinero.com' });
+      alert('✅ Consentimiento revocado. La nueva aceptación será obligatoria en el siguiente inicio de sesión.');
+      window.showPrivacyConsentAdmin();
+    } catch (error) {
+      alert('❌ No se pudo revocar el consentimiento: ' + (error?.message || 'Error desconocido'));
+    }
+  };
+
   function showPanelModuleDenied(moduleLabel) {
     alert(`🔒 Tu rol solo tiene acceso de consulta al módulo Actividades. ${moduleLabel} está bloqueado para tu perfil.`);
   }
@@ -1041,6 +1130,7 @@
       document.getElementById('adminName').textContent = user.email;
       applyPanelRoleAccess();
       applyRequestManagementAccess();
+      applyPrivacyAdminAccess();
       setDefaultDates();
       document.getElementById('tableContainer').innerHTML =
         '<div class="loading" style="color:#888">🔍 Usa los filtros y presiona <strong>Buscar</strong> para cargar los registros.</div>';
@@ -1070,6 +1160,11 @@
       className: 'panel-activities',
       title: 'Actividades',
       copy: 'Consulta los registros operativos de cobranza y prospección.'
+    },
+    privacy: {
+      className: 'panel-home',
+      title: 'Aviso de privacidad',
+      copy: 'Consulta aceptaciones y administra revocaciones de consentimiento.'
     }
   };
 
@@ -1090,7 +1185,7 @@
   };
 
   window.showPanelHome = function() {
-    ['vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection'].forEach(id => {
+    ['vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection', 'privacyConsentSection'].forEach(id => {
       const section = document.getElementById(id);
       if (section) section.style.display = 'none';
     });
