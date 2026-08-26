@@ -754,8 +754,8 @@
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="window.buscarVacPerm()" style="padding:9px 22px;background:#0D7A5F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🔍 Buscar</button>
       <button onclick="window.exportVacPermExcel()" style="padding:9px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
-      <button onclick="window.showEliminarVacaciones()" style="padding:9px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Vacaciones</button>
-      <button onclick="window.showEliminarPermisos()" style="padding:9px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Permisos</button>
+      <button data-request-management-only onclick="window.showEliminarVacaciones()" style="padding:9px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Vacaciones</button>
+      <button data-request-management-only onclick="window.showEliminarPermisos()" style="padding:9px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Permisos</button>
     </div>
   </div>
 
@@ -1040,6 +1040,7 @@
       setPanelHeader('home');
       document.getElementById('adminName').textContent = user.email;
       applyPanelRoleAccess();
+      applyRequestManagementAccess();
       setDefaultDates();
       document.getElementById('tableContainer').innerHTML =
         '<div class="loading" style="color:#888">🔍 Usa los filtros y presiona <strong>Buscar</strong> para cargar los registros.</div>';
@@ -3558,10 +3559,40 @@
     );
   }
 
-  const VP_ADMINISTRADORES_FLUJO = new Set(['cleon@fredinero.com', 'soporte@fredinero.com', 'alfredo@fredinero.com']);
+  const VP_SOPORTE_EMAIL = 'soporte@fredinero.com';
+  const VP_CLEON_EMAIL = 'cleon@fredinero.com';
+
+  function vpCorreoActual() {
+    return String(auth.currentUser?.email || '').trim().toLowerCase();
+  }
+
+  function vpEsSoporte() {
+    return vpCorreoActual() === VP_SOPORTE_EMAIL;
+  }
+
+  function vpEsCleon() {
+    return vpCorreoActual() === VP_CLEON_EMAIL;
+  }
 
   function vpPuedeGestionarFlujo() {
-    return VP_ADMINISTRADORES_FLUJO.has(String(auth.currentUser?.email || '').trim().toLowerCase());
+    return vpEsSoporte();
+  }
+
+  function vpVacacionEnEtapaFinal(sol) {
+    const estado = vacGetEstado(sol || {});
+    return Boolean(sol?.visto_bueno_cleon || sol?.confirmada_empleado || sol?.approval_stage === 'completado' || ['confirmada', 'activo', 'gozados'].includes(estado));
+  }
+
+  function vpCleonPuedeEditarVacacion(sol) {
+    return vpEsCleon() && !vpVacacionEnEtapaFinal(sol);
+  }
+
+  function vpPuedeEditarVacacion(sol) {
+    return vpEsSoporte() || vpCleonPuedeEditarVacacion(sol);
+  }
+
+  function vpPuedeEliminarSolicitud() {
+    return vpEsSoporte();
   }
 
   function vpRutaFlujo(rol) {
@@ -3793,9 +3824,8 @@
             <span style="background:${cfg.bg};color:${cfg.color};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${cfg.label}</span>
           </td>
           <td style="padding:10px 12px;text-align:center;white-space:nowrap">
-            <button onclick="window.openVacEdit('${sol.id}')" style="padding:6px 12px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;margin-right:4px">✏️ Editar</button>
-            <button data-vacid="${sol.id}" onclick="window.deleteVacacionById(this)"
-              style="padding:6px 12px;background:#D32F2F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px">🗑 Eliminar</button>
+            ${vpPuedeEditarVacacion(sol) ? `<button onclick="window.openVacEdit('${sol.id}')" style="padding:6px 12px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;margin-right:4px">✏️ Editar</button>` : ''}
+            ${vpPuedeEliminarSolicitud() ? `<button data-vacid="${sol.id}" onclick="window.deleteVacacionById(this)" style="padding:6px 12px;background:#D32F2F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px">🗑 Eliminar</button>` : ''}
           </td>
         </tr>
       `;
@@ -3810,7 +3840,9 @@
   window.openVacEdit = function(id) {
     const sol = vacData.find(s => s.id === id) || (typeof _vpData !== 'undefined' && _vpData.find(s => s.id === id && s._tipo === 'vacaciones'));
     if (!sol) return;
+    if (!vpPuedeEditarVacacion(sol)) { alert('No tienes permiso para editar esta solicitud de vacaciones en su etapa actual.'); return; }
     const estado = vacGetEstado(sol);
+    const puedeCambiarEstado = vpEsSoporte();
 
     document.getElementById('vacEditContent').innerHTML = `
       <input type="hidden" id="vacEditId" value="${id}" />
@@ -3836,7 +3868,7 @@
           <input id="vacEditDias" type="number" value="${sol.dias_aprobados != null ? sol.dias_aprobados : sol.dias_solicitados || ''}" min="1"
             style="width:100%;padding:10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:14px;box-sizing:border-box" />
         </div>
-        <div>
+        ${puedeCambiarEstado ? `<div>
           <label style="font-size:12px;font-weight:700;color:#555">Estado</label>
           <select id="vacEditEstado" style="width:100%;padding:10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:14px;box-sizing:border-box">
             <option value="sin_responder"  ${estado==='sin_responder'  ?'selected':''}>Sin responder</option>
@@ -3845,7 +3877,7 @@
             <option value="activo"         ${estado==='activo'         ?'selected':''}>Activo</option>
             <option value="gozados"        ${estado==='gozados'        ?'selected':''}>Gozados</option>
           </select>
-        </div>
+        </div>` : `<input id="vacEditEstado" type="hidden" value="${estado}" /><div><label style="font-size:12px;font-weight:700;color:#555">Estado actual</label><div style="padding:10px;background:#F3F4F6;border-radius:8px;color:#475569;font-weight:700">${(VAC_ESTADO_CFG[estado] || VAC_ESTADO_CFG.sin_responder).label}</div><div style="font-size:11px;color:#7A8C7A;margin-top:5px">Cleon puede actualizar datos antes de VoBo o etapa final, sin modificar el estado.</div></div>`}
         <div>
           <label style="font-size:12px;font-weight:700;color:#555">Nota (opcional)</label>
           <textarea id="vacEditNota" rows="2"
@@ -3859,6 +3891,8 @@
   // ── Guardar edición ───────────────────────────────────────────────────────────────────────────
   window.saveVacEdit = async function() {
     const id    = document.getElementById('vacEditId').value;
+    const sol   = vacData.find(s => s.id === id) || (typeof _vpData !== 'undefined' && _vpData.find(s => s.id === id && s._tipo === 'vacaciones'));
+    if (!sol || !vpPuedeEditarVacacion(sol)) { alert('No tienes permiso para guardar cambios en esta solicitud de vacaciones.'); return; }
     const ini   = document.getElementById('vacEditIni').value.trim();
     const fin   = document.getElementById('vacEditFin').value.trim();
     const dias  = parseInt(document.getElementById('vacEditDias').value, 10);
@@ -3876,17 +3910,17 @@
       nota_respuesta:        nota || null,
     };
 
-    // Ajustar flags según estado elegido
-    if (nuevoEstado === 'sin_responder') {
-      updates.respondida          = false;
-      updates.confirmada_empleado = false;
-    } else if (nuevoEstado === 'propuesta_cleon') {
-      updates.respondida          = true;
-      updates.confirmada_empleado = false;
-    } else {
-      // confirmada / activo / gozados → ya confirmada por empleado
-      updates.respondida          = true;
-      updates.confirmada_empleado = true;
+    if (vpEsSoporte()) {
+      if (nuevoEstado === 'sin_responder') {
+        updates.respondida          = false;
+        updates.confirmada_empleado = false;
+      } else if (nuevoEstado === 'propuesta_cleon') {
+        updates.respondida          = true;
+        updates.confirmada_empleado = false;
+      } else {
+        updates.respondida          = true;
+        updates.confirmada_empleado = true;
+      }
     }
 
     try {
@@ -3906,6 +3940,7 @@
 
   // ── Eliminar ──────────────────────────────────────────────────────────────────────────────────────
   window.deleteVacacionById = async function(btn) {
+    if (!vpPuedeEliminarSolicitud()) { alert('Solo Soporte puede eliminar solicitudes.'); return; }
     const id  = btn.getAttribute('data-vacid');
     const sol = vacData.find(s => s.id === id);
     const nombre = sol ? (sol.nombre_solicitante || 'este empleado') : 'este empleado';
@@ -3958,10 +3993,12 @@
 
   // ── Mostrar modal eliminar vacaciones por rango ──────────────────────────────────────────────
   window.showEliminarVacaciones = function() {
+    if (!vpPuedeEliminarSolicitud()) { alert('Solo Soporte puede eliminar solicitudes.'); return; }
     document.getElementById('elimVacModal').style.display = 'flex';
   };
 
   window.confirmarEliminarVacaciones = async function() {
+    if (!vpPuedeEliminarSolicitud()) { alert('Solo Soporte puede eliminar solicitudes.'); return; }
     const ini = document.getElementById('elimVacIni').value;
     const fin = document.getElementById('elimVacFin').value;
     if (!ini || !fin) { alert('Selecciona un rango de fechas.'); return; }
@@ -4153,9 +4190,7 @@
         <td style="padding:10px 12px;white-space:nowrap">${horario}<br><span style="font-size:11px;color:#7A8C7A">Regreso: ${s.hora_regreso||'—'}</span></td>
         <td style="padding:10px 12px;max-width:200px;word-break:break-word">${s.motivo||'—'}</td>
         <td style="padding:10px 12px;text-align:center"><span style="background:${cfg.bg};color:${cfg.color};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${cfg.label}</span></td>
-        <td style="padding:10px 12px;text-align:center;white-space:nowrap">
-          <button data-permid="${s.id}" onclick="window.deletePermisoById(this)" style="padding:6px 12px;background:#D32F2F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px">🗑 Eliminar</button>
-        </td>
+        <td style="padding:10px 12px;text-align:center;white-space:nowrap">${vpPuedeEliminarSolicitud() ? `<button data-permid="${s.id}" onclick="window.deletePermisoById(this)" style="padding:6px 12px;background:#D32F2F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px">🗑 Eliminar</button>` : ''}</td>
       </tr>`;
     });
     h += '</tbody></table></div>';
@@ -4164,6 +4199,7 @@
   };
 
   window.deletePermisoById = async function(btn) {
+    if (!vpPuedeEliminarSolicitud()) { alert('Solo Soporte puede eliminar solicitudes.'); return; }
     const id  = btn.getAttribute('data-permid');
     const sol = permData.find(s => s.id === id);
     const nombre = sol ? (sol.nombre_solicitante || 'este empleado') : 'este empleado';
@@ -4213,10 +4249,12 @@
   };
 
   window.showEliminarPermisos = function() {
+    if (!vpPuedeEliminarSolicitud()) { alert('Solo Soporte puede eliminar solicitudes.'); return; }
     document.getElementById('elimPermModal').style.display = 'flex';
   };
 
   window.confirmarEliminarPermisos = async function() {
+    if (!vpPuedeEliminarSolicitud()) { alert('Solo Soporte puede eliminar solicitudes.'); return; }
     const ini = document.getElementById('elimPermIni').value;
     const fin = document.getElementById('elimPermFin').value;
     if (!ini || !fin) { alert('Selecciona un rango de fechas.'); return; }
@@ -4262,7 +4300,6 @@
   // ════════════════════════════════════════════════════════════════════════════
 
   let _vpData = [];
-  const VP_CLEON_EMAIL = 'cleon@fredinero.com';
 
   function vpIsAlfredo() {
     return String(auth.currentUser?.email || '').trim().toLowerCase() === 'alfredo@fredinero.com';
@@ -4489,13 +4526,13 @@
         : '';
       let acciones;
       if (esVac) {
-        acciones = `${accionesFlujo}<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button><button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+        acciones = `${accionesFlujo}${vpPuedeEditarVacacion(s) ? `<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button>` : ''}${vpPuedeEliminarSolicitud() ? `<button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>` : ''}`;
       } else if (esRH) {
-        acciones = `<button onclick="window.abrirAlfredoModal('${s.id}','vac')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Gestionar</button>`;
+        acciones = vpEsSoporte() ? `<button onclick="window.abrirAlfredoModal('${s.id}','vac')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Gestionar</button>` : '';
       } else if (esCleonForAlfredo) {
-        acciones = `<button onclick="window.abrirAlfredoModal('${s.id}','perm')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Gestionar</button>`;
+        acciones = vpEsSoporte() ? `<button onclick="window.abrirAlfredoModal('${s.id}','perm')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Gestionar</button>` : '';
       } else {
-        acciones = `${accionesFlujo}${evidenciaAccion}<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>`;
+        acciones = `${accionesFlujo}${evidenciaAccion}${vpPuedeEliminarSolicitud() ? `<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>` : ''}`;
       }
       html += `<tr style="background:${bg};border-bottom:1px solid #E8F5E9">
         <td style="padding:10px 12px">${tipoBadge}</td>
@@ -4514,6 +4551,7 @@
   };
 
   window.deleteVacPermById = async function(btn, tipo) {
+    if (!vpPuedeEliminarSolicitud()) { alert('Solo Soporte puede eliminar solicitudes.'); return; }
     if (tipo === 'vac') {
       // Vacaciones normales → vacation_requests
       const id = btn.getAttribute('data-vacid');
@@ -4769,7 +4807,7 @@
           ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
           ${sol.nota_alfredo ? `<div style="font-size:13px;color:#7A8C7A;margin-bottom:4px">💬 Tu nota: ${sol.nota_alfredo}</div>` : ''}
           <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar / Editar'}</button></div>
+        ${vpEsSoporte() ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar / Editar'}</button></div>` : ''}
         </div>`;
       }
       html += '</div>';
@@ -4825,7 +4863,7 @@
           <div style="font-size:12px;color:#7A8C7A;margin-bottom:4px">${horario}</div>
           ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
           <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','perm')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar / Editar'}</button></div>
+        ${vpEsSoporte() ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','perm')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar / Editar'}</button></div>` : ''}
         </div>`;
       }
       html += '</div>';
@@ -4834,7 +4872,7 @@
   }
 
   window.abrirAlfredoModal = async function(id, tipo) {
-    if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
+    if (!vpEsSoporte()) { alert('Solo Soporte puede gestionar solicitudes desde este apartado.'); return; }
     // tipo: 'vac' | 'perm'
     _alfredoSolActiva = null;
     let sol;
@@ -4925,6 +4963,7 @@
   }
 
   window.alfredoProponer = async function() {
+    if (!vpEsSoporte()) { alert('Solo Soporte puede modificar solicitudes desde este apartado.'); return; }
     if (!_alfredoSolActiva) return;
     const sol = _alfredoSolActiva;
     const inicio = document.getElementById('alfredoPropInicio')?.value || '';
@@ -4954,6 +4993,7 @@
   };
 
   window.alfredoResponder = async function(nuevoEstado) {
+    if (!vpEsSoporte()) { alert('Solo Soporte puede modificar solicitudes desde este apartado.'); return; }
     if (!_alfredoSolActiva) return;
     const nota = document.getElementById('alfredoNota').value.trim();
     const sol  = _alfredoSolActiva;
