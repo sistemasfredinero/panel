@@ -2156,6 +2156,33 @@
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  function activityCreatedTimestamp(record) {
+    const candidates = [record?.created_at, record?.timestamp, record?.fecha_hora_registro];
+    for (const value of candidates) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric >= new Date(2020, 0, 1).getTime()) return numeric;
+      if (typeof value !== 'string') continue;
+      const mexicanDate = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.\s*m\.|p\.\s*m\.|AM|PM)?)?$/i);
+      if (mexicanDate) {
+        const [, day, month, year, hours = '0', minutes = '0', seconds = '0', meridiem = ''] = mexicanDate;
+        let hour = Number(hours);
+        const normalizedMeridiem = meridiem.replace(/\s|\./g, '').toUpperCase();
+        if (normalizedMeridiem === 'PM' && hour < 12) hour += 12;
+        if (normalizedMeridiem === 'AM' && hour === 12) hour = 0;
+        const parsed = new Date(Number(year), Number(month) - 1, Number(day), hour, Number(minutes), Number(seconds)).getTime();
+        if (parsed >= new Date(2020, 0, 1).getTime()) return parsed;
+      }
+      const parsed = new Date(value).getTime();
+      if (Number.isFinite(parsed) && parsed >= new Date(2020, 0, 1).getTime()) return parsed;
+    }
+    return null;
+  }
+
+  function activityCreatedLabel(record) {
+    const timestamp = activityCreatedTimestamp(record);
+    return timestamp ? formatDate(timestamp) : 'Fecha de creación no disponible';
+  }
+
   function activityCanManageAll() {
     if (panelIsActivityOnlyUser()) return false;
     const email = String(auth.currentUser?.email || '').toLowerCase();
@@ -2356,7 +2383,7 @@
         const isRootFile = record.es_expediente_prospeccion === true || !record.seguimiento_de;
         if (isProspection && isRootFile) files.push(record);
       });
-      files.sort((a, b) => Number(b.actualizado_en || b.created_at || b.timestamp || 0) - Number(a.actualizado_en || a.created_at || a.timestamp || 0));
+      files.sort((a, b) => Number(b.actualizado_en || activityCreatedTimestamp(b) || 0) - Number(a.actualizado_en || activityCreatedTimestamp(a) || 0));
       _prospectAdminData = files;
       if (!files.length) {
         container.innerHTML = '<div style="background:#FFF;border:1px solid #FED7AA;border-radius:10px;padding:13px;color:#9A3412">No hay expedientes de Prospección registrados.</div>';
@@ -2366,14 +2393,16 @@
         const source = activityText(record.tipo_prospeccion === 'Otra' ? (record.tipo_prospeccion_otro || 'Otra') : (record.tipo_prospeccion || 'Sin especificar'));
         const status = activityText(prospectWorkflowLabel(record));
         const appointment = record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : 'Sin cita programada';
-        const created = new Date(Number(record.created_at || record.timestamp || 0));
+        const createdTimestamp = activityCreatedTimestamp(record);
+        const created = createdTimestamp ? new Date(createdTimestamp) : null;
         const today = new Date(); today.setHours(0, 0, 0, 0);
-        const createdDay = new Date(created); createdDay.setHours(0, 0, 0, 0);
-        const ageDays = Number.isNaN(created.getTime()) ? null : Math.max(0, Math.floor((today.getTime() - createdDay.getTime()) / 86400000));
+        const createdDay = created ? new Date(created) : null;
+        if (createdDay) createdDay.setHours(0, 0, 0, 0);
+        const ageDays = createdDay ? Math.max(0, Math.floor((today.getTime() - createdDay.getTime()) / 86400000)) : null;
         const ageLabel = ageDays === null ? 'Antigüedad no disponible' : ageDays === 0 ? 'Creada hoy' : `${ageDays} día${ageDays === 1 ? '' : 's'} pendiente`;
         const ageStyle = ageDays !== null && ageDays > 7 ? 'background:#FEE2E2;color:#B91C1C' : ageDays !== null && ageDays > 3 ? 'background:#FEF3C7;color:#92400E' : 'background:#DCFCE7;color:#166534';
         const verification = `Domiciliaria: ${activityText(record.verificacion_domiciliaria?.estado || 'Sin asignar')} · Comercial: ${activityText(record.verificacion_comercial?.requerida ? (record.verificacion_comercial?.estado || 'Sin asignar') : 'No requerida')}`;
-        return `<button type="button" onclick="window.viewActivityDetail('${record.id}')" style="width:100%;text-align:left;background:#FFF;border:1px solid #FED7AA;border-left:4px solid ${tone};border-radius:10px;padding:12px;margin-top:9px;cursor:pointer"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><div style="font-weight:900;color:#7C2D12">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto sin nombre')}</div><div style="font-size:12px;color:#9A3412;margin-top:3px">${activityText(record.plaza || 'Sin plaza')} · ${activityText(record.nombre_usuario || 'Sin responsable')} · ${formatDate(record.created_at || record.timestamp)}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${status}</span><span style="${ageStyle};border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${ageLabel}</span></div></div><div style="font-size:12px;color:#7C2D12;margin-top:8px">${source} · ${activityText(record.tipo_accion || 'Sin acción')} · ${appointment}</div><div style="font-size:12px;color:#9A3412;margin-top:4px">${verification}</div><div style="font-size:12px;color:#9A3412;margin-top:4px">Teléfono: ${activityText(record.telefono || '—')} · Referido: ${activityText(record.referido_interno || '—')}</div></button>`;
+        return `<button type="button" onclick="window.viewActivityDetail('${record.id}')" style="width:100%;text-align:left;background:#FFF;border:1px solid #FED7AA;border-left:4px solid ${tone};border-radius:10px;padding:12px;margin-top:9px;cursor:pointer"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><div style="font-weight:900;color:#7C2D12">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto sin nombre')}</div><div style="font-size:12px;color:#9A3412;margin-top:3px">${activityText(record.plaza || 'Sin plaza')} · ${activityText(record.nombre_usuario || 'Sin responsable')} · ${activityText(activityCreatedLabel(record))}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${status}</span><span style="${ageStyle};border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${ageLabel}</span></div></div><div style="font-size:12px;color:#7C2D12;margin-top:8px">${source} · ${activityText(record.tipo_accion || 'Sin acción')} · ${appointment}</div><div style="font-size:12px;color:#9A3412;margin-top:4px">${verification}</div><div style="font-size:12px;color:#9A3412;margin-top:4px">Teléfono: ${activityText(record.telefono || '—')} · Referido: ${activityText(record.referido_interno || '—')}</div></button>`;
       };
       const pending = files.filter(record => !PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record)) && prospectWorkflowStage(record) !== 'RECHAZADA_POR_PROSPECTO');
       const rejected = files.filter(record => prospectWorkflowStage(record) === 'RECHAZADA_POR_PROSPECTO');
