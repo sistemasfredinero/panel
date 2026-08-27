@@ -606,6 +606,7 @@
       <div class="filter-group"><label>Fecha inicial</label><input type="date" id="activityStartDate" /></div>
       <div class="filter-group"><label>Fecha final</label><input type="date" id="activityEndDate" /></div>
       <div class="filter-group"><label>Tipo</label><select id="activityType"><option value="">Todos</option><option value="COBRANZA">Cobranza</option><option value="PROSPECCION">Prospección</option></select></div>
+      <div class="filter-group"><label>Etapa de expediente</label><select id="activityProspectStage"><option value="">Todas</option><option value="CITA_PROGRAMADA">Cita programada</option><option value="PENDIENTE_RAFIK">Pendiente Círculo de Crédito</option><option value="PENDIENTE_ONBOARDING">Pendiente Onboarding</option><option value="PENDIENTE_ASIGNACION_GERENTE">Pendiente asignación</option><option value="PENDIENTE_VERIFICACION">Pendiente verificar</option><option value="PENDIENTE_VOBO_GERENTE">Pendiente VoBo Gerente</option><option value="PENDIENTE_REVISION_CREDITO_RIESGO">Pendiente Crédito y Riesgo</option><option value="DEVUELTA_A_GERENTE">Devuelta a Gerente</option><option value="AUTORIZADA">Autorizada</option><option value="PENDIENTE_ACTIVACION">Pendiente activación</option><option value="ALTA">Alta</option><option value="NO_ASISTIO">No asistió</option><option value="RECHAZADA_POR_PROSPECTO">Rechazada por prospecto</option><option value="RECHAZADA_CREDITO_RIESGO">Rechazada Crédito y Riesgo</option></select></div>
       <div class="filter-group"><label>Gestión / resultado</label><input id="activityAction" placeholder="Ej. Promesa de pago" style="min-width:180px" /></div>
       <div class="filter-group"><label>Rol</label><select id="activityRole"><option value="">Todos</option><option value="GERENTE">Gerente</option><option value="LIDER A">Líder A</option><option value="LIDER B">Líder B</option><option value="LIDER C">Líder C</option><option value="CANJES">Canjes</option><option value="GESTOR">Gestor</option><option value="GESTOR DE COBRANZA">Gestor de cobranza</option></select></div>
       <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
@@ -627,7 +628,7 @@
 
   <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:stretch;margin-bottom:18px">
     <div id="activityTodayAppointments" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:13px 17px;color:#065F46">⏳ Consultando las citas programadas para hoy...</div>
-    <button class="btn-export" style="background:#EA580C;align-self:center" onclick="window.openPendingProspectsModal()">📌 Pendientes de alta</button>
+    <button class="btn-export" style="background:#EA580C;align-self:center" onclick="window.openPendingProspectsModal()">📌 Expedientes de Prospección</button>
   </div>
 
   <details id="activityGraphicsSection" style="margin-bottom:18px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden" ontoggle="window.initializeActivityGraphics(this)">
@@ -661,8 +662,8 @@
 
 <div id="pendingProspectsModal" style="display:none;position:fixed;inset:0;z-index:1260;background:rgba(15,23,42,.55);overflow:auto;padding:28px">
   <div style="max-width:1050px;margin:0 auto;background:#FFF7ED;border:1px solid #FED7AA;border-radius:18px;padding:20px;box-shadow:0 24px 60px rgba(15,23,42,.25)">
-    <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:900;color:#9A3412">📌 Prospecciones pendientes de alta</div><div style="font-size:12px;color:#9A3412;margin-top:3px">Carga manual; no consulta datos al abrir Actividades.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closePendingProspectsModal()">✕ Cerrar</button></div>
-    <div style="margin-top:15px"><button class="btn-export" style="background:#EA580C" onclick="window.loadPendingProspects()">🔄 Cargar prospecciones pendientes</button><div id="pendingProspectsContainer" style="margin-top:14px;color:#7C2D12;font-size:13px">Presiona el botón para consultar los registros.</div></div>
+    <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:900;color:#9A3412">📌 Expedientes de Prospección</div><div style="font-size:12px;color:#9A3412;margin-top:3px">Consulta administrativa manual: pendientes, rechazos iniciales e historial completo de cierres.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closePendingProspectsModal()">✕ Cerrar</button></div>
+    <div style="margin-top:15px"><button class="btn-export" style="background:#EA580C" onclick="window.loadPendingProspects()">🔄 Cargar expedientes</button><div id="pendingProspectsContainer" style="margin-top:14px;color:#7C2D12;font-size:13px">Presiona el botón para consultar los expedientes.</div></div>
   </div>
 </div>
 
@@ -2109,6 +2110,7 @@
   // ── Actividades de Cobranza y Prospección ────────────────────────────────────
   let _activitiesData = [];
   let _activitiesFiltered = [];
+  let _prospectAdminData = [];
   let _activityProfile = null;
   let _annualFeedbackExport = null;
   let _activityPerformanceCollaborators = [];
@@ -2121,6 +2123,15 @@
     XALAPA: '#0891B2', PAPANTLA: '#BE123C', VALLES: '#4F46E5', SALTILLO: '#65A30D', ADMINISTRATIVO: '#A16207',
   };
   const ACTIVITY_ROUTE_COLORS = ['#7C3AED', '#2563EB', '#059669', '#EA580C', '#DC2626', '#0891B2', '#BE123C', '#4F46E5', '#65A30D', '#A16207'];
+  const PROSPECT_WORKFLOW_LABELS = {
+    CITA_PROGRAMADA: 'Cita programada', RECHAZADA_POR_PROSPECTO: 'Rechazada por prospecto', PENDIENTE_RAFIK: 'Pendiente de Círculo de Crédito', PENDIENTE_ONBOARDING: 'Pendiente de cargar Onboarding', PENDIENTE_ASIGNACION_GERENTE: 'Pendiente de asignación de Gerente', PENDIENTE_VERIFICACION: 'Pendiente de verificar', VERIFICACION_PARCIAL: 'Pendiente de verificar', PENDIENTE_VOBO_GERENTE: 'Pendiente de VoBo de Gerente', PENDIENTE_REVISION_CREDITO_RIESGO: 'Pendiente de Crédito y Riesgo', DEVUELTA_A_GERENTE: 'Devuelta a Gerente', AUTORIZADA: 'Autorizada', PENDIENTE_ACTIVACION: 'En espera de activación', ALTA: 'Alta', NO_ASISTIO: 'No asistió', RECHAZADA_CREDITO_RIESGO: 'Rechazada por Crédito y Riesgo'
+  };
+  const PROSPECT_FINAL_STAGES = new Set(['ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO']);
+  function prospectWorkflowStage(record) {
+    if (record?.estado_expediente) return String(record.estado_expediente);
+    return record?.se_agenda_cita ? 'CITA_PROGRAMADA' : 'RECHAZADA_POR_PROSPECTO';
+  }
+  function prospectWorkflowLabel(record) { const stage = prospectWorkflowStage(record); return PROSPECT_WORKFLOW_LABELS[stage] || stage; }
 
   function activityText(value) {
     return String(value == null ? '' : value)
@@ -2335,24 +2346,25 @@
 
   window.loadPendingProspects = async function() {
     const container = document.getElementById('pendingProspectsContainer');
-    container.innerHTML = '<div style="padding:8px 0;color:#9A3412">⏳ Cargando prospecciones pendientes de alta...</div>';
+    container.innerHTML = '<div style="padding:8px 0;color:#9A3412">⏳ Cargando expedientes de Prospección...</div>';
     try {
       const snap = await get(ref(database, 'gestor_activities'));
-      const pending = [];
+      const files = [];
       if (snap.exists()) snap.forEach(child => {
         const record = { id: child.key, ...(child.val() || {}) };
         const isProspection = normaliseActivityText(record.tipo || record.activity_type) === 'PROSPECCION';
-        const altaStatus = normaliseActivityText(record.estatus_alta || record.estado_alta || record.status_alta);
-        if (isProspection && altaStatus !== 'ALTA') pending.push(record);
+        const isRootFile = record.es_expediente_prospeccion === true || !record.seguimiento_de;
+        if (isProspection && isRootFile) files.push(record);
       });
-      pending.sort((a, b) => Number(b.created_at || b.timestamp || 0) - Number(a.created_at || a.timestamp || 0));
-      if (!pending.length) {
-        container.innerHTML = '<div style="background:#FFF;border:1px solid #FED7AA;border-radius:10px;padding:13px;color:#9A3412">No hay prospecciones pendientes de alta.</div>';
+      files.sort((a, b) => Number(b.actualizado_en || b.created_at || b.timestamp || 0) - Number(a.actualizado_en || a.created_at || a.timestamp || 0));
+      _prospectAdminData = files;
+      if (!files.length) {
+        container.innerHTML = '<div style="background:#FFF;border:1px solid #FED7AA;border-radius:10px;padding:13px;color:#9A3412">No hay expedientes de Prospección registrados.</div>';
         return;
       }
-      const rows = pending.map(record => {
+      const renderFile = (record, tone = '#EA580C') => {
         const source = activityText(record.tipo_prospeccion === 'Otra' ? (record.tipo_prospeccion_otro || 'Otra') : (record.tipo_prospeccion || 'Sin especificar'));
-        const status = activityText(record.estatus_alta || record.estado_alta || record.status_alta || 'Pendiente de alta');
+        const status = activityText(prospectWorkflowLabel(record));
         const appointment = record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : 'Sin cita programada';
         const created = new Date(Number(record.created_at || record.timestamp || 0));
         const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -2360,9 +2372,14 @@
         const ageDays = Number.isNaN(created.getTime()) ? null : Math.max(0, Math.floor((today.getTime() - createdDay.getTime()) / 86400000));
         const ageLabel = ageDays === null ? 'Antigüedad no disponible' : ageDays === 0 ? 'Creada hoy' : `${ageDays} día${ageDays === 1 ? '' : 's'} pendiente`;
         const ageStyle = ageDays !== null && ageDays > 7 ? 'background:#FEE2E2;color:#B91C1C' : ageDays !== null && ageDays > 3 ? 'background:#FEF3C7;color:#92400E' : 'background:#DCFCE7;color:#166534';
-        return `<div style="background:#FFF;border:1px solid #FED7AA;border-left:4px solid #EA580C;border-radius:10px;padding:12px;margin-top:9px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><div style="font-weight:900;color:#7C2D12">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto sin nombre')}</div><div style="font-size:12px;color:#9A3412;margin-top:3px">${activityText(record.plaza || 'Sin plaza')} · ${activityText(record.nombre_usuario || 'Sin responsable')} · ${formatDate(record.created_at || record.timestamp)}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${status}</span><span style="${ageStyle};border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${ageLabel}</span></div></div><div style="font-size:12px;color:#7C2D12;margin-top:8px">${source} · ${activityText(record.tipo_accion || 'Sin acción')} · ${appointment}</div><div style="font-size:12px;color:#9A3412;margin-top:4px">Teléfono: ${activityText(record.telefono || '—')} · Referido: ${activityText(record.referido_interno || '—')}</div></div>`;
-      }).join('');
-      container.innerHTML = `<div style="font-weight:900;color:#9A3412;margin-bottom:8px">${pending.length} prospección(es) pendiente(s) de alta</div>${rows}`;
+        const verification = `Domiciliaria: ${activityText(record.verificacion_domiciliaria?.estado || 'Sin asignar')} · Comercial: ${activityText(record.verificacion_comercial?.requerida ? (record.verificacion_comercial?.estado || 'Sin asignar') : 'No requerida')}`;
+        return `<button type="button" onclick="window.viewActivityDetail('${record.id}')" style="width:100%;text-align:left;background:#FFF;border:1px solid #FED7AA;border-left:4px solid ${tone};border-radius:10px;padding:12px;margin-top:9px;cursor:pointer"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><div style="font-weight:900;color:#7C2D12">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto sin nombre')}</div><div style="font-size:12px;color:#9A3412;margin-top:3px">${activityText(record.plaza || 'Sin plaza')} · ${activityText(record.nombre_usuario || 'Sin responsable')} · ${formatDate(record.created_at || record.timestamp)}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${status}</span><span style="${ageStyle};border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${ageLabel}</span></div></div><div style="font-size:12px;color:#7C2D12;margin-top:8px">${source} · ${activityText(record.tipo_accion || 'Sin acción')} · ${appointment}</div><div style="font-size:12px;color:#9A3412;margin-top:4px">${verification}</div><div style="font-size:12px;color:#9A3412;margin-top:4px">Teléfono: ${activityText(record.telefono || '—')} · Referido: ${activityText(record.referido_interno || '—')}</div></button>`;
+      };
+      const pending = files.filter(record => !PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record)) && prospectWorkflowStage(record) !== 'RECHAZADA_POR_PROSPECTO');
+      const rejected = files.filter(record => prospectWorkflowStage(record) === 'RECHAZADA_POR_PROSPECTO');
+      const history = files.filter(record => PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record)));
+      const section = (title, items, tone, empty) => `<section style="margin-top:17px"><div style="font-weight:900;color:#7C2D12;margin-bottom:7px">${title} <span style="font-size:12px;font-weight:800;color:#9A3412">(${items.length})</span></div>${items.length ? items.map(record => renderFile(record, tone)).join('') : `<div style="background:#FFF;border:1px dashed #FED7AA;border-radius:10px;padding:12px;color:#9A3412;font-size:12px">${empty}</div>`}</section>`;
+      container.innerHTML = section('Pendientes', pending, '#EA580C', 'No hay expedientes pendientes.') + section('Rechazadas por prospecto', rejected, '#B45309', 'No hay rechazos iniciales.') + section('Historial administrativo completo', history, '#64748B', 'No hay expedientes finalizados.');
     } catch (error) {
       container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:13px;color:#B91C1C">❌ No se pudieron cargar las prospecciones: ${activityText(error.message)}</div>`;
     }
@@ -2751,6 +2768,7 @@
 
   window.renderActivities = function() {
     const type = document.getElementById('activityType').value;
+    const prospectStage = document.getElementById('activityProspectStage').value;
     const role = normaliseActivityText(document.getElementById('activityRole').value);
     const plaza = normaliseActivityText(document.getElementById('activityPlaza').value);
     const action = normaliseActivityText(document.getElementById('activityAction').value);
@@ -2763,7 +2781,7 @@
         record.gestion_realizada, record.tipo_accion, record.nombre_contacto, record.nombre_prospecto,
         record.motivos_no_cita && record.motivos_no_cita.join(' '), record.comentarios, record.observaciones,
       ].filter(Boolean).join(' '));
-      return (!type || recordType === type) && (!role || recordRole === role) && (!plaza || recordPlaza === plaza)
+      return (!type || recordType === type) && (!prospectStage || (recordType === 'PROSPECCION' && prospectWorkflowStage(record) === prospectStage)) && (!role || recordRole === role) && (!plaza || recordPlaza === plaza)
         && (!action || searchable.includes(action)) && matchesActivityUser(record, userSearch);
     });
     document.getElementById('activityTotal').textContent = _activitiesFiltered.length;
@@ -2794,7 +2812,7 @@
       const typeBg = cobranza ? '#DCFCE7' : '#DBEAFE';
       const subDetail = cobranza
         ? `${activityText(record.se_visita_a || '—')}${record.numero_cliente ? ` · Cliente ${activityText(record.numero_cliente)}` : ''}`
-        : `${record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : `Sin cita${record.motivos_no_cita?.length ? ` · ${activityText(record.motivos_no_cita.join(', '))}` : ''}`}`;
+        : `${activityText(prospectWorkflowLabel(record))} · ${record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : `Sin cita${record.motivos_no_cita?.length ? ` · ${activityText(record.motivos_no_cita.join(', '))}` : ''}`}`;
       return `<div class="rec-card" style="border-left-color:${typeColor};align-items:flex-start">
         <div class="tipo-badge" style="background:${typeBg};color:${typeColor}">${cobranza ? 'Cobranza' : 'Prospección'}</div>
         <div class="rec-info"><div class="rec-nombre">${counterpart}</div><div class="rec-correo">${responsible} · ${activityText(record.correo_usuario || '—')}</div>
@@ -2874,14 +2892,15 @@
   };
 
   window.viewActivityDetail = function(id) {
-    const record = _activitiesFiltered.find(x => x.id === id); if (!record) return;
+    const record = _activitiesFiltered.find(x => x.id === id) || _prospectAdminData.find(x => x.id === id); if (!record) return;
     const rows = record.tipo === 'COBRANZA'
       ? [['Se atiende a', record.se_visita_a], ['Número de cliente', record.numero_cliente], ['Nombre', record.nombre_contacto], ['Gestión', record.gestion_realizada], ['Monto', record.monto], ['Folio', record.folio_recibo], ['Fecha de promesa', record.fecha_promesa], ['Comentarios', record.comentarios]]
-      : [['Prospecto', record.nombre_prospecto], ['Dirección', record.direccion], ['Teléfono', record.telefono], ['Referido interno', record.referido_interno], ['Tipo de Prospección', record.tipo_prospeccion], ['Otro tipo de Prospección', record.tipo_prospeccion_otro], ['Acción', record.tipo_accion], ['Cita agendada', record.se_agenda_cita ? 'Sí' : 'No'], ['Fecha / hora de cita', `${record.fecha_cita || '—'} ${record.hora_cita || ''}`], ['Responsable de cita', record.responsable_cita_nombre], ['Gerente de cita', record.gerente_cita_nombre], ['Motivos', Array.isArray(record.motivos_no_cita) ? record.motivos_no_cita.join(', ') : '—'], ['Observaciones', record.observaciones], ['Seguimiento', record.es_seguimiento ? `Sí · #${record.numero_seguimiento || '—'}` : 'Registro inicial']];
+      : [['Prospecto', record.nombre_prospecto], ['Dirección', record.direccion], ['Teléfono', record.telefono], ['Referido interno', record.referido_interno], ['Tipo de Prospección', record.tipo_prospeccion], ['Otro tipo de Prospección', record.tipo_prospeccion_otro], ['Acción', record.tipo_accion], ['Etapa del expediente', prospectWorkflowLabel(record)], ['Consulta Rafik completada', record.consulta_rafik_completada ? 'Sí' : 'No'], ['Comentarios de documentación', record.comentarios_documentacion], ['Verificación domiciliaria', `${record.verificacion_domiciliaria?.estado || 'Sin asignar'} · ${record.verificacion_domiciliaria?.asignado_nombre || '—'}${record.verificacion_domiciliaria?.comentarios ? ` · ${record.verificacion_domiciliaria.comentarios}` : ''}`], ['Verificación comercial', record.verificacion_comercial?.requerida ? `${record.verificacion_comercial?.estado || 'Sin asignar'} · ${record.verificacion_comercial?.asignado_nombre || '—'}${record.verificacion_comercial?.comentarios ? ` · ${record.verificacion_comercial.comentarios}` : ''}` : 'No requerida'], ['Motivo de devolución Crédito y Riesgo', record.motivo_devolucion_credito], ['Motivo de rechazo Crédito y Riesgo', record.motivo_rechazo_credito], ['Fecha / hora de activación', `${record.fecha_activacion || '—'} ${record.hora_activacion || ''}`], ['Cita agendada', record.se_agenda_cita ? 'Sí' : 'No'], ['Fecha / hora de cita', `${record.fecha_cita || '—'} ${record.hora_cita || ''}`], ['Motivos', Array.isArray(record.motivos_no_cita) ? record.motivos_no_cita.join(', ') : '—'], ['Observaciones', record.observaciones], ['Seguimiento', record.es_seguimiento ? `Sí · #${record.numero_seguimiento || '—'}` : 'Registro inicial']];
     const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div style="margin-bottom:7px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
     document.getElementById('modalTitle').textContent = `Actividad de ${record.tipo === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
     document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.6"><div style="background:#F3F4F6;padding:10px;border-radius:8px;margin-bottom:12px"><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Rol / plaza:</b> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}</div>${detail}</div>`;
+    const history = record.tipo === 'PROSPECCION' ? Object.values(record.historial_expediente || {}).sort((a, b) => Number(b.fecha || 0) - Number(a.fecha || 0)).map(entry => `<div style="border-left:3px solid #2563EB;background:#F7FAFF;padding:7px 9px;margin-top:6px"><b>${activityText(PROSPECT_WORKFLOW_LABELS[entry.etapa] || entry.etapa || 'Actualización')}</b><br><span style="font-size:12px;color:#64748B">${activityText(new Date(Number(entry.fecha || 0)).toLocaleString('es-MX'))} · ${activityText(entry.usuario_nombre || 'Usuario')}</span>${entry.comentario ? `<br><span style="font-size:12px">${activityText(entry.comentario)}</span>` : ''}</div>`).join('') : '';
+    document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.6"><div style="background:#F3F4F6;padding:10px;border-radius:8px;margin-bottom:12px"><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Rol / plaza:</b> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}</div>${detail}${history ? `<div style="margin-top:13px"><b>Bitácora completa del expediente</b>${history}</div>` : ''}</div>`;
     document.getElementById('photoModal').classList.add('active');
   };
 
