@@ -2158,7 +2158,8 @@
   }
 
   function activityCreatedTimestamp(record) {
-    const candidates = [record?.created_at, record?.timestamp, record?.fecha_hora_registro];
+    const historyDates = Object.values(record?.historial_expediente || {}).map(entry => entry?.fecha);
+    const candidates = [record?.created_at, record?.timestamp, record?.fecha_hora_registro, ...historyDates];
     for (const value of candidates) {
       const numeric = Number(value);
       if (Number.isFinite(numeric) && numeric >= new Date(2020, 0, 1).getTime()) return numeric;
@@ -2680,20 +2681,16 @@
     if (start > end) { alert('La fecha inicial no puede ser posterior a la fecha final.'); return; }
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">⏳ Cargando actividades...</div>';
     try {
-      let snap;
-      try {
-        snap = await get(query(ref(database, 'gestor_activities'), orderByChild('created_at'), startAt(start), endAt(end)));
-      } catch (indexedError) {
-        // Compatibilidad durante la transición, mientras se publica el índice de created_at.
-        snap = await get(ref(database, 'gestor_activities'));
-      }
+      // Se consulta el nodo completo para conservar visibilidad de expedientes creados
+      // antes de que todas las actividades guardaran created_at de forma uniforme.
+      const snap = await get(ref(database, 'gestor_activities'));
       _activitiesData = [];
       if (snap.exists()) snap.forEach(child => {
         const record = child.val() || {};
-        const timestamp = Number(record.created_at || record.timestamp || 0);
-        if (timestamp >= start && timestamp <= end && isInManagerActivityScope(record)) _activitiesData.push({ id: child.key, ...record });
+        const timestamp = activityCreatedTimestamp(record);
+        if (timestamp !== null && timestamp >= start && timestamp <= end && isInManagerActivityScope(record)) _activitiesData.push({ id: child.key, ...record });
       });
-      _activitiesData.sort((a, b) => Number(b.created_at || b.timestamp || 0) - Number(a.created_at || a.timestamp || 0));
+      _activitiesData.sort((a, b) => Number(activityCreatedTimestamp(b) || 0) - Number(activityCreatedTimestamp(a) || 0));
       window.renderActivities();
     } catch (error) {
       document.getElementById('activitiesTableContainer').innerHTML = `<div class="loading" style="color:#B91C1C">❌ Error al cargar actividades: ${activityText(error.message)}</div>`;
