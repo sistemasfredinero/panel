@@ -1020,6 +1020,13 @@
     });
   }
 
+  function applyRequestManagementAccess() {
+    const canManageRequests = vpEsSoporte();
+    document.querySelectorAll('[data-request-management-control]').forEach(control => {
+      control.style.display = canManageRequests ? '' : 'none';
+    });
+  }
+
   function privacyIsSupport() {
     return String(auth.currentUser?.email || '').trim().toLowerCase() === 'soporte@fredinero.com';
   }
