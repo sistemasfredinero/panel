@@ -655,6 +655,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:#fff;border:1px solid #DCE7E2;border-radius:14px;padding:12px 14px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(-1)">← Mes anterior</button><div id="prospectCalendarTitle" style="font-size:19px;font-weight:900;color:#0F172A;text-transform:capitalize"></div><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(1)">Mes siguiente →</button></div>
     <div id="prospectCalendarLegend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
     <div id="prospectCalendarGrid" style="min-width:920px;display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:8px"></div>
+    <section id="prospectCalendarDayDetail" style="display:none;margin-top:18px;background:#fff;border:1px solid #DCE7E2;border-radius:16px;padding:18px;box-shadow:0 8px 22px rgba(15,23,42,.06)"></section>
   </div>
 </div>
 
@@ -2107,6 +2108,7 @@
   let activityRoutesMapInstance = null;
   let _prospectCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let _prospectCalendarAppointments = [];
+  let _prospectCalendarSelectedDate = '';
   const PROSPECT_CALENDAR_COLORS = {
     TAMPICO: '#2563EB', MADERO: '#7C3AED', MANTE: '#059669', POZA: '#EA580C', TUXPAN: '#DC2626',
     XALAPA: '#0891B2', PAPANTLA: '#BE123C', VALLES: '#4F46E5', SALTILLO: '#65A30D', ADMINISTRATIVO: '#A16207',
@@ -2683,16 +2685,20 @@
     const offset = (month.getDay() + 6) % 7;
     const totalDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
     const cells = [];
-    for (let i = 0; i < offset; i += 1) cells.push('<div style="min-height:132px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
+    for (let i = 0; i < offset; i += 1) cells.push('<div style="min-height:104px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
     for (let day = 1; day <= totalDays; day += 1) {
       const dateKey = prospectDateKey(new Date(month.getFullYear(), month.getMonth(), day));
       const events = _prospectCalendarAppointments.filter(item => prospectDateKey(new Date(Number(item.cita_timestamp))) === dateKey);
-      const eventHtml = events.map(item => `<button title="Abrir detalle de cita" onclick="window.viewProspectCalendarAppointment('${item.id}')" style="width:100%;text-align:left;margin-top:6px;border:0;border-left:4px solid ${prospectColor(item.plaza)};background:#fff;padding:7px 8px;border-radius:7px;box-shadow:0 1px 2px rgba(15,23,42,.08);cursor:pointer;color:#172033"><div style="font-size:11px;font-weight:900">${activityText(prospectTime(item.cita_timestamp))} · ${activityText(item.nombre_prospecto || 'Prospecto')}</div><div style="font-size:10px;color:#64748B;margin-top:2px">${activityText(item.plaza || 'Sin plaza')} · ${activityText(item.responsable_cita_nombre || item.nombre_usuario || 'Sin responsable')}</div></button>`).join('');
-      cells.push(`<div style="min-height:132px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:9px;overflow:hidden"><div style="font-size:13px;font-weight:900;color:${events.length ? '#0F172A' : '#94A3B8'}">${day}</div>${eventHtml}</div>`);
+      const selected = _prospectCalendarSelectedDate === dateKey;
+      const eventCounter = events.length ? `<button type="button" onclick="window.selectProspectCalendarDay('${dateKey}')" style="margin-top:10px;width:100%;border:0;border-radius:8px;background:${selected ? '#0F766E' : '#ECFDF5'};color:${selected ? '#fff' : '#047857'};padding:8px;font-size:12px;font-weight:900;cursor:pointer">${events.length} cita${events.length === 1 ? '' : 's'} · Ver día</button>` : '';
+      cells.push(`<div style="min-height:104px;background:${selected ? '#F0FDFA' : '#fff'};border:1px solid ${selected ? '#0F766E' : '#E2E8F0'};border-radius:10px;padding:9px;overflow:hidden"><div style="font-size:13px;font-weight:900;color:${events.length ? '#0F172A' : '#94A3B8'}">${day}</div>${eventCounter}</div>`);
     }
     const tail = (7 - ((offset + totalDays) % 7)) % 7;
-    for (let i = 0; i < tail; i += 1) cells.push('<div style="min-height:132px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
+    for (let i = 0; i < tail; i += 1) cells.push('<div style="min-height:104px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
     document.getElementById('prospectCalendarGrid').innerHTML = headers + cells.join('');
+    const selectedDate = _prospectCalendarSelectedDate;
+    if (selectedDate && selectedDate.slice(0, 7) === `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`) renderProspectCalendarDayDetail(selectedDate);
+    else document.getElementById('prospectCalendarDayDetail').style.display = 'none';
   }
 
   window.openProspectAppointmentsCalendar = async function() {
@@ -2702,6 +2708,32 @@
   };
   window.closeProspectAppointmentsCalendar = function() { document.getElementById('prospectCalendarModal').style.display = 'none'; };
   window.moveProspectCalendar = async function(delta) { _prospectCalendarMonth = new Date(_prospectCalendarMonth.getFullYear(), _prospectCalendarMonth.getMonth() + Number(delta || 0), 1); await loadProspectCalendar(); };
+  window.selectProspectCalendarDay = function(dateKey) {
+    _prospectCalendarSelectedDate = dateKey;
+    renderProspectCalendar();
+    document.getElementById('prospectCalendarDayDetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  window.moveProspectCalendarDay = async function(delta) {
+    const selected = _prospectCalendarSelectedDate ? new Date(`${_prospectCalendarSelectedDate}T12:00:00`) : new Date();
+    selected.setDate(selected.getDate() + Number(delta || 0));
+    _prospectCalendarSelectedDate = prospectDateKey(selected);
+    const nextMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
+    if (nextMonth.getTime() !== _prospectCalendarMonth.getTime()) {
+      _prospectCalendarMonth = nextMonth;
+      await loadProspectCalendar();
+      return;
+    }
+    renderProspectCalendar();
+  };
+  function renderProspectCalendarDayDetail(dateKey) {
+    const panel = document.getElementById('prospectCalendarDayDetail');
+    const selected = new Date(`${dateKey}T12:00:00`);
+    const events = _prospectCalendarAppointments.filter(item => prospectDateKey(new Date(Number(item.cita_timestamp))) === dateKey);
+    const heading = selected.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const list = events.length ? events.map(item => `<button type="button" onclick="window.viewProspectCalendarAppointment('${item.id}')" style="width:100%;text-align:left;border:1px solid #E2E8F0;border-left:5px solid ${prospectColor(item.plaza)};background:#fff;border-radius:10px;padding:12px 14px;margin-top:9px;cursor:pointer;color:#172033"><div style="display:flex;justify-content:space-between;gap:14px;align-items:start"><div><div style="font-size:15px;font-weight:900">${activityText(item.nombre_prospecto || 'Prospecto')}</div><div style="font-size:13px;color:#475569;margin-top:4px">${activityText(prospectTime(item.cita_timestamp))} · ${activityText(item.plaza || 'Sin plaza')}</div><div style="font-size:12px;color:#64748B;margin-top:3px">Responsable: ${activityText(item.responsable_cita_nombre || item.nombre_usuario || 'Sin responsable')}</div></div><span style="font-size:12px;font-weight:800;color:#0F766E;white-space:nowrap">Ver detalle →</span></div></button>`).join('') : '<div style="margin-top:14px;color:#64748B;font-size:14px">No hay citas programadas para esta fecha.</div>';
+    panel.style.display = 'block';
+    panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><div style="font-size:18px;font-weight:900;color:#0F172A;text-transform:capitalize">Citas del ${activityText(heading)}</div><div style="font-size:13px;color:#64748B;margin-top:4px">${events.length} cita${events.length === 1 ? '' : 's'} programada${events.length === 1 ? '' : 's'}.</div></div><div style="display:flex;gap:8px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendarDay(-1)">← Día anterior</button><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendarDay(1)">Día siguiente →</button></div></div><div>${list}</div>`;
+  }
   window.viewProspectCalendarAppointment = function(id) {
     const record = _prospectCalendarAppointments.find(item => item.id === id); if (!record) return;
     document.getElementById('modalTitle').textContent = 'Cita de Prospección';
