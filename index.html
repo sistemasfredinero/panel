@@ -2148,6 +2148,16 @@
     if (entry?.etapa === 'PENDIENTE_ONBOARDING') return [['Comentarios de documentación', record?.comentarios_documentacion], ['Verificación domiciliaria', 'Requerida'], ['Verificación comercial', record?.verificacion_comercial?.requerida ? 'Requerida' : 'No requerida']].filter(([, value]) => value !== undefined && value !== null && value !== '');
     return [];
   }
+  function completedProspectHistoryStage(entry) {
+    const detail = entry?.detalle || {};
+    if (entry?.etapa === 'PENDIENTE_DOCUMENTACION' && detail['Rafik / Círculo de Crédito']) return 'PENDIENTE_RAFIK';
+    if (entry?.etapa === 'PENDIENTE_ONBOARDING' && detail['Comentarios de documentación']) return 'CITA_PROGRAMADA';
+    if (entry?.etapa === 'PENDIENTE_ASIGNACION_GERENTE' && detail.Onboarding) return 'PENDIENTE_ONBOARDING';
+    if ((entry?.etapa === 'PENDIENTE_VERIFICACION' || entry?.etapa === 'PENDIENTE_VOBO_GERENTE') && detail['Verificación domiciliaria']) return 'PENDIENTE_ASIGNACION_GERENTE';
+    if ((entry?.etapa === 'VERIFICACION_PARCIAL' || entry?.etapa === 'PENDIENTE_VOBO_GERENTE') && detail.Verificación) return 'PENDIENTE_VERIFICACION';
+    if (entry?.etapa === 'PENDIENTE_REVISION_CREDITO_RIESGO' && detail['VoBo de Gerente']) return 'PENDIENTE_VOBO_GERENTE';
+    return entry?.etapa;
+  }
 
   function activityText(value) {
     return String(value == null ? '' : value)
@@ -2941,7 +2951,7 @@
     const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div style="margin-bottom:7px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
     document.getElementById('modalTitle').textContent = `Actividad de ${record.tipo === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
     document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    const history = record.tipo === 'PROSPECCION' ? (() => { const entries = Object.values(record.historial_expediente || {}).sort((a, b) => Number(b.fecha || 0) - Number(a.fecha || 0)); return entries.map((entry, index) => { const detailRows = prospectHistoryDetails(entry, record, index === entries.length - 1).map(([label, value]) => `<div style="margin-top:5px;padding-top:5px;border-top:1px solid #DCE7F8;font-size:12px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join(''); return `<div style="border-left:3px solid #2563EB;background:#F7FAFF;padding:7px 9px;margin-top:6px"><b>${activityText(PROSPECT_WORKFLOW_LABELS[entry.etapa] || entry.etapa || 'Actualización')}</b><br><span style="font-size:12px;color:#64748B">${activityText(new Date(Number(entry.fecha || 0)).toLocaleString('es-MX'))} · ${activityText(entry.usuario_nombre || 'Usuario')}</span>${entry.comentario ? `<br><span style="font-size:12px">${activityText(entry.comentario)}</span>` : ''}${detailRows}</div>`; }).join(''); })() : '';
+    const history = record.tipo === 'PROSPECCION' ? (() => { const entries = Object.values(record.historial_expediente || {}).sort((a, b) => Number(b.fecha || 0) - Number(a.fecha || 0)); return entries.map((entry, index) => { const detailRows = prospectHistoryDetails(entry, record, index === entries.length - 1).map(([label, value]) => `<div style="margin-top:5px;padding-top:5px;border-top:1px solid #DCE7F8;font-size:12px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join(''); const completedStage = completedProspectHistoryStage(entry); return `<div style="border-left:3px solid #2563EB;background:#F7FAFF;padding:7px 9px;margin-top:6px"><b>${activityText(PROSPECT_WORKFLOW_LABELS[completedStage] || completedStage || 'Actualización')}</b><br><span style="font-size:12px;color:#64748B">${activityText(new Date(Number(entry.fecha || 0)).toLocaleString('es-MX'))} · ${activityText(entry.usuario_nombre || 'Usuario')}</span>${entry.comentario ? `<br><span style="font-size:12px">${activityText(entry.comentario)}</span>` : ''}${detailRows}</div>`; }).join(''); })() : '';
     document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.6"><div style="background:#F3F4F6;padding:10px;border-radius:8px;margin-bottom:12px"><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Rol / plaza:</b> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}</div>${detail}${history ? `<div style="margin-top:13px"><b>Bitácora completa del expediente</b>${history}</div>` : ''}</div>`;
     document.getElementById('photoModal').classList.add('active');
   };
