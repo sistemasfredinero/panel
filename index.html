@@ -225,12 +225,25 @@
       padding: clamp(12px, 3vw, 28px); overflow: auto;
     }
     #photoModal .modal-box {
-      width: min(920px, 100%); max-width: 920px;
-      max-height: calc(100dvh - 24px); margin: auto;
-      display: flex; flex-direction: column; overflow: hidden;
+      width: min(760px, 100%); max-width: 760px;
+      height: min(82dvh, 820px); max-height: calc(100dvh - 24px); margin: 0;
+      display: flex; flex-direction: column; overflow: hidden; padding: 20px;
     }
     #photoModal .modal-img { max-height: min(42dvh, 400px); flex: 0 1 auto; }
-    #photoModal .modal-info { min-height: 0; overflow-y: auto; padding-right: 8px; }
+    #photoModal .modal-info { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding-right: 8px; margin-top: 4px; }
+    #photoModal .modal-close { flex: 0 0 auto; margin-top: 12px; }
+    .activity-detail { max-width: 680px; margin: 0 auto; padding: 2px 2px 8px; }
+    .activity-detail-summary { background: linear-gradient(135deg, #F0FDF4, #F8FAFC); border: 1px solid #DCE7E0; border-radius: 12px; padding: 12px 14px; margin-bottom: 13px; line-height: 1.55; font-size: 13px; }
+    .activity-detail-summary strong { color: #166534; }
+    .activity-detail-prospect { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 14px; }
+    .activity-detail-name { font-size: 16px; font-weight: 900; color: #1E293B; }
+    .activity-detail-stage { display: inline-flex; align-items: center; border-radius: 999px; padding: 5px 10px; background: #EDE9FE; color: #5B21B6; font-size: 12px; font-weight: 900; }
+    .activity-detail-history-title { color: #1A7A3C; font-size: 14px; font-weight: 900; margin: 18px 0 8px; }
+    .activity-history-entry { border-left: 3px solid #2563EB; background: #F8FBFF; border-radius: 0 10px 10px 0; padding: 10px 12px; margin-top: 8px; }
+    .activity-history-entry-title { color: #1E3A5F; font-size: 13px; font-weight: 900; }
+    .activity-history-entry-meta { color: #64748B; font-size: 11px; margin-top: 3px; }
+    .activity-history-entry-comment { color: #334155; font-size: 12px; margin-top: 6px; line-height: 1.45; }
+    .activity-history-entry-detail { margin-top: 6px; padding-top: 6px; border-top: 1px solid #DCE7F8; color: #475569; font-size: 12px; line-height: 1.4; }
     .modal-box {
       background: #fff; border-radius: 16px; padding: 24px;
       max-width: 420px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
@@ -2164,13 +2177,26 @@
   }
   function completedProspectHistoryStage(entry, record = {}) {
     const detail = entry?.detalle || {};
-    if (entry?.etapa === 'PENDIENTE_DOCUMENTACION' && detail['Rafik / Círculo de Crédito']) return 'PENDIENTE_RAFIK';
-    if (entry?.etapa === 'PENDIENTE_ONBOARDING' && (detail['Comentarios de documentación'] || record?.comentarios_documentacion)) return 'CITA_PROGRAMADA';
-    if (entry?.etapa === 'PENDIENTE_ASIGNACION_GERENTE' && (detail.Onboarding || record?.onboarding_confirmado)) return 'PENDIENTE_ONBOARDING';
-    if ((entry?.etapa === 'PENDIENTE_VERIFICACION' || entry?.etapa === 'PENDIENTE_VOBO_GERENTE') && (detail['Verificación domiciliaria'] || record?.verificacion_domiciliaria?.asignado_uid)) return 'PENDIENTE_ASIGNACION_GERENTE';
-    if ((entry?.etapa === 'VERIFICACION_PARCIAL' || entry?.etapa === 'PENDIENTE_VOBO_GERENTE') && (detail.Verificación || record?.verificacion_domiciliaria?.comentarios || record?.verificacion_comercial?.comentarios)) return 'PENDIENTE_VERIFICACION';
-    if (entry?.etapa === 'PENDIENTE_REVISION_CREDITO_RIESGO' && (detail['VoBo de Gerente'] || record?.vobo_gerente_en)) return 'PENDIENTE_VOBO_GERENTE';
+    const comment = String(entry?.comentario || '').toLowerCase();
+    const hasDetails = Object.keys(detail).length > 0;
+    if (detail['VoBo de Gerente'] || (comment.includes('gerente') && comment.includes('otorgó vobo'))) return 'PENDIENTE_VOBO_GERENTE';
+    if (detail.Verificación || (comment.includes('verificación') && comment.includes('completada'))) return 'PENDIENTE_VERIFICACION';
+    if (detail['Verificación domiciliaria'] || detail['Verificación comercial'] || (comment.includes('asignó') && comment.includes('responsable'))) return 'PENDIENTE_ASIGNACION_GERENTE';
+    if (detail.Onboarding || comment.includes('cargó en onboarding')) return 'PENDIENTE_ONBOARDING';
+    if (detail['Comentarios de documentación'] || comment.includes('registró documentación')) return 'CITA_PROGRAMADA';
+    if (detail['Rafik / Círculo de Crédito']) return 'PENDIENTE_RAFIK';
+    if (!hasDetails && entry?.etapa === 'PENDIENTE_ONBOARDING' && record?.comentarios_documentacion) return 'CITA_PROGRAMADA';
+    if (!hasDetails && entry?.etapa === 'PENDIENTE_ASIGNACION_GERENTE' && record?.onboarding_confirmado) return 'PENDIENTE_ONBOARDING';
     return entry?.etapa;
+  }
+
+  function prospectHistoryDisplayLabel(entry, record = {}) {
+    const detail = entry?.detalle || {};
+    const comment = String(entry?.comentario || '').toLowerCase();
+    if (detail['VoBo de Crédito y Riesgo'] || (comment.includes('crédito y riesgo') && comment.includes('otorgó vobo'))) return 'VoBo de Crédito y Riesgo';
+    if (detail['VoBo de Gerente'] || (comment.includes('gerente') && comment.includes('otorgó vobo'))) return 'VoBo de Gerente';
+    if (detail.Verificación || (comment.includes('verificación') && comment.includes('completada'))) return 'Verificación';
+    return PROSPECT_WORKFLOW_LABELS[completedProspectHistoryStage(entry, record)] || entry?.etapa || 'Actualización';
   }
 
   function activityText(value) {
@@ -2972,11 +2998,12 @@
     const rows = record.tipo === 'COBRANZA'
       ? [['Se atiende a', record.se_visita_a], ['Número de cliente', record.numero_cliente], ['Nombre', record.nombre_contacto], ['Gestión', record.gestion_realizada], ['Monto', record.monto], ['Folio', record.folio_recibo], ['Fecha de promesa', record.fecha_promesa], ['Comentarios', record.comentarios]]
       : [['Prospecto', record.nombre_prospecto], ['Etapa del expediente', prospectWorkflowLabel(record)]];
-    const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div style="margin-bottom:7px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
+    const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div class="activity-detail-field"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
     document.getElementById('modalTitle').textContent = `Actividad de ${record.tipo === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
     document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    const history = record.tipo === 'PROSPECCION' ? (() => { const entries = Object.values(record.historial_expediente || {}).sort((a, b) => Number(b.fecha || 0) - Number(a.fecha || 0)); return entries.map((entry, index) => { const detailRows = prospectHistoryDetails(entry, record, index === entries.length - 1).map(([label, value]) => `<div style="margin-top:5px;padding-top:5px;border-top:1px solid #DCE7F8;font-size:12px"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join(''); const completedStage = completedProspectHistoryStage(entry, record); return `<div style="border-left:3px solid #2563EB;background:#F7FAFF;padding:7px 9px;margin-top:6px"><b>${activityText(PROSPECT_WORKFLOW_LABELS[completedStage] || completedStage || 'Actualización')}</b><br><span style="font-size:12px;color:#64748B">${activityText(new Date(Number(entry.fecha || 0)).toLocaleString('es-MX'))} · ${activityText(entry.usuario_nombre || 'Usuario')}</span>${entry.comentario ? `<br><span style="font-size:12px">${activityText(entry.comentario)}</span>` : ''}${detailRows}</div>`; }).join(''); })() : '';
-    document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.6"><div style="background:#F3F4F6;padding:10px;border-radius:8px;margin-bottom:12px"><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Rol / plaza:</b> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}</div>${detail}${history ? `<div style="margin-top:13px"><b>Bitácora completa del expediente</b>${history}</div>` : ''}</div>`;
+    const history = record.tipo === 'PROSPECCION' ? (() => { const entries = Object.values(record.historial_expediente || {}).sort((a, b) => Number(b.fecha || 0) - Number(a.fecha || 0)); return entries.map((entry, index) => { const detailRows = prospectHistoryDetails(entry, record, index === entries.length - 1).map(([label, value]) => `<div class="activity-history-entry-detail"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join(''); return `<article class="activity-history-entry"><div class="activity-history-entry-title">${activityText(prospectHistoryDisplayLabel(entry, record))}</div><div class="activity-history-entry-meta">${activityText(new Date(Number(entry.fecha || 0)).toLocaleString('es-MX'))} · ${activityText(entry.usuario_nombre || 'Usuario')}</div>${entry.comentario ? `<div class="activity-history-entry-comment">${activityText(entry.comentario)}</div>` : ''}${detailRows}</article>`; }).join(''); })() : '';
+    const prospectHeading = record.tipo === 'PROSPECCION' ? `<div class="activity-detail-prospect"><div class="activity-detail-name">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto')}</div><span class="activity-detail-stage">${activityText(prospectWorkflowLabel(record))}</span></div>` : '';
+    document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><div class="activity-detail-summary"><strong>Responsable:</strong> ${activityText(record.nombre_usuario || '—')}<br><strong>Rol y plaza:</strong> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><strong>Registro:</strong> ${formatDate(record.created_at || record.timestamp)}</div>${prospectHeading}${detail}${history ? `<div class="activity-detail-history-title">Bitácora completa del expediente</div>${history}` : ''}</div>`;
     document.getElementById('photoModal').classList.add('active');
   };
 
