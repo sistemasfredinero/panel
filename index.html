@@ -221,6 +221,16 @@
     }
     .modal-overlay.active { display: flex; }
     #photoModal { z-index: 1400; }
+    #photoModal.modal-overlay {
+      padding: clamp(12px, 3vw, 28px); overflow: auto;
+    }
+    #photoModal .modal-box {
+      width: min(920px, 100%); max-width: 920px;
+      max-height: calc(100dvh - 24px); margin: auto;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    #photoModal .modal-img { max-height: min(42dvh, 400px); flex: 0 1 auto; }
+    #photoModal .modal-info { min-height: 0; overflow-y: auto; padding-right: 8px; }
     .modal-box {
       background: #fff; border-radius: 16px; padding: 24px;
       max-width: 420px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
@@ -2111,6 +2121,7 @@
   // ── Actividades de Cobranza y Prospección ────────────────────────────────────
   let _activitiesData = [];
   let _activitiesFiltered = [];
+  let _activityResponseChartType = null;
   let _prospectAdminData = [];
   let _activityProfile = null;
   let _annualFeedbackExport = null;
@@ -2337,12 +2348,16 @@
   window.closeAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', false); };
   window.openResponseChartsModal = function(type) {
     const normalisedType = normaliseActivityText(type) === 'COBRANZA' ? 'COBRANZA' : 'PROSPECCION';
+    _activityResponseChartType = normalisedType;
     const title = document.getElementById('activityResponseChartsTitle');
     if (title) title.textContent = `🥧 Respuestas de ${normalisedType === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
     setActivityModalVisibility('activityResponseChartsModal', true);
     window.renderActivityResponseCharts(normalisedType);
   };
-  window.closeResponseChartsModal = function() { setActivityModalVisibility('activityResponseChartsModal', false); };
+  window.closeResponseChartsModal = function() {
+    _activityResponseChartType = null;
+    setActivityModalVisibility('activityResponseChartsModal', false);
+  };
 
   ['pendingProspectsModal', 'annualFeedbackModal', 'activityResponseChartsModal'].forEach(id => {
     const modal = document.getElementById(id);
@@ -2597,7 +2612,7 @@
 
   window.renderActivityResponseCharts = function(type) {
     const container = document.getElementById('activityResponseChartsContainer');
-    const records = (_activitiesData || []).filter(record => normaliseActivityText(record.tipo || record.activity_type) === type);
+    const records = (_activitiesFiltered || []).filter(record => normaliseActivityText(record.tipo || record.activity_type) === type);
     if (!records.length) {
       container.innerHTML = `<div style="background:#fff;border:1px solid #BFDBFE;border-radius:10px;padding:14px;color:#1D4ED8">No hay registros de ${type === 'COBRANZA' ? 'Cobranza' : 'Prospección'} dentro de la búsqueda actual.</div>`;
       return;
@@ -2653,7 +2668,7 @@
 
   window.renderActivityPerformanceDashboard = function() {
     const container = document.getElementById('activityPerformanceContainer');
-    const records = _activitiesData || [];
+    const records = _activitiesFiltered || [];
     if (!records.length) {
       container.innerHTML = '<div style="background:#fff;border:1px solid #BBF7D0;border-radius:10px;padding:14px;color:#166534">No hay actividades en la búsqueda actual. Ajusta filtros y presiona Buscar antes de generar el análisis.</div>';
       return;
@@ -2852,6 +2867,9 @@
       window.tidyActivityDataReading();
     }
     else if (graphicsContainer) graphicsContainer.textContent = 'La búsqueda cambió. Abre este bloque para cargar el análisis general actualizado.';
+    if (_activityResponseChartType && document.getElementById('activityResponseChartsModal')?.style.display === 'block') {
+      window.renderActivityResponseCharts(_activityResponseChartType);
+    }
 
     const container = document.getElementById('activitiesTableContainer');
     if (!_activitiesFiltered.length) {
