@@ -2127,6 +2127,9 @@
   const PROSPECT_WORKFLOW_LABELS = {
     CITA_PROGRAMADA: 'Cita agendada / Documentación', RECHAZADA_POR_PROSPECTO: 'Rechazada por prospecto', PENDIENTE_RAFIK: 'Cita agendada sin Rafik / Documentación', PENDIENTE_DOCUMENTACION: 'Cita agendada / Documentación', PENDIENTE_ONBOARDING: 'Onboarding', PENDIENTE_ASIGNACION_GERENTE: 'Asignación', PENDIENTE_VERIFICACION: 'Verificación', VERIFICACION_PARCIAL: 'Verificación', PENDIENTE_VOBO_GERENTE: 'Pendiente de VoBo de Gerente', PENDIENTE_REVISION_CREDITO_RIESGO: 'Pendiente de VoBo de Crédito y Riesgo', DEVUELTA_A_GERENTE: 'Devolución de Prospecto', AUTORIZADA: 'En espera de activación', PENDIENTE_ACTIVACION: 'En espera de activación', ALTA: 'Alta', NO_ASISTIO: 'No asistió', RECHAZADA_CREDITO_RIESGO: 'Rechazada por Crédito y Riesgo'
   };
+  const PROSPECT_WORKFLOW_COLORS = {
+    CITA_PROGRAMADA: ['#DBEAFE', '#1D4ED8'], RECHAZADA_POR_PROSPECTO: ['#E5E7EB', '#4B5563'], PENDIENTE_RAFIK: ['#FEF3C7', '#92400E'], PENDIENTE_DOCUMENTACION: ['#FFEDD5', '#C2410C'], PENDIENTE_ONBOARDING: ['#EDE9FE', '#6D28D9'], PENDIENTE_ASIGNACION_GERENTE: ['#FCE7F3', '#9D174D'], PENDIENTE_VERIFICACION: ['#CCFBF1', '#0F766E'], VERIFICACION_PARCIAL: ['#CCFBF1', '#0F766E'], PENDIENTE_VOBO_GERENTE: ['#DCFCE7', '#166534'], PENDIENTE_REVISION_CREDITO_RIESGO: ['#EDE9FE', '#5B21B6'], DEVUELTA_A_GERENTE: ['#FEE2E2', '#B91C1C'], AUTORIZADA: ['#DCFCE7', '#15803D'], PENDIENTE_ACTIVACION: ['#CFFAFE', '#0E7490'], ALTA: ['#BBF7D0', '#166534'], NO_ASISTIO: ['#FEE2E2', '#B91C1C'], RECHAZADA_CREDITO_RIESGO: ['#FEE2E2', '#991B1B']
+  };
   const PROSPECT_FINAL_STAGES = new Set(['ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO']);
   const PROSPECT_VERIFICATION_STAGES = new Set(['PENDIENTE_VERIFICACION', 'PENDIENTE_VOBO_GERENTE', 'PENDIENTE_REVISION_CREDITO_RIESGO', 'DEVUELTA_A_GERENTE', 'AUTORIZADA', 'PENDIENTE_ACTIVACION', 'ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO']);
   function prospectWorkflowStage(record) {
@@ -2862,13 +2865,16 @@
       const mainAction = activityText(record.gestion_realizada || record.tipo_accion || 'Sin detalle');
       const typeColor = cobranza ? '#15803D' : '#2563EB';
       const typeBg = cobranza ? '#DCFCE7' : '#DBEAFE';
+      const stage = cobranza ? '' : prospectWorkflowStage(record);
+      const stageColors = PROSPECT_WORKFLOW_COLORS[stage] || ['#F3F4F6', '#374151'];
+      const stageChip = cobranza ? '' : `<span class="chip" title="Etapa actual del expediente" style="background:${stageColors[0]};color:${stageColors[1]};font-weight:800">${activityText(PROSPECT_WORKFLOW_LABELS[stage] || stage || 'Sin etapa')}</span>`;
       const subDetail = cobranza
         ? `${activityText(record.se_visita_a || '—')}${record.numero_cliente ? ` · Cliente ${activityText(record.numero_cliente)}` : ''}`
-        : `${activityText(prospectWorkflowLabel(record))} · ${record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : `Sin cita${record.motivos_no_cita?.length ? ` · ${activityText(record.motivos_no_cita.join(', '))}` : ''}`}`;
+        : record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : `Sin cita${record.motivos_no_cita?.length ? ` · ${activityText(record.motivos_no_cita.join(', '))}` : ''}`;
       return `<div class="rec-card" style="border-left-color:${typeColor};align-items:flex-start">
         <div class="tipo-badge" style="background:${typeBg};color:${typeColor}">${cobranza ? 'Cobranza' : 'Prospección'}</div>
         <div class="rec-info"><div class="rec-nombre">${counterpart}</div><div class="rec-correo">${responsible} · ${activityText(record.correo_usuario || '—')}</div>
-          <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span><span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
+          <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span>${stageChip}<span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
           <div style="font-size:12px;color:#667085;margin-top:7px">${subDetail}</div></div>
         <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(record.created_at || record.timestamp)}</div>
           <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button>${record.tiene_evidencia ? `<button class="btn-accion btn-foto" title="Ver evidencia" onclick="window.viewActivityEvidence('${record.id}')">📷</button>` : ''}${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
