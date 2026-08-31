@@ -638,6 +638,7 @@
       <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
       <button class="btn-export" style="background:#15803D" onclick="window.exportActivitiesCsv('COBRANZA')">⬇ Exportar Cobranza</button>
       <button class="btn-export" style="background:#2563EB" onclick="window.exportActivitiesCsv('PROSPECCION')">⬇ Exportar Prospección</button>
+      <button class="btn-download" style="background:#7C3AED" onclick="window.downloadFotosActividades()">📷 Fotos Actividades</button>
       <button id="prospectCalendarBtn" class="btn-export" style="background:#0F766E;display:none" onclick="window.openProspectAppointmentsCalendar()">🗓️ Calendario de citas</button>
       <button id="deleteActivitiesBtn" class="btn-export" style="background:#B91C1C;display:none" onclick="window.deleteActivitiesByRange()">🗑 Eliminar resultado</button>
     </div>
@@ -797,6 +798,7 @@
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="window.buscarVacPerm()" style="padding:9px 22px;background:#0D7A5F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🔍 Buscar</button>
       <button onclick="window.exportVacPermExcel()" style="padding:9px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
+      <button onclick="window.downloadFotosPermisos()" style="padding:9px 16px;background:#7C3AED;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">📷 Fotos Permisos</button>
       <button data-request-management-only onclick="window.showEliminarVacaciones()" style="padding:9px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Vacaciones</button>
       <button data-request-management-only onclick="window.showEliminarPermisos()" style="padding:9px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Permisos</button>
     </div>
@@ -3644,17 +3646,20 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  // Helper: nombre de archivo seguro
-  function safeFilename(plaza, nombre, timestamp, sufijo, id) {
+  // Nombre uniforme, ordenable y seguro: FECHA_HORA_SUCURSAL_NOMBRE_TIPO_ULTIMOS6ID.jpg
+  function safePhotoText(value, fallback) {
+    const clean = String(value || fallback || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9_\s]/g, '').trim().replace(/\s+/g, '_').toUpperCase();
+    return clean || fallback;
+  }
+
+  function safeFilename(plaza, nombre, timestamp, tipo, id) {
     const d = new Date(Number(timestamp));
-    const fecha = d.getFullYear() + '-'
-      + String(d.getMonth()+1).padStart(2,'0') + '-'
-      + String(d.getDate()).padStart(2,'0');
-    const hora = String(d.getHours()).padStart(2,'0') + 'h' + String(d.getMinutes()).padStart(2,'0');
-    const p = (plaza || 'SIN_PLAZA').replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g, '').trim().replace(/\s+/g, '_');
-    const n = (nombre || 'usuario').replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g, '').trim().replace(/\s+/g, '_');
-    const idSufijo = id ? '_' + String(id).slice(-6) : '';
-    return `${p}_${n}_${fecha}_${hora}${sufijo ? '_' + sufijo : ''}${idSufijo}.jpg`;
+    const validDate = !Number.isNaN(d.getTime()) && d.getFullYear() >= 2000;
+    const fecha = validDate ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : 'SIN_FECHA';
+    const hora = validDate ? `${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}-${String(d.getSeconds()).padStart(2, '0')}` : 'SIN_HORA';
+    const idSufijo = id ? String(id).slice(-6).toUpperCase() : 'SIN_ID';
+    return `${fecha}_${hora}_${safePhotoText(plaza, 'SIN_SUCURSAL')}_${safePhotoText(nombre, 'SIN_NOMBRE')}_${safePhotoText(tipo, 'FOTO')}_${idSufijo}.jpg`;
   }
 
   window.downloadFotosAsistencia = async function() {
@@ -3669,7 +3674,7 @@
     for (const r of window.__filteredRecords) {
       const user = usersMap[r.user_uid] || {};
       const nombre = user.nombre_completo || r.user_uid || 'usuario';
-      const sufijo = r.tipo === 'ENTRADA' ? 'entrada' : 'salida';
+      const sufijo = r.tipo === 'ENTRADA' ? 'ENTRADA' : 'SALIDA';
       const filename = safeFilename(user.plaza, nombre, r.timestamp, sufijo, r.id);
       try {
         let b64 = r.foto_base64 || null;
@@ -3732,7 +3737,7 @@
     for (const v of viajes) {
       for (const tipo of ['inicio', 'fin']) {
         const photoKey = `${v.id}_${tipo}`;
-        const filename = safeFilename(v.plaza, v.nombre, v.ts, `km_${tipo}`, v.id);
+        const filename = safeFilename(v.plaza, v.nombre, v.ts, `VIAJE_${tipo}`, v.id);
         try {
           const snap = await get(ref(database, `vehicle_trip_photos/${photoKey}/foto_base64`));
           if (snap.exists()) { zip.file(filename, snap.val(), { base64: true }); descargadas++; }
@@ -3745,6 +3750,38 @@
     const fechaHoy = new Date().toISOString().slice(0,10);
     descargarBlob(blob, `fotos_km_${fechaHoy}.zip`);
     alert(`✅ ZIP descargado.\n\nFotos incluidas: ${descargadas}\nSin foto: ${sinFoto}`);
+  };
+
+  window.downloadFotosActividades = async function() {
+    if (!_activitiesFiltered || !_activitiesFiltered.length) {
+      alert('No hay actividades en el resultado actual. Aplica filtros y presiona Buscar.'); return;
+    }
+    if (!confirm(`Se revisarán evidencias de ${_activitiesFiltered.length} actividad(es) en el resultado actual. ¿Continuar?`)) return;
+    const zip = new JSZip();
+    let descargadas = 0, sinFoto = 0;
+    for (const record of _activitiesFiltered) {
+      try {
+        const snap = await get(ref(database, `gestor_photos/${record.id}`));
+        if (!snap.exists()) { sinFoto++; continue; }
+        const photos = snap.val();
+        const photoEntries = typeof photos === 'string'
+          ? [['foto_base64', photos]]
+          : Object.entries(photos || {}).filter(([key, value]) => key === 'foto_base64' || (key.endsWith('_base64') && typeof value === 'string'));
+        if (!photoEntries.length) { sinFoto++; continue; }
+        const timestamp = Number(record.created_at || record.timestamp || record.cita_timestamp || 0);
+        const baseType = record.tipo === 'PROSPECCION' ? 'PROSPECCION' : 'COBRANZA';
+        const management = safePhotoText(record.gestion_realizada || record.tipo_accion || '', 'EVIDENCIA');
+        for (const [photoKey, base64] of photoEntries) {
+          const photoType = photoKey === 'foto_base64' ? `${baseType}_${management}` : `${baseType}_${photoKey.replace(/_base64$/, '')}`;
+          const filename = safeFilename(record.plaza, record.nombre_usuario || record.nombre || record.user_name, timestamp, photoType, record.id);
+          zip.file(filename, base64, { base64: true });
+          descargadas++;
+        }
+      } catch (error) { console.warn('No se pudo descargar evidencia de actividad', record.id, error); sinFoto++; }
+    }
+    if (!descargadas) { alert('No se encontraron fotografías en las actividades filtradas.'); return; }
+    descargarBlob(await zip.generateAsync({ type: 'blob' }), `fotos_actividades_${new Date().toISOString().slice(0, 10)}.zip`);
+    alert(`✅ ZIP descargado.\n\nFotos incluidas: ${descargadas}\nActividades sin foto o no disponibles: ${sinFoto}`);
   };
 
 
@@ -4889,6 +4926,27 @@
     const blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = 'vac_permisos_' + new Date().toISOString().slice(0,10) + '.csv'; a.click();
+  };
+
+  window.downloadFotosPermisos = async function() {
+    const permisos = (_vpData || []).filter(record => record._tipo === 'permisos');
+    if (!permisos.length) { alert('No hay Permisos en el resultado actual. Aplica filtros y presiona Buscar.'); return; }
+    if (!confirm(`Se revisarán evidencias de ${permisos.length} permiso(s) en el resultado actual. ¿Continuar?`)) return;
+    const zip = new JSZip();
+    let descargadas = 0, sinFoto = 0;
+    for (const permiso of permisos) {
+      try {
+        const snap = await get(ref(database, `permission_photos/${permiso.id}`));
+        const photo = snap.val()?.foto_base64;
+        if (!photo) { sinFoto++; continue; }
+        const filename = safeFilename(permiso.plaza, permiso.nombre_solicitante || permiso.nombre || permiso.user_email, permiso.timestamp || permiso.timestamp_creacion, 'PERMISO_EVIDENCIA', permiso.id);
+        zip.file(filename, photo, { base64: true });
+        descargadas++;
+      } catch (error) { console.warn('No se pudo descargar evidencia de permiso', permiso.id, error); sinFoto++; }
+    }
+    if (!descargadas) { alert('No se encontraron fotografías en los Permisos filtrados.'); return; }
+    descargarBlob(await zip.generateAsync({ type: 'blob' }), `fotos_permisos_${new Date().toISOString().slice(0, 10)}.zip`);
+    alert(`✅ ZIP descargado.\n\nFotos incluidas: ${descargadas}\nPermisos sin foto o no disponibles: ${sinFoto}`);
   };
 
   window.showEliminarRegistros = async function() {
