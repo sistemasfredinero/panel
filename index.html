@@ -533,7 +533,7 @@
         <button class="btn-export" style="background:#2563EB" onclick="exportVehiculos()">🚗 Exportar Vehículos</button>
         <button class="btn-download" id="btnFotosAsistencia" onclick="downloadFotosAsistencia()" title="Haz una búsqueda primero" disabled style="opacity:0.4;cursor:not-allowed">📷 Fotos Asistencia</button>
         <button class="btn-download km" id="btnFotosKm" onclick="downloadFotosKm()" title="Haz una búsqueda primero" disabled style="opacity:0.4;cursor:not-allowed">🚗 Fotos Km</button>
-        <button class="btn-export" style="background:#B91C1C" onclick="window.showEliminarRegistros()">🗑 Eliminar Registros</button>
+        <button class="btn-export" data-support-only style="background:#B91C1C" onclick="window.showEliminarRegistros()">🗑 Eliminar Registros</button>
       </div>
     </div>
 
@@ -1049,7 +1049,7 @@
 
   function applyRequestManagementAccess() {
     const canManageRequests = vpEsSoporte();
-    document.querySelectorAll('[data-request-management-control]').forEach(control => {
+    document.querySelectorAll('[data-request-management-control], [data-support-only]').forEach(control => {
       control.style.display = canManageRequests ? '' : 'none';
     });
   }
@@ -1903,8 +1903,7 @@
             ${mapsBtn}
             ${fotoBtn}
             ${vehiculoBtn}
-            <button class="btn-accion btn-edit" onclick="window.openEditModal('${r.id}')" title="Editar registro">✏️</button>
-            <button class="btn-accion btn-del" onclick="deleteRecord('${r.id}')" title="Eliminar registro">🗑</button>
+            ${privacyIsSupport() ? `<button class="btn-accion btn-edit" onclick="window.openEditModal('${r.id}')" title="Editar registro">✏️</button><button class="btn-accion btn-del" onclick="deleteRecord('${r.id}')" title="Eliminar registro">🗑</button>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -1985,6 +1984,7 @@
 
   // ── Delete record ──────────────────────────────────────────────────────────────────
   window.deleteRecord = async function(recordId) {
+    if (!privacyIsSupport()) { alert('Solo Soporte puede eliminar registros.'); return; }
     const r      = (window.__records || []).find(x => x.id === recordId);
     if (!r) return;
     const user   = (window.__usersMap || {})[r.user_uid] || {};
@@ -2253,9 +2253,8 @@
   }
 
   function activityCanManageAll() {
-    if (panelIsActivityOnlyUser()) return false;
     const email = String(auth.currentUser?.email || '').toLowerCase();
-    return ['cleon@fredinero.com', 'soporte@fredinero.com', 'alfredo@fredinero.com'].includes(email);
+    return email === 'soporte@fredinero.com';
   }
 
   function activityIsManagerScope() {
@@ -3357,6 +3356,7 @@
   let _editTrips    = [];
 
   window.openEditModal = async function(recordId) {
+    if (!privacyIsSupport()) { alert('Solo Soporte puede editar registros.'); return; }
     const r    = (window.__records || []).find(x => x.id === recordId);
     if (!r) return;
     const user = (window.__usersMap || {})[r.user_uid] || {};
@@ -3454,6 +3454,7 @@
   };
 
   window.saveEditRecord = async function() {
+    if (!privacyIsSupport()) { alert('Solo Soporte puede editar registros.'); return; }
     if (!_editRecordId) return;
     const r = (window.__records || []).find(x => x.id === _editRecordId);
     if (!r) return;
@@ -3881,7 +3882,7 @@
   }
 
   function vpPuedeEditarVacacion(sol) {
-    return vpEsSoporte() || vpCleonPuedeEditarVacacion(sol);
+    return vpEsSoporte();
   }
 
   function vpPuedeEliminarSolicitud() {
@@ -4950,6 +4951,7 @@
   };
 
   window.showEliminarRegistros = async function() {
+    if (!privacyIsSupport()) { alert('Solo Soporte puede eliminar registros.'); return; }
     document.getElementById('app').style.display = 'none';
     document.getElementById('eliminarRegistrosSection').style.display = 'block';
     document.getElementById('elimPreviewContainer').innerHTML = '';
