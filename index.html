@@ -3871,9 +3871,17 @@
   function vpPuedeGestionarFlujo(sol) {
     if (vpEsSoporte()) return true;
     if (!vpEsCleon() || !sol) return false;
-    const ruta = vpRutaFlujo(sol.rol);
-    const etapaActual = sol.approval_stage || ruta[0];
-    return etapaActual === 'cleon';
+    const estado = String(sol.estado || '').trim().toLowerCase();
+    const cerrado = Boolean(
+      sol.cancelado
+      || sol.visto_bueno_cleon
+      || sol.confirmada_empleado
+      || sol.approval_stage === 'completado'
+      || ['aprobado_final', 'activo', 'gozado', 'gozados', 'cancelado', 'cancelada'].includes(estado)
+    );
+    // Cleon puede aprobar o devolver cualquier etapa que siga abierta, sin
+    // adquirir los permisos independientes de edición o eliminación.
+    return !cerrado;
   }
 
   function vpVacacionEnEtapaFinal(sol) {
@@ -4122,6 +4130,7 @@
             <span style="background:${cfg.bg};color:${cfg.color};padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap">${cfg.label}</span>
           </td>
           <td style="padding:10px 12px;text-align:center;white-space:nowrap">
+            ${vpPuedeGestionarFlujo(sol) ? `<button onclick="window.vpAprobarFlujo('${sol.id}','vacaciones')" style="padding:6px 10px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;margin-right:4px">✅ Aprobar</button><button onclick="window.vpDevolverFlujo('${sol.id}','vacaciones')" style="padding:6px 10px;background:#E65100;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;margin-right:4px">↩ Devolver</button>` : ''}
             ${vpPuedeEditarVacacion(sol) ? `<button onclick="window.openVacEdit('${sol.id}')" style="padding:6px 12px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;margin-right:4px">✏️ Editar</button>` : ''}
             ${vpPuedeEliminarSolicitud() ? `<button data-vacid="${sol.id}" onclick="window.deleteVacacionById(this)" style="padding:6px 12px;background:#D32F2F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px">🗑 Eliminar</button>` : ''}
           </td>
