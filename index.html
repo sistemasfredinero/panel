@@ -3868,8 +3868,12 @@
     return vpCorreoActual() === VP_CLEON_EMAIL;
   }
 
-  function vpPuedeGestionarFlujo() {
-    return vpEsSoporte();
+  function vpPuedeGestionarFlujo(sol) {
+    if (vpEsSoporte()) return true;
+    if (!vpEsCleon() || !sol) return false;
+    const ruta = vpRutaFlujo(sol.rol);
+    const etapaActual = sol.approval_stage || ruta[0];
+    return etapaActual === 'cleon';
   }
 
   function vpVacacionEnEtapaFinal(sol) {
@@ -3901,9 +3905,9 @@
   }
 
   window.vpAprobarFlujo = async function(id, tipo) {
-    if (!vpPuedeGestionarFlujo()) { alert('No tienes permiso para gestionar etapas de aprobación.'); return; }
     const sol = vpSolicitudActual(id, tipo);
     if (!sol) { alert('No se encontró la solicitud. Vuelve a realizar la búsqueda.'); return; }
+    if (!vpPuedeGestionarFlujo(sol)) { alert('No tienes permiso para gestionar esta etapa de aprobación.'); return; }
     const ruta = vpRutaFlujo(sol.rol);
     const etapaActual = sol.approval_stage || ruta[0];
     const indice = Math.max(0, ruta.indexOf(etapaActual));
@@ -3936,9 +3940,9 @@
   };
 
   window.vpDevolverFlujo = async function(id, tipo) {
-    if (!vpPuedeGestionarFlujo()) { alert('No tienes permiso para gestionar etapas de aprobación.'); return; }
     const sol = vpSolicitudActual(id, tipo);
     if (!sol) { alert('No se encontró la solicitud. Vuelve a realizar la búsqueda.'); return; }
+    if (!vpPuedeGestionarFlujo(sol)) { alert('No tienes permiso para gestionar esta etapa de aprobación.'); return; }
     const motivo = prompt('Motivo de devolución (obligatorio):');
     if (!motivo || !motivo.trim()) { alert('Debes indicar el motivo de devolución.'); return; }
     const ruta = vpRutaFlujo(sol.rol);
@@ -4812,7 +4816,7 @@
         detalle = `<div style="font-size:12px">${horario}</div><div style="font-size:11px;color:#7A8C7A;max-width:180px;word-break:break-word">${s.motivo||'—'}</div>`;
       }
       const esFinalizada = ['aprobado_final', 'confirmada', 'activo', 'gozados'].includes(s._estadoKey) || s.visto_bueno_cleon || s.approval_stage === 'completado';
-      const accionesFlujo = (esVac || esPerm) && !esCleonForAlfredo && vpPuedeGestionarFlujo() && !esFinalizada
+      const accionesFlujo = (esVac || esPerm) && !esCleonForAlfredo && vpPuedeGestionarFlujo(s) && !esFinalizada
         ? `<button onclick="window.vpAprobarFlujo('${s.id}','${s._tipo}')" style="padding:5px 10px;background:#1A7A3C;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">✅ Aprobar</button><button onclick="window.vpDevolverFlujo('${s.id}','${s._tipo}')" style="padding:5px 10px;background:#E65100;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">↩ Devolver</button>`
         : '';
       const evidenciaAccion = esPerm && s.tiene_evidencia
