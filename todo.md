@@ -12,3 +12,4 @@
 - [ ] Validar y publicar el panel junto con la actualización completa de la app.
 - [x] Mostrar en el detalle de Prospección el comentario obligatorio de cancelación o rechazo.
 - [x] Mostrar resaltados en la bitácora web los comentarios de Liz en Prospección.
+- [x] Consolidar cada expediente de Prospección en un solo registro dentro del panel web.

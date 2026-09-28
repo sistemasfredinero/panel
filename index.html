@@ -2259,6 +2259,40 @@
     return null;
   }
 
+  /** Consolida los seguimientos técnicos de Prospección en una sola tarjeta por expediente raíz. */
+  function consolidateProspectFiles(records) {
+    const regular = [];
+    const prospectGroups = new Map();
+    records.forEach(record => {
+      if (normaliseActivityText(record.tipo || record.activity_type) !== 'PROSPECCION') {
+        regular.push(record);
+        return;
+      }
+      const rootId = String(record.expediente_prospeccion_id || record.prospecto_raiz_id || record.id || '');
+      const key = rootId || String(record.id || `prospect_${regular.length}`);
+      if (!prospectGroups.has(key)) prospectGroups.set(key, []);
+      prospectGroups.get(key).push(record);
+    });
+    const consolidated = Array.from(prospectGroups.entries()).map(([rootId, items]) => {
+      const ordered = [...items].sort((a, b) => Number(b.actualizado_en || activityCreatedTimestamp(b) || 0) - Number(a.actualizado_en || activityCreatedTimestamp(a) || 0));
+      const root = items.find(item => String(item.id || '') === rootId) || items.find(item => item.es_expediente_prospeccion === true) || ordered[0];
+      const latest = ordered[0] || root;
+      const history = {};
+      items.forEach(item => Object.assign(history, item.historial_expediente || {}));
+      return {
+        ...root,
+        ...latest,
+        id: root.id || rootId,
+        expediente_prospeccion_id: rootId,
+        prospecto_raiz_id: rootId,
+        historial_expediente: Object.keys(history).length ? history : (latest.historial_expediente || root.historial_expediente || {}),
+        _expediente_registros_consolidados: items.length,
+        _expediente_ultimo_movimiento: Number(latest.actualizado_en || activityCreatedTimestamp(latest) || 0),
+      };
+    });
+    return [...regular, ...consolidated].sort((a, b) => Number(b._expediente_ultimo_movimiento || activityCreatedTimestamp(b) || 0) - Number(a._expediente_ultimo_movimiento || activityCreatedTimestamp(a) || 0));
+  }
+
   function activityCreatedLabel(record) {
     const timestamp = activityCreatedTimestamp(record);
     return timestamp ? formatDate(timestamp) : 'Fecha de creación no disponible';
@@ -2766,13 +2800,21 @@
       // Se consulta el nodo completo para conservar visibilidad de expedientes creados
       // antes de que todas las actividades guardaran created_at de forma uniforme.
       const snap = await get(ref(database, 'gestor_activities'));
-      _activitiesData = [];
+      const scopedRecords = [];
       if (snap.exists()) snap.forEach(child => {
-        const record = child.val() || {};
-        const timestamp = activityCreatedTimestamp(record);
-        if (timestamp !== null && timestamp >= start && timestamp <= end && isInManagerActivityScope(record)) _activitiesData.push({ id: child.key, ...record });
+        const record = { id: child.key, ...(child.val() || {}) };
+        // Conserva la etapa actual de un expediente aunque su registro inicial
+        // sea anterior al período y algún seguimiento esté dentro del filtro.
+        if (isInManagerActivityScope(record)) scopedRecords.push(record);
       });
-      _activitiesData.sort((a, b) => Number(activityCreatedTimestamp(b) || 0) - Number(activityCreatedTimestamp(a) || 0));
+      const consolidated = consolidateProspectFiles(scopedRecords);
+      _activitiesData = consolidated.filter(record => {
+        const isProspection = normaliseActivityText(record.tipo || record.activity_type) === 'PROSPECCION';
+        const timestamp = isProspection
+          ? Number(record._expediente_ultimo_movimiento || activityCreatedTimestamp(record) || 0)
+          : Number(activityCreatedTimestamp(record) || 0);
+        return timestamp >= start && timestamp <= end;
+      });
       window.renderActivities();
     } catch (error) {
       document.getElementById('activitiesTableContainer').innerHTML = `<div class="loading" style="color:#B91C1C">❌ Error al cargar actividades: ${activityText(error.message)}</div>`;
@@ -2983,7 +3025,7 @@
       ['latitud', 'Latitud'], ['longitud', 'Longitud'], ['tiene_evidencia', 'Tiene evidencia'], ['ruta_evidencia', 'Ruta de evidencia'], ['editable', 'Editable'],
     ];
     const specificFields = type === 'COBRANZA'
-      ? [['se_visita_a', 'Se atiende a'], ['numero_cliente', 'Número de cliente'], ['nombre_contacto', 'Nombre'], ['gestion_realizada', 'Gestión realizada'], ['comentarios', 'Comentarios'], ['monto', 'Monto depositado'], ['folio_recibo', 'Folio de recibo o comprobante'], ['fecha_promesa', 'Fecha comprometida de promesa']]
+      ? [['se_visita_a', 'Se atiende a'], ['numero_cliente', 'Número de cliente'], ['nombre_contacto', 'Nombre'], ['gestion_realizada', 'Gestión realizada'], ['comentarios', 'Comentarios'], ['monto', 'Monto depositado'], ['folio_recibo', 'Folio de recibo o comprobante'], ['fecha_promesa', 'Fecha de promesa'], ['hora_promesa', 'Hora de promesa']]
       : [['nombre_prospecto', 'Nombre completo del prospecto'], ['direccion', 'Dirección'], ['telefono', 'Teléfono'], ['referido_interno', 'Referido interno'], ['modalidad_prospeccion', 'Tipo de Prospección'], ['tipo_prospeccion', 'Origen de prospección'], ['tipo_prospeccion_otro', 'Otro origen de prospección'], ['tipo_accion', 'Tipo de acción'], ['se_agenda_cita', 'Se agenda cita'], ['fecha_cita', 'Fecha de cita'], ['hora_cita', 'Hora de cita'], ['cita_timestamp', 'Marca de tiempo de cita'], ['estado_cita', 'Estado de cita'], ['responsable_cita_nombre', 'Responsable de cita'], ['gerente_cita_nombre', 'Gerente de cita'], ['motivos_no_cita', 'Motivos de no cita'], ['observaciones', 'Observaciones'], ['estado_expediente', 'Etapa del expediente'], ['tipo_cierre', 'Tipo de cierre'], ['motivo_cierre', 'Motivo de cierre'], ['cierre_negativo_por_nombre', 'Cierre registrado por'], ['cierre_negativo_en', 'Marca de tiempo del cierre'], ['hilo_prospecto', 'Hilo de prospecto'], ['prospecto_raiz_id', 'ID de prospecto raíz'], ['seguimiento_de', 'Seguimiento de'], ['numero_seguimiento', 'Número de seguimiento'], ['es_seguimiento', 'Es seguimiento'], ['cambio_de_opinion', 'Cambió de opinión']];
     const definedFields = [...commonFields, ...specificFields];
     const knownKeys = new Set(definedFields.map(([key]) => key));
@@ -3009,7 +3051,7 @@
   window.viewActivityDetail = function(id) {
     const record = _activitiesFiltered.find(x => x.id === id) || _prospectAdminData.find(x => x.id === id); if (!record) return;
     const rows = record.tipo === 'COBRANZA'
-      ? [['Se atiende a', record.se_visita_a], ['Número de cliente', record.numero_cliente], ['Nombre', record.nombre_contacto], ['Gestión', record.gestion_realizada], ['Monto', record.monto], ['Folio', record.folio_recibo], ['Fecha de promesa', record.fecha_promesa], ['Comentarios', record.comentarios]]
+      ? [['Se atiende a', record.se_visita_a], ['Número de cliente', record.numero_cliente], ['Nombre', record.nombre_contacto], ['Gestión', record.gestion_realizada], ['Monto', record.monto], ['Folio', record.folio_recibo], ['Fecha de promesa', record.fecha_promesa], ['Hora de promesa', record.hora_promesa], ['Comentarios', record.comentarios]]
       : [['Prospecto', record.nombre_prospecto], ['Tipo de Prospección', record.modalidad_prospeccion], ['Origen de prospección', record.tipo_prospeccion === 'Otra' ? record.tipo_prospeccion_otro || 'Otra' : record.tipo_prospeccion], ['Etapa del expediente', prospectWorkflowLabel(record)]];
     const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div class="activity-detail-field"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
     document.getElementById('modalTitle').textContent = `Actividad de ${record.tipo === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
