@@ -800,7 +800,7 @@
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="window.buscarVacPerm()" style="padding:9px 22px;background:#0D7A5F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🔍 Buscar</button>
-      <button id="vpAlfredoShortcut" onclick="window.showAlfredo()" style="display:none;padding:9px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">👤 Solicitudes de Cristina</button>
+      <button id="vpAlfredoShortcut" onclick="window.showAlfredo()" style="display:none;padding:9px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🏖 Vacaciones de Cleon</button>
       <button onclick="window.exportVacPermExcel()" style="padding:9px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
       <button onclick="window.downloadFotosPermisos()" style="padding:9px 16px;background:#7C3AED;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">📷 Fotos Permisos</button>
       <button data-request-management-only onclick="window.showEliminarVacaciones()" style="padding:9px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Vacaciones</button>
@@ -850,19 +850,18 @@
 <!-- ── Alfredo section ── -->
 <div id="alfredoSection" style="display:none;padding:24px 32px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-    <h2 style="margin:0;color:#1565C0;font-size:20px">👤 Solicitudes de Cristina — Alfredo</h2>
+    <h2 style="margin:0;color:#1565C0;font-size:20px">🏖 Vacaciones de Cleon — Alfredo</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button onclick="window.loadAlfredoSolicitudes()" style="padding:8px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">↻ Actualizar</button>
       <button onclick="window.closeAlfredo()" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Vacaciones y Permisos</button>
     </div>
   </div>
   <div style="background:#E3F2FD;border:1.5px solid #90CAF9;border-radius:12px;padding:14px;margin-bottom:20px;color:#1565C0;font-size:13px">
-    ℹ️ Aquí aparecen las vacaciones y permisos de <strong>Cristina</strong> que requieren tu respuesta. Puedes aprobar, proponer otras fechas o rechazar con motivo obligatorio.
+    ℹ️ Aquí aparecen únicamente las solicitudes de vacaciones de <strong>cleon@fredinero.com</strong>. Puedes aprobar o rechazar; al rechazar, el motivo es obligatorio.
   </div>
-  <!-- Sub-tabs Vacaciones / Permisos -->
+  <!-- Único alcance de Alfredo: vacaciones de Cleon -->
   <div style="display:flex;gap:8px;margin-bottom:20px">
     <button id="alfTabVac" onclick="window.setAlfredoTab('vacaciones')" style="padding:9px 22px;border:2px solid #1565C0;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;background:#1565C0;color:#fff">🏖 Vacaciones</button>
-    <button id="alfTabPerm" onclick="window.setAlfredoTab('permisos')" style="padding:9px 22px;border:2px solid #1565C0;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:#1565C0">📝 Permisos</button>
   </div>
   <div id="alfredoTableContainer"><div style="text-align:center;padding:40px;color:#7A8C7A">Haz clic en ↻ Actualizar para cargar las solicitudes.</div></div>
 </div>
@@ -879,7 +878,6 @@
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;flex-wrap:wrap">
       <button class="modal-close" onclick="document.getElementById('alfredoModal').style.display='none'" style="background:#6b7280">Cancelar</button>
       <button class="modal-close" id="alfredoBtnRechazar" onclick="window.alfredoResponder('rechazada_alfredo')" style="background:#B91C1C">❌ Rechazar</button>
-      <button class="modal-close" id="alfredoBtnProponer" onclick="window.alfredoProponer()" style="background:#1565C0">📅 Proponer cambios</button>
       <button class="modal-close" id="alfredoBtnAprobar" onclick="window.alfredoResponder('aprobada_alfredo')" style="background:#2E7D32">✅ Aprobar</button>
     </div>
   </div>
@@ -4669,6 +4667,10 @@
     return String(auth.currentUser?.email || '').trim().toLowerCase() === 'alfredo@fredinero.com';
   }
 
+  function alfredoCanManageVacation(record) {
+    return vpIsAlfredo() && !!record && ['vac', 'vac_rh'].includes(record._tipo);
+  }
+
   function vpIsCleonRequest(record) {
     return String(record.correo || record.user_email || '').trim().toLowerCase() === VP_CLEON_EMAIL;
   }
@@ -4893,9 +4895,9 @@
       if (esVac) {
         acciones = `${accionesFlujo}${vpPuedeEditarVacacion(s) ? `<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button>` : ''}${vpPuedeEliminarSolicitud() ? `<button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>` : ''}`;
       } else if (esRH) {
-        acciones = vpIsAlfredo() ? `<button onclick="window.abrirAlfredoModal('${s.id}','vac')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Responder</button>` : '';
+        acciones = alfredoCanManageVacation(s) ? `<button onclick="window.abrirAlfredoModal('${s.id}','vac')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Responder</button>` : '';
       } else if (esCleonForAlfredo) {
-        acciones = vpIsAlfredo() ? `<button onclick="window.abrirAlfredoModal('${s.id}','perm')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Responder</button>` : '';
+        acciones = '';
       } else {
         acciones = `${accionesFlujo}${evidenciaAccion}${vpPuedeEliminarSolicitud() ? `<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>` : ''}`;
       }
@@ -5103,16 +5105,10 @@
   let _alfredoSolActiva = null;
   let _alfredoTab = 'vacaciones'; // 'vacaciones' | 'permisos'
 
-  window.setAlfredoTab = function(tab) {
-    _alfredoTab = tab;
-    const btnVac  = document.getElementById('alfTabVac');
-    const btnPerm = document.getElementById('alfTabPerm');
-    if (btnVac && btnPerm) {
-      btnVac.style.background  = tab === 'vacaciones' ? '#1565C0' : '#fff';
-      btnVac.style.color       = tab === 'vacaciones' ? '#fff' : '#1565C0';
-      btnPerm.style.background = tab === 'permisos'   ? '#1565C0' : '#fff';
-      btnPerm.style.color      = tab === 'permisos'   ? '#fff' : '#1565C0';
-    }
+  window.setAlfredoTab = function() {
+    _alfredoTab = 'vacaciones';
+    const btnVac = document.getElementById('alfTabVac');
+    if (btnVac) { btnVac.style.background = '#1565C0'; btnVac.style.color = '#fff'; }
     window.loadAlfredoSolicitudes();
   };
 
@@ -5127,7 +5123,7 @@
     document.getElementById('alfredoSection').style.display = 'block';
     setPanelHeader('requests');
     _alfredoTab = 'vacaciones';
-    window.setAlfredoTab('vacaciones');
+    window.setAlfredoTab();
   };
 
   window.closeAlfredo = function() {
@@ -5138,11 +5134,7 @@
   window.loadAlfredoSolicitudes = async function() {
     const container = document.getElementById('alfredoTableContainer');
     container.innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Cargando...</div>';
-    if (_alfredoTab === 'vacaciones') {
-      await _loadAlfredoVacaciones(container);
-    } else {
-      await _loadAlfredoPermisos(container);
-    }
+    await _loadAlfredoVacaciones(container);
   };
 
   // ── Vacaciones de cleon para Alfredo ────────────────────────────────────────────────────────────
@@ -5194,7 +5186,7 @@
           ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
           ${sol.nota_alfredo ? `<div style="font-size:13px;color:#7A8C7A;margin-bottom:4px">💬 Tu nota: ${sol.nota_alfredo}</div>` : ''}
           <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
-        ${vpIsAlfredo() ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar respuesta'}</button></div>` : ''}
+        ${alfredoCanManageVacation(sol) ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : 'Ver respuesta'}</button></div>` : ''}
         </div>`;
       }
       html += '</div>';
@@ -5260,6 +5252,7 @@
 
   window.abrirAlfredoModal = async function(id, tipo) {
     if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
+    if (tipo !== 'vac') { alert('Alfredo solo puede responder vacaciones de cleon@fredinero.com.'); return; }
     // tipo: 'vac' | 'perm'
     _alfredoSolActiva = null;
     let sol;
@@ -5303,34 +5296,10 @@
       return d && m && y ? `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}` : '';
     };
     const campos = document.getElementById('alfredoCamposAlternos');
-    if (sol._tipo === 'vac') {
-      campos.innerHTML = `<div style="background:#EAF4FF;border:1px solid #B9D8F5;border-radius:10px;padding:12px">
-        <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:10px">📅 Fechas que propone Alfredo</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Inicio</label><input type="date" id="alfredoPropInicio" value="${toInputDate(sol.fecha_inicio_propuesta || sol.fecha_inicio)}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
-          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Fin / regreso</label><input type="date" id="alfredoPropFin" value="${toInputDate(sol.fecha_fin_propuesta || sol.fecha_fin)}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
-        </div>
-      </div>`;
-    } else {
-      const diaCompleto = sol.dia_completo_propuesto ?? sol.dia_completo;
-      campos.innerHTML = `<div style="background:#EAF4FF;border:1px solid #B9D8F5;border-radius:10px;padding:12px">
-        <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:10px">📅 Fecha y horario que propone Alfredo</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Inicio</label><input type="date" id="alfredoPropInicio" value="${toInputDate(sol.alfredo_fecha_inicio_propuesta || sol.fecha_inicio)}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
-          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Regreso</label><input type="date" id="alfredoPropFin" value="${toInputDate(sol.alfredo_fecha_regreso_propuesta || sol.fecha_regreso)}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
-        </div>
-        <label style="font-size:12px;color:#1A2E1A;display:block;margin-bottom:8px"><input type="checkbox" id="alfredoPropDiaCompleto" ${diaCompleto ? 'checked' : ''} onchange="window.toggleAlfredoHoras()"> Día completo</label>
-        <div id="alfredoHorasProp" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Hora inicio</label><input type="time" id="alfredoPropHoraInicio" value="${sol.alfredo_hora_inicio_propuesta || sol.hora_inicio || ''}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
-          <div><label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:4px">Hora salida</label><input type="time" id="alfredoPropHoraSalida" value="${sol.alfredo_hora_salida_propuesta || sol.hora_salida || ''}" style="width:100%;padding:9px;border:1px solid #B9D8F5;border-radius:7px;box-sizing:border-box"></div>
-        </div>
-      </div>`;
-    }
+    campos.innerHTML = '';
     document.getElementById('alfredoNota').value = sol.nota_alfredo || '';
-    document.getElementById('alfredoBtnProponer').textContent = '📅 Proponer cambios';
     document.getElementById('alfredoBtnAprobar').textContent = '✅ Aprobar';
     document.getElementById('alfredoModal').style.display = 'flex';
-    window.toggleAlfredoHoras();
   };
 
   window.toggleAlfredoHoras = function() {
@@ -5350,33 +5319,7 @@
   }
 
   window.alfredoProponer = async function() {
-    if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
-    if (!_alfredoSolActiva) return;
-    const sol = _alfredoSolActiva;
-    const inicio = document.getElementById('alfredoPropInicio')?.value || '';
-    const fin = document.getElementById('alfredoPropFin')?.value || '';
-    const nota = document.getElementById('alfredoNota').value.trim();
-    if (!inicio || !fin || fin < inicio) { alert('Selecciona fechas válidas para la propuesta.'); return; }
-    const mostrar = s => { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; };
-    try {
-      if (sol._tipo === 'vac') {
-        const cur = new Date(inicio+'T00:00:00'), end = new Date(fin+'T00:00:00'); let dias = 0;
-        while (cur < end) { if (cur.getDay() !== 0) dias++; cur.setDate(cur.getDate()+1); }
-        await update(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id), { estado:'propuesta_alfredo', fecha_inicio_propuesta:mostrar(inicio), fecha_fin_propuesta:mostrar(fin), dias_propuestos:dias, nota_alfredo:nota||null, timestamp_propuesta_alfredo:Date.now() });
-        await _enviarCorreoPropuestaAlfredo(sol, '📅 Alfredo propuso cambios para tus vacaciones', `Fechas propuestas: ${mostrar(inicio)} al ${mostrar(fin)} (${dias} día(s)).`, nota);
-      } else {
-        const diaCompleto = !!document.getElementById('alfredoPropDiaCompleto')?.checked;
-        const horaInicio = document.getElementById('alfredoPropHoraInicio')?.value || '';
-        const horaSalida = document.getElementById('alfredoPropHoraSalida')?.value || '';
-        if (!diaCompleto && (!horaInicio || !horaSalida)) { alert('Indica las horas propuestas o marca Día completo.'); return; }
-        await update(ref(database, 'permission_requests/' + sol.id), { alfredo_estado:'propuesta_alfredo', alfredo_visto:'propuesta_alfredo', alfredo_fecha_inicio_propuesta:mostrar(inicio), alfredo_fecha_regreso_propuesta:mostrar(fin), alfredo_dia_completo_propuesto:diaCompleto, alfredo_hora_inicio_propuesta:diaCompleto?'':horaInicio, alfredo_hora_salida_propuesta:diaCompleto?'':horaSalida, nota_alfredo:nota||null, timestamp_alfredo:Date.now() });
-        const horario = diaCompleto ? 'Día completo' : `${horaInicio} - ${horaSalida}`;
-        await _enviarCorreoPropuestaAlfredo(sol, '📅 Alfredo propuso cambios para tu permiso', `Fechas propuestas: ${mostrar(inicio)} al ${mostrar(fin)}. Horario: ${horario}.`, nota);
-      }
-      document.getElementById('alfredoModal').style.display = 'none';
-      alert('📅 Propuesta enviada a la persona solicitante para su confirmación.');
-      window.loadAlfredoSolicitudes();
-    } catch(e) { alert('Error al enviar propuesta: ' + e.message); }
+    alert('Alfredo no puede proponer cambios de fecha. Su alcance es aprobar o rechazar vacaciones de cleon@fredinero.com.');
   };
 
   window.alfredoResponder = async function(nuevoEstado) {
@@ -5384,6 +5327,10 @@
     if (!_alfredoSolActiva) return;
     const nota = document.getElementById('alfredoNota').value.trim();
     const sol  = _alfredoSolActiva;
+    if (!alfredoCanManageVacation(sol)) {
+      alert('Alfredo solo puede aprobar o rechazar vacaciones de cleon@fredinero.com.');
+      return;
+    }
     const esVac = sol._tipo === 'vac';
     const esAprobada = nuevoEstado === 'aprobada_alfredo';
     if (!esAprobada && !nota) { alert('Por favor escribe un motivo para el rechazo.'); return; }
