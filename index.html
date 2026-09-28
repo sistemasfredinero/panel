@@ -800,6 +800,7 @@
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="window.buscarVacPerm()" style="padding:9px 22px;background:#0D7A5F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🔍 Buscar</button>
+      <button id="vpAlfredoShortcut" onclick="window.showAlfredo()" style="display:none;padding:9px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">👤 Solicitudes de Cristina</button>
       <button onclick="window.exportVacPermExcel()" style="padding:9px 16px;background:#1A7A3C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">⬇ Exportar Excel</button>
       <button onclick="window.downloadFotosPermisos()" style="padding:9px 16px;background:#7C3AED;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">📷 Fotos Permisos</button>
       <button data-request-management-only onclick="window.showEliminarVacaciones()" style="padding:9px 16px;background:#7B1FA2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Vacaciones</button>
@@ -849,14 +850,14 @@
 <!-- ── Alfredo section ── -->
 <div id="alfredoSection" style="display:none;padding:24px 32px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-    <h2 style="margin:0;color:#1565C0;font-size:20px">👤 Solicitudes de RH — Alfredo</h2>
+    <h2 style="margin:0;color:#1565C0;font-size:20px">👤 Solicitudes de Cristina — Alfredo</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button onclick="window.loadAlfredoSolicitudes()" style="padding:8px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">↻ Actualizar</button>
       <button onclick="window.closeAlfredo()" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Vacaciones y Permisos</button>
     </div>
   </div>
   <div style="background:#E3F2FD;border:1.5px solid #90CAF9;border-radius:12px;padding:14px;margin-bottom:20px;color:#1565C0;font-size:13px">
-    ℹ️ Aquí aparecen las solicitudes de <strong>RH (cleon)</strong> que requieren tu aprobación. Puedes aprobar o rechazar cada solicitud y se notificará automáticamente por correo a cleon.
+    ℹ️ Aquí aparecen las vacaciones y permisos de <strong>Cristina</strong> que requieren tu respuesta. Puedes aprobar, proponer otras fechas o rechazar con motivo obligatorio.
   </div>
   <!-- Sub-tabs Vacaciones / Permisos -->
   <div style="display:flex;gap:8px;margin-bottom:20px">
@@ -871,8 +872,8 @@
     <h3 id="alfredoModalTitle" style="margin-bottom:16px;color:#1565C0">Responder Solicitud</h3>
     <div id="alfredoModalContent"></div>
     <div style="margin-top:16px">
-      <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Nota (opcional)</label>
-      <textarea id="alfredoNota" rows="3" placeholder="Agrega una nota o motivo..." style="width:100%;padding:10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+      <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Nota o motivo de rechazo <span style="font-weight:400;color:#7A8C7A">(obligatorio al rechazar)</span></label>
+      <textarea id="alfredoNota" rows="3" placeholder="Agrega una nota o el motivo del rechazo..." style="width:100%;padding:10px;border:1.5px solid #D0DDD0;border-radius:8px;font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
     </div>
     <div id="alfredoCamposAlternos" style="margin-top:14px"></div>
     <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;flex-wrap:wrap">
@@ -4683,6 +4684,7 @@
     const canSeeCleon = vpIsAlfredo();
     document.getElementById('vpTypeCleon').style.display = canSeeCleon ? '' : 'none';
     document.getElementById('vpCleonStatusGroup').style.display = canSeeCleon ? '' : 'none';
+    document.getElementById('vpAlfredoShortcut').style.display = canSeeCleon ? '' : 'none';
     if (!canSeeCleon && document.getElementById('vpTipo').value === 'vac_rh') document.getElementById('vpTipo').value = '';
     setPanelHeader('requests');
     const hoy = new Date();
@@ -4891,9 +4893,9 @@
       if (esVac) {
         acciones = `${accionesFlujo}${vpPuedeEditarVacacion(s) ? `<button onclick="window.openVacEdit('${s.id}')" style="padding:5px 10px;background:#7B1FA2;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin-right:3px">✏️ Editar</button>` : ''}${vpPuedeEliminarSolicitud() ? `<button data-vacid="${s.id}" onclick="window.deleteVacPermById(this,'vac')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>` : ''}`;
       } else if (esRH) {
-        acciones = vpEsSoporte() ? `<button onclick="window.abrirAlfredoModal('${s.id}','vac')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Gestionar</button>` : '';
+        acciones = vpIsAlfredo() ? `<button onclick="window.abrirAlfredoModal('${s.id}','vac')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Responder</button>` : '';
       } else if (esCleonForAlfredo) {
-        acciones = vpEsSoporte() ? `<button onclick="window.abrirAlfredoModal('${s.id}','perm')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Gestionar</button>` : '';
+        acciones = vpIsAlfredo() ? `<button onclick="window.abrirAlfredoModal('${s.id}','perm')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">✏️ Responder</button>` : '';
       } else {
         acciones = `${accionesFlujo}${evidenciaAccion}${vpPuedeEliminarSolicitud() ? `<button data-permid="${s.id}" onclick="window.deleteVacPermById(this,'perm')" style="padding:5px 10px;background:#D32F2F;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px">🗑 Eliminar</button>` : ''}`;
       }
@@ -5192,7 +5194,7 @@
           ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
           ${sol.nota_alfredo ? `<div style="font-size:13px;color:#7A8C7A;margin-bottom:4px">💬 Tu nota: ${sol.nota_alfredo}</div>` : ''}
           <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
-        ${vpEsSoporte() ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar / Editar'}</button></div>` : ''}
+        ${vpIsAlfredo() ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar respuesta'}</button></div>` : ''}
         </div>`;
       }
       html += '</div>';
@@ -5248,7 +5250,7 @@
           <div style="font-size:12px;color:#7A8C7A;margin-bottom:4px">${horario}</div>
           ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
           <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
-        ${vpEsSoporte() ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','perm')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar / Editar'}</button></div>` : ''}
+        ${vpIsAlfredo() ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','perm')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : '✏️ Gestionar respuesta'}</button></div>` : ''}
         </div>`;
       }
       html += '</div>';
@@ -5257,7 +5259,7 @@
   }
 
   window.abrirAlfredoModal = async function(id, tipo) {
-    if (!vpEsSoporte()) { alert('Solo Soporte puede gestionar solicitudes desde este apartado.'); return; }
+    if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
     // tipo: 'vac' | 'perm'
     _alfredoSolActiva = null;
     let sol;
@@ -5348,7 +5350,7 @@
   }
 
   window.alfredoProponer = async function() {
-    if (!vpEsSoporte()) { alert('Solo Soporte puede modificar solicitudes desde este apartado.'); return; }
+    if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
     if (!_alfredoSolActiva) return;
     const sol = _alfredoSolActiva;
     const inicio = document.getElementById('alfredoPropInicio')?.value || '';
@@ -5372,13 +5374,13 @@
         await _enviarCorreoPropuestaAlfredo(sol, '📅 Alfredo propuso cambios para tu permiso', `Fechas propuestas: ${mostrar(inicio)} al ${mostrar(fin)}. Horario: ${horario}.`, nota);
       }
       document.getElementById('alfredoModal').style.display = 'none';
-      alert('📅 Propuesta enviada a cleon para su confirmación.');
+      alert('📅 Propuesta enviada a la persona solicitante para su confirmación.');
       window.loadAlfredoSolicitudes();
     } catch(e) { alert('Error al enviar propuesta: ' + e.message); }
   };
 
   window.alfredoResponder = async function(nuevoEstado) {
-    if (!vpEsSoporte()) { alert('Solo Soporte puede modificar solicitudes desde este apartado.'); return; }
+    if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
     if (!_alfredoSolActiva) return;
     const nota = document.getElementById('alfredoNota').value.trim();
     const sol  = _alfredoSolActiva;
@@ -5452,7 +5454,7 @@
         await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Authorization':'Bearer '+RESEND_KEY,'Content-Type':'application/json'}, body: JSON.stringify({ from:'Fredinero <noreply@fredinero.com>', to: emailCleon, subject: asunto, html: htmlBody }) });
       }
       document.getElementById('alfredoModal').style.display = 'none';
-      alert(esAprobada ? '✅ Solicitud aprobada. Se notificó a RH (cleon) por correo.' : '❌ Solicitud rechazada. Se notificó a RH (cleon) por correo.');
+      alert(esAprobada ? '✅ Solicitud aprobada. Se notificó a la persona solicitante por correo.' : '❌ Solicitud rechazada. Se notificó a la persona solicitante por correo.');
       window.loadAlfredoSolicitudes();
     } catch(e) { alert('Error al responder: ' + e.message); }
   };
