@@ -10,3 +10,4 @@
 - [x] Permitir a Cleon aprobar o devolver cualquier etapa de Vacaciones y Permisos desde el panel, sin editar ni eliminar registros.
 - [ ] Mostrar y administrar evidencias fotográficas de permisos desde el panel web.
 - [ ] Validar y publicar el panel junto con la actualización completa de la app.
+- [x] Mostrar en el detalle de Prospección el comentario obligatorio de cancelación o rechazo.
