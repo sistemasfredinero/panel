@@ -15,3 +15,4 @@
 - [x] Consolidar cada expediente de Prospección en un solo registro dentro del panel web.
 - [x] Permitir a Alfredo responder las vacaciones y permisos de Cristina desde su apartado web, con aprobación, propuesta o rechazo motivado.
 - [x] Restringir a Alfredo a aprobar o rechazar únicamente las vacaciones de cleon@fredinero.com.
+- [x] Mostrar desde cada registro del panel las fotos, evidencias y firmas de Permisos y Actividades en un visor individual.

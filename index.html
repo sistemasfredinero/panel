@@ -232,6 +232,13 @@
     #photoModal .modal-img { max-height: min(42dvh, 400px); flex: 0 1 auto; }
     #photoModal .modal-info { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding-right: 8px; margin-top: 4px; }
     #photoModal .modal-close { flex: 0 0 auto; margin-top: 12px; }
+    .panel-media-summary { margin: 2px 0 12px; color: #475569; font-size: 13px; line-height: 1.5; }
+    .panel-media-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+    .panel-media-tile { appearance: none; width: 100%; padding: 8px; border: 1px solid #D7E5DC; border-radius: 10px; background: #F8FCF9; color: #1A2E1A; text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+    .panel-media-tile:hover, .panel-media-tile.active { border-color: #1A7A3C; box-shadow: 0 4px 14px rgba(26,122,60,.16); transform: translateY(-1px); }
+    .panel-media-tile img { width: 100%; height: 92px; object-fit: contain; border-radius: 7px; background: #fff; display: block; }
+    .panel-media-tile span { display: block; margin-top: 7px; font-size: 12px; font-weight: 800; line-height: 1.25; }
+    .panel-media-empty { padding: 24px; text-align: center; color: #64748B; background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 10px; }
     .activity-detail { max-width: 680px; margin: 0 auto; padding: 2px 2px 8px; }
     .activity-detail-summary { background: linear-gradient(135deg, #F0FDF4, #F8FAFC); border: 1px solid #DCE7E0; border-radius: 12px; padding: 12px 14px; margin-bottom: 13px; line-height: 1.55; font-size: 13px; }
     .activity-detail-summary strong { color: #166534; }
@@ -2975,7 +2982,7 @@
           <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span>${stageChip}<span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
           <div style="font-size:12px;color:#667085;margin-top:7px">${subDetail}</div></div>
         <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(record.created_at || record.timestamp)}</div>
-          <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button>${record.tiene_evidencia ? `<button class="btn-accion btn-foto" title="Ver evidencia" onclick="window.viewActivityEvidence('${record.id}')">📷</button>` : ''}${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
+          <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button><button class="btn-accion btn-foto" title="Ver fotos, evidencias y firma del registro" onclick="window.viewActivityAttachments('${record.id}')">🖼️</button>${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
       </div>`;
     };
     if (!activityIsManagerScope()) {
@@ -3059,44 +3066,84 @@
     const prospectHeading = record.tipo === 'PROSPECCION' ? `<div class="activity-detail-prospect"><div class="activity-detail-name">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto')}</div><span class="activity-detail-stage">${activityText(prospectWorkflowLabel(record))}</span></div>` : '';
     const closure = record.tipo === 'PROSPECCION' ? prospectClosureData(record) : null;
     const closureNotice = closure ? `<aside style="margin:0 0 14px;padding:12px 14px;border:1px solid #FCA5A5;border-left:5px solid #B91C1C;border-radius:10px;background:#FFF1F2;color:#7F1D1D"><div style="font-size:13px;font-weight:900">⛔ ${activityText(closure.label)}</div><div style="margin-top:6px;font-size:13px;line-height:1.5"><b>Comentario obligatorio:</b> ${activityText(closure.reason)}</div>${closure.actor ? `<div style="margin-top:5px;font-size:12px;color:#9F1239"><b>Registrado por:</b> ${activityText(closure.actor)}${closure.timestamp ? ` · ${activityText(formatDate(closure.timestamp))}` : ''}</div>` : ''}</aside>` : '';
-    document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><div class="activity-detail-summary"><strong>Responsable:</strong> ${activityText(record.nombre_usuario || '—')}<br><strong>Rol y plaza:</strong> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><strong>Registro:</strong> ${formatDate(record.created_at || record.timestamp)}</div>${prospectHeading}${closureNotice}${detail}${history ? `<div class="activity-detail-history-title">Bitácora completa del expediente</div>${history}` : ''}</div>`;
+    document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><div class="activity-detail-summary"><strong>Responsable:</strong> ${activityText(record.nombre_usuario || '—')}<br><strong>Rol y plaza:</strong> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><strong>Registro:</strong> ${formatDate(record.created_at || record.timestamp)}</div>${prospectHeading}${closureNotice}${detail}<button onclick="window.viewActivityAttachments('${record.id}')" style="margin:14px 0 2px;padding:9px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver fotos, evidencias y firma</button>${history ? `<div class="activity-detail-history-title">Bitácora completa del expediente</div>${history}` : ''}</div>`;
     document.getElementById('photoModal').classList.add('active');
+  };
+
+  function panelMediaLabel(key) {
+    const labels = {
+      foto_base64: 'Evidencia fotográfica',
+      firma_promesa_base64: 'Firma digital de promesa',
+      verificacion_domiciliaria_base64: 'Evidencia de verificación domiciliaria',
+      verificacion_comercial_base64: 'Evidencia de verificación comercial',
+    };
+    return labels[key] || key.replace(/_base64$/i, '').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+  }
+
+  function panelMediaSource(value) {
+    const content = String(value || '');
+    return content.startsWith('data:image/') ? content : `data:image/jpeg;base64,${content}`;
+  }
+
+  function panelMediaEntries(raw) {
+    if (typeof raw === 'string') return raw ? [{ key: 'foto_base64', value: raw }] : [];
+    if (!raw || typeof raw !== 'object') return [];
+    return Object.entries(raw)
+      .filter(([key, value]) => typeof value === 'string' && value && (key === 'foto_base64' || /_base64$/i.test(key) || String(value).startsWith('data:image/')))
+      .map(([key, value]) => ({ key, value }));
+  }
+
+  function renderPanelMediaGallery(record, attachments, selectedIndex = 0) {
+    const safeIndex = Math.max(0, Math.min(selectedIndex, attachments.length - 1));
+    const selected = attachments[safeIndex];
+    window.__panelMediaState = { record, attachments, selectedIndex: safeIndex };
+    const image = document.getElementById('modalImg');
+    const info = document.getElementById('modalInfo');
+    document.getElementById('modalTitle').textContent = 'Fotos, evidencias y firma';
+    image.src = panelMediaSource(selected.value);
+    image.alt = panelMediaLabel(selected.key);
+    image.style.display = '';
+    const responsible = activityText(record.nombre_usuario || record.nombre || '—');
+    const timestamp = formatDate(record.created_at || record.timestamp || record.actualizado_en || Date.now());
+    info.innerHTML = `<div class="panel-media-summary"><b>${attachments.length} archivo(s) adjunto(s)</b> · ${responsible} · ${timestamp}<br><span>Selecciona cada miniatura para visualizarla individualmente.</span></div><div class="panel-media-gallery">${attachments.map((attachment, index) => `<button class="panel-media-tile${index === safeIndex ? ' active' : ''}" onclick="window.selectPanelMediaAttachment(${index})" title="Ver ${activityText(panelMediaLabel(attachment.key))}"><img src="${panelMediaSource(attachment.value)}" alt="${activityText(panelMediaLabel(attachment.key))}" /><span>${activityText(panelMediaLabel(attachment.key))}</span></button>`).join('')}</div>`;
+  }
+
+  window.selectPanelMediaAttachment = function(index) {
+    const state = window.__panelMediaState;
+    if (!state || !state.attachments?.length) return;
+    renderPanelMediaGallery(state.record, state.attachments, Number(index));
+  };
+
+  window.viewActivityAttachments = async function(id) {
+    const record = _activitiesFiltered.find(item => item.id === id) || _prospectAdminData.find(item => item.id === id);
+    if (!record) { alert('No se encontró la actividad.'); return; }
+    const modal = document.getElementById('photoModal');
+    const image = document.getElementById('modalImg');
+    const info = document.getElementById('modalInfo');
+    document.getElementById('modalTitle').textContent = 'Fotos, evidencias y firma';
+    image.removeAttribute('src');
+    image.style.display = 'none';
+    info.innerHTML = '<div style="padding:28px;text-align:center;color:#667085">⏳ Cargando archivos adjuntos...</div>';
+    modal.classList.add('active');
+    try {
+      const snap = await get(ref(database, `gestor_photos/${id}`));
+      const attachments = panelMediaEntries(snap.val());
+      if (!attachments.length) {
+        info.innerHTML = '<div class="panel-media-empty">Este registro no tiene fotografías, evidencias ni firma almacenadas.</div>';
+        return;
+      }
+      renderPanelMediaGallery(record, attachments);
+    } catch (error) {
+      info.innerHTML = `<div style="color:#B91C1C;padding:18px">❌ ${activityText(error.message || 'No se pudieron cargar los archivos adjuntos.')}</div>`;
+    }
   };
 
   window.viewActivityEvidence = async function(id) {
-    const record = _activitiesFiltered.find(x => x.id === id); if (!record) return;
-    document.getElementById('modalTitle').textContent = 'Evidencia de actividad';
-    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    document.getElementById('modalInfo').innerHTML = '<div style="padding:28px;text-align:center;color:#667085">⏳ Cargando evidencia...</div>';
-    document.getElementById('photoModal').classList.add('active');
-    try {
-      const snap = await get(ref(database, `gestor_photos/${id}/foto_base64`));
-      if (!snap.exists()) throw new Error('No se encontró la evidencia asociada.');
-      document.getElementById('modalImg').src = `data:image/jpeg;base64,${snap.val()}`;
-      document.getElementById('modalImg').style.display = '';
-      document.getElementById('modalInfo').innerHTML = `<b>Actividad:</b> ${activityText(record.tipo)}<br><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}`;
-    } catch (error) {
-      document.getElementById('modalInfo').innerHTML = `<div style="color:#B91C1C;padding:18px">❌ ${activityText(error.message)}</div>`;
-    }
+    return window.viewActivityAttachments(id);
   };
 
   window.viewActivityEvidenceFromRoute = async function(id) {
-    const record = _activitiesFiltered.find(x => x.id === id); if (!record) return;
-    const photoModal = document.getElementById('photoModal');
-    photoModal.style.zIndex = '1300';
-    document.getElementById('modalTitle').textContent = 'Evidencia de actividad';
-    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    document.getElementById('modalInfo').innerHTML = '<div style="padding:28px;text-align:center;color:#667085">⏳ Cargando evidencia...</div>';
-    photoModal.classList.add('active');
-    try {
-      const snap = await get(ref(database, `gestor_photos/${id}/foto_base64`));
-      if (!snap.exists()) throw new Error('No se encontró la evidencia asociada.');
-      document.getElementById('modalImg').src = `data:image/jpeg;base64,${snap.val()}`;
-      document.getElementById('modalImg').style.display = '';
-      document.getElementById('modalInfo').innerHTML = `<b>Actividad:</b> ${activityText(record.tipo)}<br><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Registro:</b> ${formatDate(record.created_at || record.timestamp)}`;
-    } catch (error) {
-      document.getElementById('modalInfo').innerHTML = `<div style="color:#B91C1C;padding:18px">❌ ${activityText(error.message)}</div>`;
-    }
+    return window.viewActivityAttachments(id);
   };
 
   window.openActivityMap = function(id) {
@@ -4035,20 +4082,23 @@
     const modal = document.getElementById('photoModal');
     const imagen = document.getElementById('modalImg');
     const info = document.getElementById('modalInfo');
+    const permiso = (_vpData || []).find(item => item.id === id) || {};
+    document.getElementById('modalTitle').textContent = 'Evidencia del permiso';
     imagen.removeAttribute('src');
     imagen.style.display = 'none';
     info.innerHTML = '<div style="padding:28px;text-align:center;color:#5B6F5F">⏳ Cargando evidencia...</div>';
     modal.classList.add('active');
     try {
       const fotoSnap = await get(ref(database, `permission_photos/${id}`));
-      const foto = fotoSnap.val()?.foto_base64;
-      if (!foto) throw new Error('La evidencia ya no está disponible.');
-      imagen.src = `data:image/jpeg;base64,${foto}`;
+      const guardada = fotoSnap.val();
+      const foto = typeof guardada === 'string' ? guardada : guardada?.foto_base64;
+      if (!foto) throw new Error('Este permiso no tiene una evidencia fotográfica almacenada.');
+      imagen.src = panelMediaSource(foto);
       imagen.alt = 'Evidencia fotográfica del permiso';
       imagen.style.display = '';
-      info.innerHTML = '<div style="font-weight:700;color:#1A2E1A">🖼️ Evidencia fotográfica del permiso</div><div style="font-size:12px;color:#7A8C7A;margin-top:4px">Cargada bajo demanda desde Firebase</div>';
+      info.innerHTML = `<div style="font-weight:700;color:#1A2E1A">🖼️ Evidencia fotográfica del permiso</div><div style="font-size:12px;color:#7A8C7A;margin-top:4px"><b>Solicitante:</b> ${activityText(permiso.nombre_solicitante || permiso.nombre || '—')}<br><b>Registro:</b> ${activityText(formatDate(permiso.timestamp || permiso.timestamp_creacion || Date.now()))}</div>`;
     } catch (e) {
-      info.innerHTML = `<div style="padding:18px;color:#B91C1C;font-weight:700">❌ ${e.message || 'No se pudo cargar la evidencia.'}</div>`;
+      info.innerHTML = `<div style="padding:18px;color:#B91C1C;font-weight:700">❌ ${activityText(e.message || 'No se pudo cargar la evidencia.')}</div>`;
     }
   };
 
@@ -4888,8 +4938,8 @@
       const accionesFlujo = (esVac || esPerm) && !esCleonForAlfredo && vpPuedeGestionarFlujo(s) && !esFinalizada
         ? `<button onclick="window.vpAprobarFlujo('${s.id}','${s._tipo}')" style="padding:5px 10px;background:#1A7A3C;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">✅ Aprobar</button><button onclick="window.vpDevolverFlujo('${s.id}','${s._tipo}')" style="padding:5px 10px;background:#E65100;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">↩ Devolver</button>`
         : '';
-      const evidenciaAccion = esPerm && s.tiene_evidencia
-        ? `<button onclick="window.vpVerEvidenciaPermiso('${s.id}')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px">🖼️ Ver evidencia</button>`
+      const evidenciaAccion = esPerm
+        ? `<button onclick="window.vpVerEvidenciaPermiso('${s.id}')" style="padding:5px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:11px;margin:2px" title="Ver evidencia fotográfica del permiso">🖼️ Ver evidencia</button>`
         : '';
       let acciones;
       if (esVac) {
