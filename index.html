@@ -857,14 +857,14 @@
 <!-- ── Alfredo section ── -->
 <div id="alfredoSection" style="display:none;padding:24px 32px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-    <h2 style="margin:0;color:#1565C0;font-size:20px">🏖 Vacaciones de Cleon — Alfredo</h2>
+    <h2 style="margin:0;color:#1565C0;font-size:20px">🏖 Vacaciones de Cleon — autorización de respaldo</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button onclick="window.loadAlfredoSolicitudes()" style="padding:8px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">↻ Actualizar</button>
       <button onclick="window.closeAlfredo()" style="padding:8px 16px;background:#6b7280;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">← Vacaciones y Permisos</button>
     </div>
   </div>
   <div style="background:#E3F2FD;border:1.5px solid #90CAF9;border-radius:12px;padding:14px;margin-bottom:20px;color:#1565C0;font-size:13px">
-    ℹ️ Aquí aparecen únicamente las solicitudes de vacaciones de <strong>cleon@fredinero.com</strong>. Puedes aprobar o rechazar; al rechazar, el motivo es obligatorio.
+    ℹ️ Aquí aparecen únicamente las solicitudes de vacaciones de <strong>cleon@fredinero.com</strong>. Alfredo es el responsable principal y Soporte puede aprobar o rechazar como respaldo; al rechazar, el motivo es obligatorio.
   </div>
   <!-- Único alcance de Alfredo: vacaciones de Cleon -->
   <div style="display:flex;gap:8px;margin-bottom:20px">
@@ -3970,25 +3970,36 @@
     return vpCorreoActual() === VP_CLEON_EMAIL;
   }
 
-  function vpPuedeGestionarFlujo(sol) {
-    if (vpEsSoporte()) return true;
-    if (!vpEsCleon() || !sol) return false;
-    const estado = String(sol.estado || '').trim().toLowerCase();
-    const cerrado = Boolean(
-      sol.cancelado
-      || sol.visto_bueno_cleon
-      || sol.confirmada_empleado
-      || sol.approval_stage === 'completado'
-      || ['aprobado_final', 'activo', 'gozado', 'gozados', 'cancelado', 'cancelada'].includes(estado)
+  function vpSolicitudEnEtapaFinal(sol) {
+    const estado = String(sol?.estado || '').trim().toLowerCase();
+    return Boolean(
+      sol?.cancelado
+      || sol?.visto_bueno_cleon
+      || sol?.confirmada_empleado
+      || sol?.approval_stage === 'completado'
+      || ['aprobado_final', 'confirmada', 'activo', 'gozado', 'gozados', 'cancelado', 'cancelada'].includes(estado)
     );
+  }
+
+  function vpPuedeGestionarFlujo(sol) {
+    // Ninguna cuenta puede aprobar o devolver una solicitud que ya concluyó.
+    if (!sol || vpSolicitudEnEtapaFinal(sol)) return false;
+    if (vpEsSoporte()) return true;
+    if (!vpEsCleon()) return false;
     // Cleon puede aprobar o devolver cualquier etapa que siga abierta, sin
     // adquirir los permisos independientes de edición o eliminación.
-    return !cerrado;
+    return true;
   }
 
   function vpVacacionEnEtapaFinal(sol) {
     const estado = vacGetEstado(sol || {});
-    return Boolean(sol?.visto_bueno_cleon || sol?.confirmada_empleado || sol?.approval_stage === 'completado' || ['confirmada', 'activo', 'gozados'].includes(estado));
+    return Boolean(
+      sol?.cancelado
+      || sol?.visto_bueno_cleon
+      || sol?.confirmada_empleado
+      || sol?.approval_stage === 'completado'
+      || ['confirmada', 'activo', 'gozados', 'cancelado'].includes(estado)
+    );
   }
 
   function vpCleonPuedeEditarVacacion(sol) {
@@ -3996,7 +4007,8 @@
   }
 
   function vpPuedeEditarVacacion(sol) {
-    return vpEsSoporte();
+    // Soporte conserva la edición operativa, nunca después del cierre final.
+    return vpEsSoporte() && !!sol && !vpVacacionEnEtapaFinal(sol);
   }
 
   function vpPuedeEliminarSolicitud() {
@@ -4717,8 +4729,21 @@
     return String(auth.currentUser?.email || '').trim().toLowerCase() === 'alfredo@fredinero.com';
   }
 
+  function vpVacacionCleonEstaFinalizada(record) {
+    const estado = String(record?.estado || record?._estadoKey || '').trim().toLowerCase();
+    return ['aprobada_alfredo', 'rechazada_alfredo', 'activo', 'gozados'].includes(estado);
+  }
+
+  function vpPuedeResponderVacacionCleon(record) {
+    return (vpIsAlfredo() || vpEsSoporte())
+      && !!record
+      && ['vac', 'vac_rh'].includes(record._tipo)
+      && !vpVacacionCleonEstaFinalizada(record);
+  }
+
+  // Nombre heredado para los botones existentes; incluye respaldo de Soporte.
   function alfredoCanManageVacation(record) {
-    return vpIsAlfredo() && !!record && ['vac', 'vac_rh'].includes(record._tipo);
+    return vpPuedeResponderVacacionCleon(record);
   }
 
   function vpIsCleonRequest(record) {
@@ -4733,7 +4758,7 @@
     document.getElementById('activitiesSection').style.display = 'none';
     document.getElementById('alfredoSection').style.display = 'none';
     document.getElementById('vacPermSection').style.display = 'block';
-    const canSeeCleon = vpIsAlfredo();
+    const canSeeCleon = vpIsAlfredo() || vpEsSoporte();
     document.getElementById('vpTypeCleon').style.display = canSeeCleon ? '' : 'none';
     document.getElementById('vpCleonStatusGroup').style.display = canSeeCleon ? '' : 'none';
     document.getElementById('vpAlfredoShortcut').style.display = canSeeCleon ? '' : 'none';
@@ -4767,7 +4792,7 @@
     const tsEnd   = fechaFin ? new Date(fechaFin + 'T23:59:59').getTime() : Infinity;
     const coincideUsuario = (nombre, correo) => vpCoincideUsuarioFlexible(buscar, nombre, correo);
     const coincideFecha = ts => (!fechaIni && !fechaFin) || (ts >= tsStart && ts <= tsEnd);
-    const canSeeCleon = vpIsAlfredo();
+    const canSeeCleon = vpIsAlfredo() || vpEsSoporte();
     _vpData = [];
     try {
       if (tipo === '' || tipo === 'vacaciones') {
@@ -4929,7 +4954,7 @@
         detalle = s.motivo
           ? `<span style="color:#0288D1;font-style:italic">📝 ${s.motivo}</span>`
           : '<span style="color:#bbb">Sin motivo</span>';
-        if (s.nota_alfredo) detalle += `<div style="font-size:11px;color:#7A8C7A;margin-top:3px">💬 Alfredo: ${s.nota_alfredo}</div>`;
+        if (s.nota_alfredo) detalle += `<div style="font-size:11px;color:#7A8C7A;margin-top:3px">💬 ${s.respondido_por_nombre || 'Alfredo'}: ${s.nota_alfredo}</div>`;
       } else {
         const horario = s.dia_completo ? '—' : `${s.hora_inicio||'?'} - ${s.hora_salida||'?'}`;
         detalle = `<div style="font-size:12px">${horario}</div><div style="font-size:11px;color:#7A8C7A;max-width:180px;word-break:break-word">${s.motivo||'—'}</div>`;
@@ -5164,7 +5189,7 @@
 
   window.showAlfredo = function() {
     const email = String(auth.currentUser?.email || '').trim().toLowerCase();
-    if (email !== 'alfredo@fredinero.com') { alert('Este apartado es exclusivo para Alfredo.'); return; }
+    if (!vpIsAlfredo() && !vpEsSoporte()) { alert('Este apartado es exclusivo para Alfredo o Soporte.'); return; }
     document.getElementById('app').style.display = 'block';
     document.getElementById('moduleLanding').style.display = 'none';
     document.getElementById('attendanceWorkspace').style.display = 'none';
@@ -5234,7 +5259,7 @@
           <div style="font-size:13px;color:#1A2E1A;margin-bottom:4px">📅 ${sol.fecha_inicio} — ${sol.fecha_fin}</div>
           <div style="font-size:12px;color:#7A8C7A;margin-bottom:4px">${sol.dias_solicitados} día(s) hábil(es)</div>
           ${sol.motivo ? `<div style="font-size:13px;color:#0288D1;margin-bottom:4px;font-style:italic">📝 ${sol.motivo}</div>` : ''}
-          ${sol.nota_alfredo ? `<div style="font-size:13px;color:#7A8C7A;margin-bottom:4px">💬 Tu nota: ${sol.nota_alfredo}</div>` : ''}
+          ${sol.nota_alfredo ? `<div style="font-size:13px;color:#7A8C7A;margin-bottom:4px">💬 ${sol.respondido_por_nombre || 'Alfredo'}: ${sol.nota_alfredo}</div>` : ''}
           <div style="font-size:11px;color:#9CA3AF;margin-bottom:10px">Solicitado: ${fecha}</div>
         ${alfredoCanManageVacation(sol) ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="window.abrirAlfredoModal('${sol.id}','vac')" style="flex:1;min-width:120px;padding:10px;background:#1565C0;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px">${isPendiente ? 'Responder solicitud →' : 'Ver respuesta'}</button></div>` : ''}
         </div>`;
@@ -5301,8 +5326,8 @@
   }
 
   window.abrirAlfredoModal = async function(id, tipo) {
-    if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
-    if (tipo !== 'vac') { alert('Alfredo solo puede responder vacaciones de cleon@fredinero.com.'); return; }
+    if (!vpIsAlfredo() && !vpEsSoporte()) { alert('Este apartado es exclusivo para Alfredo o Soporte.'); return; }
+    if (tipo !== 'vac') { alert('Solo se pueden responder vacaciones de cleon@fredinero.com.'); return; }
     // tipo: 'vac' | 'perm'
     _alfredoSolActiva = null;
     let sol;
@@ -5314,6 +5339,10 @@
       const snap = await get(ref(database, 'permission_requests/' + id));
       if (!snap.exists()) { alert('Permiso no encontrado'); return; }
       sol = { id, _tipo: 'perm', ...snap.val() };
+    }
+    if (!vpPuedeResponderVacacionCleon(sol)) {
+      alert('Esta solicitud ya fue resuelta y no puede modificarse.');
+      return;
     }
     _alfredoSolActiva = sol;
     const nombre = sol.nombre_solicitante || sol.nombre || 'RH';
@@ -5373,14 +5402,16 @@
   };
 
   window.alfredoResponder = async function(nuevoEstado) {
-    if (!vpIsAlfredo()) { alert('Este apartado es exclusivo para Alfredo.'); return; }
+    if (!vpIsAlfredo() && !vpEsSoporte()) { alert('Este apartado es exclusivo para Alfredo o Soporte.'); return; }
     if (!_alfredoSolActiva) return;
     const nota = document.getElementById('alfredoNota').value.trim();
     const sol  = _alfredoSolActiva;
-    if (!alfredoCanManageVacation(sol)) {
-      alert('Alfredo solo puede aprobar o rechazar vacaciones de cleon@fredinero.com.');
+    if (!vpPuedeResponderVacacionCleon(sol)) {
+      alert('Esta solicitud ya fue resuelta o no corresponde a una vacación pendiente de Cleon.');
       return;
     }
+    const responsableRespuesta = vpEsSoporte() ? 'Soporte' : 'Alfredo';
+    const correoResponsable = vpCorreoActual();
     const esVac = sol._tipo === 'vac';
     const esAprobada = nuevoEstado === 'aprobada_alfredo';
     if (!esAprobada && !nota) { alert('Por favor escribe un motivo para el rechazo.'); return; }
@@ -5390,9 +5421,13 @@
     try {
       if (esVac) {
         // ── Vacaciones ──
-        await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/estado'), nuevoEstado);
-        await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/nota_alfredo'), nota || null);
-        await set(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id + '/timestamp_respuesta'), Date.now());
+        await update(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id), {
+          estado: nuevoEstado,
+          nota_alfredo: nota || null,
+          timestamp_respuesta: Date.now(),
+          respondido_por: correoResponsable,
+          respondido_por_nombre: responsableRespuesta,
+        });
         const asunto = esAprobada
           ? `✅ Tus vacaciones fueron aprobadas — ${sol.fecha_inicio} al ${sol.fecha_fin}`
           : `❌ Solicitud de vacaciones rechazada`;
@@ -5403,14 +5438,14 @@
         const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f5f7f5;padding:24px;border-radius:12px;">
           <div style="background:#1B7A3E;padding:16px 24px;border-radius:8px 8px 0 0;"><h2 style="color:#fff;margin:0;font-size:18px;">🌿 Fredinero Operativo</h2></div>
           <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #D0DDD0;">
-            <h3 style="color:${colorT};margin-top:0;">${esAprobada ? '✅ Vacaciones aprobadas por Alfredo' : '❌ Solicitud de vacaciones rechazada'}</h3>
-            <p style="color:#1A2E1A;">Hola <strong>${nombre}</strong>, ${esAprobada ? 'Alfredo aprobó tu solicitud de vacaciones.' : 'Alfredo no pudo aprobar tu solicitud de vacaciones.'}</p>
+            <h3 style="color:${colorT};margin-top:0;">${esAprobada ? `✅ Vacaciones aprobadas por ${responsableRespuesta}` : '❌ Solicitud de vacaciones rechazada'}</h3>
+            <p style="color:#1A2E1A;">Hola <strong>${nombre}</strong>, ${esAprobada ? `${responsableRespuesta} aprobó tu solicitud de vacaciones.` : `${responsableRespuesta} no pudo aprobar tu solicitud de vacaciones.`}</p>
             <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${bBg};color:${bColor};font-size:12px;font-weight:700;">${bLabel}</span>
             <table style="width:100%;border-collapse:collapse;margin-top:12px;">
               <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;width:140px;">Fecha inicio</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_inicio}</td></tr>
               <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Fecha fin</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_fin}</td></tr>
               <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Días</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.dias_solicitados}</td></tr>
-              ${nota ? `<tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">${esAprobada ? 'Nota de Alfredo' : 'Motivo del rechazo'}</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${nota}</td></tr>` : ''}
+              ${nota ? `<tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">${esAprobada ? `Nota de ${responsableRespuesta}` : 'Motivo del rechazo'}</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${nota}</td></tr>` : ''}
             </table>
           </div>
           <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:12px;">Este es un correo automático, no responder.</p>
@@ -5451,7 +5486,7 @@
         await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Authorization':'Bearer '+RESEND_KEY,'Content-Type':'application/json'}, body: JSON.stringify({ from:'Fredinero <noreply@fredinero.com>', to: emailCleon, subject: asunto, html: htmlBody }) });
       }
       document.getElementById('alfredoModal').style.display = 'none';
-      alert(esAprobada ? '✅ Solicitud aprobada. Se notificó a la persona solicitante por correo.' : '❌ Solicitud rechazada. Se notificó a la persona solicitante por correo.');
+      alert(esAprobada ? `✅ Solicitud aprobada por ${responsableRespuesta}. Se notificó a la persona solicitante por correo.` : `❌ Solicitud rechazada por ${responsableRespuesta}. Se notificó a la persona solicitante por correo.`);
       window.loadAlfredoSolicitudes();
     } catch(e) { alert('Error al responder: ' + e.message); }
   };
