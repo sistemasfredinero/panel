@@ -20,3 +20,5 @@
 - [x] Permitir a Soporte aprobar como respaldo las vacaciones pendientes de cleon@fredinero.com.
 - [x] Convertir el calendario de citas en Calendario de Actividades e incluir promesas de pago.
 - [x] Mostrar el conteo y detalle de las promesas de pago programadas para hoy.
+- [x] Mostrar desde el calendario el expediente completo de Prospección, incluida su bitácora.
+- [x] Mostrar desde el calendario la cadena de pago, firma y todas las evidencias relacionadas.

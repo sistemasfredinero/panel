@@ -2155,6 +2155,7 @@
   let _prospectCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let _prospectCalendarAppointments = [];
   let _activityCalendarPromises = [];
+  const _calendarDetailRecords = new Map();
   let _prospectCalendarSelectedDate = '';
   const PROSPECT_CALENDAR_COLORS = {
     TAMPICO: '#2563EB', MADERO: '#7C3AED', MANTE: '#059669', POZA: '#EA580C', TUXPAN: '#DC2626',
@@ -2979,22 +2980,46 @@
     panel.style.display = 'block';
     panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><div style="font-size:18px;font-weight:900;color:#0F172A;text-transform:capitalize">Actividades del ${activityText(heading)}</div><div style="font-size:13px;color:#64748B;margin-top:4px">${citations.length} cita${citations.length === 1 ? '' : 's'} · ${promises.length} promesa${promises.length === 1 ? '' : 's'} de pago.</div></div><div style="display:flex;gap:8px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendarDay(-1)">← Día anterior</button><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendarDay(1)">Día siguiente →</button></div></div><div>${list}</div>`;
   }
-  window.viewActivityCalendarRecord = function(id, type) {
+  async function loadCalendarDetailRecord(id) {
+    const cached = activityRecordById(id);
+    try {
+      const snap = await get(ref(database, `gestor_activities/${id}`));
+      if (!snap.exists()) return cached || null;
+      const record = { id, ...(snap.val() || {}) };
+      _calendarDetailRecords.set(id, record);
+      return record;
+    } catch {
+      return cached || null;
+    }
+  }
+
+  async function loadPaymentChain(promiseRecord) {
+    const receiptId = String(promiseRecord.recepcion_pago_id || '');
+    const receipt = receiptId ? await loadCalendarDetailRecord(receiptId) : null;
+    const verificationId = String(promiseRecord.comprobacion_id || receipt?.comprobacion_id || '');
+    const verification = verificationId ? await loadCalendarDetailRecord(verificationId) : null;
+    return { reception: receipt, verification };
+  }
+
+  window.viewActivityCalendarRecord = async function(id, type) {
+    const modal = document.getElementById('photoModal');
+    const image = document.getElementById('modalImg');
+    const info = document.getElementById('modalInfo');
+    document.getElementById('modalTitle').textContent = 'Detalle completo';
+    image.removeAttribute('src'); image.style.display = 'none';
+    info.innerHTML = '<div style="padding:28px;text-align:center;color:#667085">⏳ Cargando información completa, bitácora y evidencias...</div>';
+    modal.classList.add('active');
+    const record = await loadCalendarDetailRecord(id);
+    if (!record) {
+      info.innerHTML = '<div style="color:#B91C1C;padding:18px">No se encontró el registro solicitado.</div>';
+      return;
+    }
     const isPromise = type === 'PROMESA';
-    const record = (isPromise ? _activityCalendarPromises : _prospectCalendarAppointments).find(item => item.id === id); if (!record) return;
-    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    if (!isPromise) { window.viewProspectCalendarAppointment(id); return; }
-    document.getElementById('modalTitle').textContent = 'Promesa de pago';
-    document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.65"><div style="background:#FFF7ED;padding:11px;border-radius:9px;margin-bottom:12px"><b>Cliente / contacto:</b> ${activityText(record.nombre_contacto || '—')}<br><b>Fecha y hora:</b> ${activityText(record.fecha_promesa || '—')} ${activityText(record.hora_promesa || prospectTime(record.promesa_timestamp))}<br><b>Plaza:</b> ${activityText(record.plaza || '—')}<br><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Monto comprometido:</b> ${activityText(record.monto || record.monto_promesa || '—')}</div><div><b>Se atiende a:</b> ${activityText(record.se_visita_a || '—')}</div><div><b>Número de distribuidora:</b> ${activityText(record.numero_cliente || '—')}</div><div><b>Comentarios:</b> ${activityText(record.comentarios || '—')}</div></div>`;
-    document.getElementById('photoModal').classList.add('active');
+    const paymentChain = isPromise ? await loadPaymentChain(record) : null;
+    renderFullActivityDetail(record, { paymentChain });
   };
-  window.viewProspectCalendarAppointment = function(id) {
-    const record = _prospectCalendarAppointments.find(item => item.id === id); if (!record) return;
-    document.getElementById('modalTitle').textContent = 'Cita de Prospección';
-    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.65"><div style="background:#ECFDF5;padding:11px;border-radius:9px;margin-bottom:12px"><b>Prospecto:</b> ${activityText(record.nombre_prospecto || '—')}<br><b>Fecha y hora:</b> ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}<br><b>Plaza:</b> ${activityText(record.plaza || '—')}<br><b>Responsable:</b> ${activityText(record.responsable_cita_nombre || record.nombre_usuario || '—')}<br><b>Gerente:</b> ${activityText(record.gerente_cita_nombre || 'Sin gerente asignado')}</div><div><b>Acción:</b> ${activityText(record.tipo_accion || '—')}</div><div><b>Teléfono:</b> ${activityText(record.telefono || '—')}</div><div><b>Dirección:</b> ${activityText(record.direccion || '—')}</div><div><b>Referido interno:</b> ${activityText(record.referido_interno || '—')}</div><div><b>Observaciones:</b> ${activityText(record.observaciones || '—')}</div></div>`;
-    document.getElementById('photoModal').classList.add('active');
-  };
+
+  window.viewProspectCalendarAppointment = function(id) { return window.viewActivityCalendarRecord(id, 'CITA'); };
 
   window.renderActivities = function() {
     const type = document.getElementById('activityType').value;
@@ -3127,20 +3152,88 @@
     URL.revokeObjectURL(url);
   };
 
-  window.viewActivityDetail = function(id) {
-    const record = _activitiesFiltered.find(x => x.id === id) || _prospectAdminData.find(x => x.id === id); if (!record) return;
-    const rows = record.tipo === 'COBRANZA'
-      ? [['Se atiende a', record.se_visita_a], ['Número de cliente', record.numero_cliente], ['Nombre', record.nombre_contacto], ['Gestión', record.gestion_realizada], ['Monto', record.monto], ['Folio', record.folio_recibo], ['Fecha de promesa', record.fecha_promesa], ['Hora de promesa', record.hora_promesa], ['Comentarios', record.comentarios]]
-      : [['Prospecto', record.nombre_prospecto], ['Tipo de Prospección', record.modalidad_prospeccion], ['Origen de prospección', record.tipo_prospeccion === 'Otra' ? record.tipo_prospeccion_otro || 'Otra' : record.tipo_prospeccion], ['Etapa del expediente', prospectWorkflowLabel(record)]];
-    const detail = rows.filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => `<div class="activity-detail-field"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
-    document.getElementById('modalTitle').textContent = `Actividad de ${record.tipo === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
-    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    const history = record.tipo === 'PROSPECCION' ? (() => { const entries = Object.values(record.historial_expediente || {}).sort((a, b) => Number(b.fecha || 0) - Number(a.fecha || 0)); return entries.map((entry, index) => { const isLizComment = entry?.tipo === 'COMENTARIO_LGALLEGOS'; const detailRows = prospectHistoryDetails(entry, record, index === entries.length - 1).map(([label, value]) => `<div class="activity-history-entry-detail"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join(''); return `<article class="activity-history-entry${isLizComment ? ' liz-comment' : ''}"><div class="activity-history-entry-title">${isLizComment ? '💬 Comentario de Liz' : activityText(prospectHistoryDisplayLabel(entry, record))}</div><div class="activity-history-entry-meta">${activityText(new Date(Number(entry.fecha || 0)).toLocaleString('es-MX'))} · ${activityText(entry.usuario_nombre || 'Usuario')}</div>${entry.comentario ? `<div class="activity-history-entry-comment">${activityText(entry.comentario)}</div>` : ''}${detailRows}</article>`; }).join(''); })() : '';
-    const prospectHeading = record.tipo === 'PROSPECCION' ? `<div class="activity-detail-prospect"><div class="activity-detail-name">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto')}</div><span class="activity-detail-stage">${activityText(prospectWorkflowLabel(record))}</span></div>` : '';
-    const closure = record.tipo === 'PROSPECCION' ? prospectClosureData(record) : null;
+  function activityRecordById(id) {
+    return _activitiesFiltered.find(item => item.id === id)
+      || _prospectAdminData.find(item => item.id === id)
+      || _calendarDetailRecords.get(id)
+      || null;
+  }
+
+  function detailDateTime(record, timestampKey, dateKey, timeKey) {
+    const timestamp = Number(record?.[timestampKey] || 0);
+    if (timestamp) return new Date(timestamp).toLocaleString('es-MX');
+    const date = record?.[dateKey] || '';
+    const time = record?.[timeKey] || '';
+    return `${date} ${time}`.trim() || '—';
+  }
+
+  function detailValue(value) {
+    if (value === true) return 'Sí';
+    if (value === false) return 'No';
+    if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+    if (value && typeof value === 'object') return Object.entries(value).map(([key, item]) => `${key}: ${detailValue(item)}`).join(' · ');
+    return value === undefined || value === null || value === '' ? '—' : String(value);
+  }
+
+  function detailRowsHtml(rows) {
+    return rows.filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([label, value]) => `<div class="activity-detail-field"><b>${activityText(label)}:</b> ${activityText(detailValue(value))}</div>`).join('');
+  }
+
+  function paymentStepDetail(title, color, record, rows, emptyMessage) {
+    if (!record) return `<section style="margin-top:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-left:5px solid ${color};border-radius:10px;padding:12px 14px"><div style="font-weight:900;color:#334155">${title}</div><div style="font-size:13px;color:#64748B;margin-top:5px">${emptyMessage}</div></section>`;
+    const attachmentButton = `<button onclick="window.viewActivityAttachments('${record.id}')" style="margin-top:10px;padding:8px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver evidencia de esta etapa</button>`;
+    return `<section style="margin-top:12px;background:#fff;border:1px solid #E2E8F0;border-left:5px solid ${color};border-radius:10px;padding:12px 14px"><div style="font-weight:900;color:#0F172A">${title}</div><div style="font-size:12px;color:#64748B;margin:3px 0 8px">Responsable: ${activityText(record.nombre_usuario || '—')} · ${activityText(detailDateTime(record, 'created_at', 'fecha_hora_registro', 'hora'))}</div>${detailRowsHtml(rows)}${attachmentButton}</section>`;
+  }
+
+  function renderFullActivityDetail(record, options = {}) {
+    const isCobranza = normaliseActivityText(record.tipo || record.activity_type) === 'COBRANZA';
+    const rows = isCobranza
+      ? [
+          ['Se atiende a', record.se_visita_a], ['Número de distribuidora', record.numero_cliente], ['Nombre / contacto', record.nombre_contacto],
+          ['Gestión realizada', record.gestion_realizada], ['Monto comprometido', record.monto || record.monto_promesa],
+          ['Fecha y hora de promesa', detailDateTime(record, 'promesa_timestamp', 'fecha_promesa', 'hora_promesa')], ['Modalidad de promesa', record.modalidad_promesa],
+          ['Folio', record.folio_recibo || record.folio_comprobante], ['Comentarios', record.comentarios], ['Estado del seguimiento', record.estado_seguimiento_pago || record.estado_conciliacion],
+          ['Ubicación', record.latitud != null && record.longitud != null ? `${record.latitud}, ${record.longitud}` : '—'],
+        ]
+      : [
+          ['Prospecto', record.nombre_prospecto || record.nombre_contacto], ['Dirección', record.direccion], ['Teléfono', record.telefono], ['Tipo de Prospección', record.modalidad_prospeccion],
+          ['Origen de prospección', record.tipo_prospeccion === 'Otra' ? record.tipo_prospeccion_otro || 'Otra' : record.tipo_prospeccion], ['Referido interno', record.referido_interno],
+          ['Acción', record.tipo_accion], ['Cita agendada', record.se_agenda_cita], ['Fecha y hora de cita', detailDateTime(record, 'cita_timestamp', 'fecha_cita', 'hora_cita')],
+          ['Rafik / Círculo de Crédito', record.rafik_completado ?? record.rafik_lleno], ['Líder responsable', record.responsable_cita_nombre || record.lider_responsable_nombre],
+          ['Gerente', record.gerente_cita_nombre || record.gerente_nombre], ['Documentación / comentarios', record.comentarios_documentacion || record.observaciones],
+          ['Verificación domiciliaria', record.verificacion_domiciliaria?.estado], ['Verificación comercial', record.verificacion_comercial?.requerida ? record.verificacion_comercial?.estado : 'No requerida'],
+          ['Etapa del expediente', prospectWorkflowLabel(record)], ['Ubicación', record.latitud != null && record.longitud != null ? `${record.latitud}, ${record.longitud}` : '—'],
+        ];
+    const detail = detailRowsHtml(rows);
+    const history = !isCobranza ? (() => {
+      const entries = Object.values(record.historial_expediente || {}).sort((a, b) => Number(b.fecha || 0) - Number(a.fecha || 0));
+      if (!entries.length) return '<div class="activity-detail-history-title">Bitácora completa del expediente</div><div style="color:#64748B;font-size:13px;margin-top:8px">Sin movimientos en la bitácora.</div>';
+      const cards = entries.map((entry, index) => {
+        const isLizComment = entry?.tipo === 'COMENTARIO_LGALLEGOS';
+        const detailRows = prospectHistoryDetails(entry, record, index === entries.length - 1).map(([label, value]) => `<div class="activity-history-entry-detail"><b>${activityText(label)}:</b> ${activityText(value)}</div>`).join('');
+        return `<article class="activity-history-entry${isLizComment ? ' liz-comment' : ''}"><div class="activity-history-entry-title">${isLizComment ? '💬 Comentario de Liz' : activityText(prospectHistoryDisplayLabel(entry, record))}</div><div class="activity-history-entry-meta">${activityText(new Date(Number(entry.fecha || 0)).toLocaleString('es-MX'))} · ${activityText(entry.usuario_nombre || 'Usuario')}</div>${entry.comentario ? `<div class="activity-history-entry-comment">${activityText(entry.comentario)}</div>` : ''}${detailRows}</article>`;
+      }).join('');
+      return `<div class="activity-detail-history-title">Bitácora completa del expediente</div>${cards}`;
+    })() : '';
+    const prospectHeading = !isCobranza ? `<div class="activity-detail-prospect"><div class="activity-detail-name">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto')}</div><span class="activity-detail-stage">${activityText(prospectWorkflowLabel(record))}</span></div>` : '';
+    const closure = !isCobranza ? prospectClosureData(record) : null;
     const closureNotice = closure ? `<aside style="margin:0 0 14px;padding:12px 14px;border:1px solid #FCA5A5;border-left:5px solid #B91C1C;border-radius:10px;background:#FFF1F2;color:#7F1D1D"><div style="font-size:13px;font-weight:900">⛔ ${activityText(closure.label)}</div><div style="margin-top:6px;font-size:13px;line-height:1.5"><b>Comentario obligatorio:</b> ${activityText(closure.reason)}</div>${closure.actor ? `<div style="margin-top:5px;font-size:12px;color:#9F1239"><b>Registrado por:</b> ${activityText(closure.actor)}${closure.timestamp ? ` · ${activityText(formatDate(closure.timestamp))}` : ''}</div>` : ''}</aside>` : '';
-    document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><div class="activity-detail-summary"><strong>Responsable:</strong> ${activityText(record.nombre_usuario || '—')}<br><strong>Rol y plaza:</strong> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><strong>Registro:</strong> ${formatDate(record.created_at || record.timestamp)}</div>${prospectHeading}${closureNotice}${detail}<button onclick="window.viewActivityAttachments('${record.id}')" style="margin:14px 0 2px;padding:9px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver fotos, evidencias y firma</button>${history ? `<div class="activity-detail-history-title">Bitácora completa del expediente</div>${history}` : ''}</div>`;
+    const primaryAttachments = `<button onclick="window.viewActivityAttachments('${record.id}')" style="margin:14px 0 2px;padding:9px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver fotos, evidencias y firma</button>`;
+    let paymentChain = '';
+    if (isCobranza && options.paymentChain) {
+      const chain = options.paymentChain;
+      paymentChain = `<div style="margin-top:16px;border-top:1px solid #E2E8F0;padding-top:4px"><div style="font-size:16px;font-weight:900;color:#0F172A;margin:12px 0 4px">Flujo completo de pago</div>${paymentStepDetail('1. Promesa de pago', '#EA580C', record, [['Monto comprometido', record.monto || record.monto_promesa], ['Fecha y hora', detailDateTime(record, 'promesa_timestamp', 'fecha_promesa', 'hora_promesa')], ['Firma digital', record.tiene_firma_promesa ? 'Capturada' : 'No registrada'], ['Comentarios', record.comentarios]], 'No existe promesa registrada.')}${paymentStepDetail('2. Recepción de pago', '#0F766E', chain.reception, [['Modalidad', chain.reception?.modalidad_recepcion], ['Monto recibido', chain.reception?.monto], ['Folio de recibo', chain.reception?.folio_recibo], ['Comentarios', chain.reception?.comentarios]], 'Pendiente de registrar la recepción de pago.')}${paymentStepDetail('3. Comprobación de pago', '#2563EB', chain.verification, [['Monto depositado', chain.verification?.monto], ['Folio de comprobante', chain.verification?.folio_comprobante || chain.verification?.folio_recibo], ['Resultado de conciliación', chain.verification?.resultado_conciliacion || chain.verification?.estado_conciliacion], ['Comentarios', chain.verification?.comentarios]], 'Pendiente de registrar la comprobación de pago.')}</div>`;
+    }
+    document.getElementById('modalTitle').textContent = isCobranza ? 'Detalle completo de Cobranza' : 'Expediente completo de Prospección';
+    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
+    document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><div class="activity-detail-summary"><strong>Responsable:</strong> ${activityText(record.nombre_usuario || '—')}<br><strong>Correo:</strong> ${activityText(record.correo_usuario || '—')}<br><strong>Rol y plaza:</strong> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><strong>Registro:</strong> ${formatDate(record.created_at || record.timestamp || record.actualizado_en)}</div>${prospectHeading}${closureNotice}${detail}${primaryAttachments}${paymentChain}${history}</div>`;
     document.getElementById('photoModal').classList.add('active');
+  }
+
+  window.viewActivityDetail = function(id) {
+    const record = activityRecordById(id); if (!record) return;
+    renderFullActivityDetail(record);
   };
 
   function panelMediaLabel(key) {
@@ -3188,7 +3281,7 @@
   };
 
   window.viewActivityAttachments = async function(id) {
-    const record = _activitiesFiltered.find(item => item.id === id) || _prospectAdminData.find(item => item.id === id);
+    const record = activityRecordById(id);
     if (!record) { alert('No se encontró la actividad.'); return; }
     const modal = document.getElementById('photoModal');
     const image = document.getElementById('modalImg');
