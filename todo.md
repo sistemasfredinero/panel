@@ -18,3 +18,5 @@
 - [x] Mostrar desde cada registro del panel las fotos, evidencias y firmas de Permisos y Actividades en un visor individual.
 - [x] Bloquear edición y acciones de flujo de vacaciones cuando ya estén confirmadas, activas o gozadas.
 - [x] Permitir a Soporte aprobar como respaldo las vacaciones pendientes de cleon@fredinero.com.
+- [x] Convertir el calendario de citas en Calendario de Actividades e incluir promesas de pago.
+- [x] Mostrar el conteo y detalle de las promesas de pago programadas para hoy.

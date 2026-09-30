@@ -649,7 +649,7 @@
       <button class="btn-export" style="background:#15803D" onclick="window.exportActivitiesCsv('COBRANZA')">⬇ Exportar Cobranza</button>
       <button class="btn-export" style="background:#2563EB" onclick="window.exportActivitiesCsv('PROSPECCION')">⬇ Exportar Prospección</button>
       <button class="btn-download" style="background:#7C3AED" onclick="window.downloadFotosActividades()">📷 Fotos Actividades</button>
-      <button id="prospectCalendarBtn" class="btn-export" style="background:#0F766E;display:none" onclick="window.openProspectAppointmentsCalendar()">🗓️ Calendario de citas</button>
+      <button id="prospectCalendarBtn" class="btn-export" style="background:#0F766E;display:none" onclick="window.openProspectAppointmentsCalendar()">🗓️ Calendario de Actividades</button>
       <button id="deleteActivitiesBtn" class="btn-export" style="background:#B91C1C;display:none" onclick="window.deleteActivitiesByRange()">🗑 Eliminar resultado</button>
     </div>
   </div>
@@ -662,7 +662,7 @@
   </div>
 
   <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:stretch;margin-bottom:18px">
-    <div id="activityTodayAppointments" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:13px 17px;color:#065F46">⏳ Consultando las citas programadas para hoy...</div>
+    <div id="activityTodayAppointments" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:13px 17px;color:#065F46">⏳ Consultando las actividades programadas para hoy...</div>
     <button class="btn-export" style="background:#EA580C;align-self:center" onclick="window.openPendingProspectsModal()">📌 Expedientes de Prospección</button>
   </div>
 
@@ -685,11 +685,12 @@
 <div id="prospectCalendarModal" style="display:none;position:fixed;inset:0;z-index:1250;background:#F8FAFC;overflow:auto;padding:22px">
   <div style="max-width:1440px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
-      <div><div style="font-size:23px;font-weight:900;color:#0F172A">🗓️ Calendario de citas de Prospección</div><div id="prospectCalendarSub" style="font-size:13px;color:#64748B;margin-top:4px">Citas programadas por sucursal.</div></div>
+      <div><div style="font-size:23px;font-weight:900;color:#0F172A">🗓️ Calendario de Actividades</div><div id="prospectCalendarSub" style="font-size:13px;color:#64748B;margin-top:4px">Citas de Prospección y promesas de pago programadas por fecha.</div></div>
       <button class="btn-export" style="background:#64748B" onclick="window.closeProspectAppointmentsCalendar()">✕ Cerrar calendario</button>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:#fff;border:1px solid #DCE7E2;border-radius:14px;padding:12px 14px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(-1)">← Mes anterior</button><div id="prospectCalendarTitle" style="font-size:19px;font-weight:900;color:#0F172A;text-transform:capitalize"></div><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(1)">Mes siguiente →</button></div>
     <div id="prospectCalendarLegend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+    <div id="activityCalendarTodaySummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:14px"></div>
     <div id="prospectCalendarGrid" style="min-width:920px;display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:8px"></div>
     <section id="prospectCalendarDayDetail" style="display:none;margin-top:18px;background:#fff;border:1px solid #DCE7E2;border-radius:16px;padding:18px;box-shadow:0 8px 22px rgba(15,23,42,.06)"></section>
   </div>
@@ -2153,6 +2154,7 @@
   let activityRoutesMapInstance = null;
   let _prospectCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let _prospectCalendarAppointments = [];
+  let _activityCalendarPromises = [];
   let _prospectCalendarSelectedDate = '';
   const PROSPECT_CALENDAR_COLORS = {
     TAMPICO: '#2563EB', MADERO: '#7C3AED', MANTE: '#059669', POZA: '#EA580C', TUXPAN: '#DC2626',
@@ -2460,33 +2462,40 @@
     if (!container) return;
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const end = new Date(); end.setHours(23, 59, 59, 999);
+    const from = start.getTime(); const to = end.getTime();
     try {
-      let snap;
+      let appointmentSnap; let promiseSnap;
       try {
-        snap = await get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(start.getTime()), endAt(end.getTime())));
+        [appointmentSnap, promiseSnap] = await Promise.all([
+          get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(from), endAt(to))),
+          get(query(ref(database, 'gestor_activities'), orderByChild('promesa_timestamp'), startAt(from), endAt(to))),
+        ]);
       } catch {
-        snap = await get(ref(database, 'gestor_activities'));
+        const all = await get(ref(database, 'gestor_activities'));
+        appointmentSnap = all; promiseSnap = all;
       }
       const citas = [];
-      if (snap.exists()) snap.forEach(child => {
+      const promesas = [];
+      if (appointmentSnap?.exists()) appointmentSnap.forEach(child => {
         const item = { id: child.key, ...(child.val() || {}) };
         const citaTimestamp = Number(item.cita_timestamp || 0);
-        const isToday = citaTimestamp >= start.getTime() && citaTimestamp <= end.getTime();
-        const isProspecting = normaliseActivityText(item.activity_type || item.tipo) === 'PROSPECCION';
         const scheduled = item.se_agenda_cita === true || item.se_agenda_cita === 'SI';
-        if (isToday && isProspecting && scheduled && isInManagerActivityScope(item)) citas.push(item);
+        if (citaTimestamp >= from && citaTimestamp <= to && normaliseActivityText(item.activity_type || item.tipo) === 'PROSPECCION' && scheduled && normaliseActivityText(item.estado_cita) !== 'CANCELADA' && isInManagerActivityScope(item)) citas.push(item);
+      });
+      if (promiseSnap?.exists()) promiseSnap.forEach(child => {
+        const item = { id: child.key, ...(child.val() || {}) };
+        const promiseTimestamp = Number(item.promesa_timestamp || 0);
+        const isPromise = normaliseActivityText(item.activity_type || item.tipo) === 'COBRANZA' && normaliseActivityText(item.gestion_realizada) === 'PROMESA DE PAGO';
+        if (promiseTimestamp >= from && promiseTimestamp <= to && isPromise && normaliseActivityText(item.estado_seguimiento_pago) !== 'COMPROBADO' && isInManagerActivityScope(item)) promesas.push(item);
       });
       citas.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
-      if (!citas.length) {
-        container.innerHTML = '<strong>🗓️ Citas programadas para hoy: 0</strong><div style="font-size:13px;margin-top:4px;color:#047857">No hay citas de Prospección registradas para el día de hoy.</div>';
-        return;
-      }
-      const preview = citas.slice(0, 3).map(item => `<span style="display:inline-block;background:#fff;border:1px solid #A7F3D0;border-radius:999px;padding:5px 9px;margin:8px 6px 0 0;font-size:12px;font-weight:700">${activityText(item.hora_cita || new Date(Number(item.cita_timestamp)).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }))} · ${activityText(item.nombre_prospecto || 'Prospecto')} · ${activityText(item.plaza || 'Sin plaza')}</span>`).join('');
-      const extra = citas.length > 3 ? `<span style="font-size:12px;font-weight:700">+${citas.length - 3} cita(s) más</span>` : '';
-      container.innerHTML = `<strong style="font-size:16px">🗓️ Citas programadas para hoy: ${citas.length}</strong><div style="font-size:13px;margin-top:4px;color:#047857">Prospección con cita agendada para ${start.toLocaleDateString('es-MX')}.</div><div>${preview}${extra}</div>`;
+      promesas.sort((a, b) => Number(a.promesa_timestamp) - Number(b.promesa_timestamp));
+      const citaPreview = citas.slice(0, 2).map(item => `<span style="display:inline-block;background:#fff;border:1px solid #A7F3D0;border-radius:999px;padding:5px 9px;margin:8px 6px 0 0;font-size:12px;font-weight:700">${activityText(item.hora_cita || prospectTime(item.cita_timestamp))} · ${activityText(item.nombre_prospecto || 'Prospecto')}</span>`).join('');
+      const promisePreview = promesas.slice(0, 2).map(item => `<span style="display:inline-block;background:#fff;border:1px solid #FED7AA;border-radius:999px;padding:5px 9px;margin:8px 6px 0 0;font-size:12px;font-weight:700;color:#9A3412">${activityText(item.hora_promesa || prospectTime(item.promesa_timestamp))} · ${activityText(item.nombre_contacto || 'Cliente')} · ${activityText(item.plaza || 'Sin plaza')}</span>`).join('');
+      container.innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap"><div><strong style="font-size:16px">🗓️ Calendario de Actividades · hoy</strong><div style="font-size:13px;margin-top:4px;color:#047857">${start.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}.</div></div><button type="button" class="btn-export" style="background:#0F766E;padding:8px 11px;font-size:12px" onclick="window.openProspectAppointmentsCalendar()">Abrir calendario</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:8px"><span style="background:#D1FAE5;color:#065F46;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900">Citas: ${citas.length}</span><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900">Promesas de pago: ${promesas.length}</span></div>${citaPreview || promisePreview ? `<div>${citaPreview}${promisePreview}</div>` : '<div style="font-size:13px;margin-top:9px;color:#047857">No hay citas ni promesas de pago programadas para hoy.</div>'}`;
     } catch (error) {
-      container.innerHTML = '<strong>🗓️ Citas programadas para hoy</strong><div style="font-size:13px;margin-top:4px;color:#B91C1C">No se pudieron consultar las citas. Intenta recargar el módulo.</div>';
-      console.error('Error cargando citas de hoy:', error);
+      container.innerHTML = '<strong>🗓️ Calendario de Actividades</strong><div style="font-size:13px;margin-top:4px;color:#B91C1C">No se pudieron consultar las citas y promesas de hoy. Intenta recargar el módulo.</div>';
+      console.error('Error cargando actividades de hoy:', error);
     }
   };
 
@@ -2830,52 +2839,95 @@
   function prospectDateKey(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
   function prospectTime(timestamp) { return new Date(Number(timestamp || 0)).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false }); }
   function prospectColor(plaza) { return PROSPECT_CALENDAR_COLORS[normaliseActivityText(plaza)] || '#64748B'; }
+  function activityCalendarEvents() {
+    return [
+      ..._prospectCalendarAppointments.map(item => ({ ...item, calendarType: 'CITA', calendarTimestamp: Number(item.cita_timestamp || 0) })),
+      ..._activityCalendarPromises.map(item => ({ ...item, calendarType: 'PROMESA', calendarTimestamp: Number(item.promesa_timestamp || 0) })),
+    ].sort((a, b) => a.calendarTimestamp - b.calendarTimestamp);
+  }
+  function activityCalendarTypeLabel(type, count) {
+    if (type === 'PROMESA') return `${count} promesa${count === 1 ? '' : 's'} de pago`;
+    return `${count} cita${count === 1 ? '' : 's'}`;
+  }
+  function activityCalendarTodayCard(events) {
+    const now = new Date();
+    const todayKey = prospectDateKey(now);
+    const todayEvents = events.filter(item => prospectDateKey(new Date(item.calendarTimestamp)) === todayKey);
+    const citas = todayEvents.filter(item => item.calendarType === 'CITA');
+    const promesas = todayEvents.filter(item => item.calendarType === 'PROMESA');
+    const target = document.getElementById('activityCalendarTodaySummary');
+    if (!target) return;
+    target.innerHTML = `<article style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;padding:12px 14px"><div style="font-size:11px;font-weight:900;color:#047857;text-transform:uppercase;letter-spacing:.04em">Citas de hoy</div><div style="display:flex;align-items:baseline;gap:7px;margin-top:4px"><b style="font-size:26px;color:#065F46">${citas.length}</b><span style="font-size:12px;color:#047857">${activityCalendarTypeLabel('CITA', citas.length)}</span></div></article><article style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:12px 14px"><div style="font-size:11px;font-weight:900;color:#C2410C;text-transform:uppercase;letter-spacing:.04em">Promesas de pago de hoy</div><div style="display:flex;align-items:baseline;gap:7px;margin-top:4px"><b style="font-size:26px;color:#9A3412">${promesas.length}</b><span style="font-size:12px;color:#C2410C">${activityCalendarTypeLabel('PROMESA', promesas.length)}</span></div></article>`;
+  }
 
   async function loadProspectCalendar() {
     const month = _prospectCalendarMonth;
     const start = new Date(month.getFullYear(), month.getMonth(), 1).getTime();
     const end = new Date(month.getFullYear(), month.getMonth() + 1, 1).getTime() - 1;
     const grid = document.getElementById('prospectCalendarGrid');
-    grid.innerHTML = '<div style="grid-column:1/-1;background:#fff;padding:24px;border-radius:12px;color:#64748B">⏳ Cargando citas programadas...</div>';
+    grid.innerHTML = '<div style="grid-column:1/-1;background:#fff;padding:24px;border-radius:12px;color:#64748B">⏳ Cargando citas y promesas de pago...</div>';
     try {
-      let snap;
-      try { snap = await get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(start), endAt(end))); }
-      catch { snap = await get(ref(database, 'gestor_activities')); }
+      let appointmentSnap; let promiseSnap;
+      try {
+        [appointmentSnap, promiseSnap] = await Promise.all([
+          get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(start), endAt(end))),
+          get(query(ref(database, 'gestor_activities'), orderByChild('promesa_timestamp'), startAt(start), endAt(end))),
+        ]);
+      } catch {
+        const all = await get(ref(database, 'gestor_activities'));
+        appointmentSnap = all; promiseSnap = all;
+      }
       _prospectCalendarAppointments = [];
-      if (snap.exists()) snap.forEach(child => {
+      _activityCalendarPromises = [];
+      if (appointmentSnap?.exists()) appointmentSnap.forEach(child => {
         const record = child.val() || {};
         const appointmentAt = Number(record.cita_timestamp || 0);
         const isScheduled = record.se_agenda_cita === true || record.se_agenda_cita === 'SI';
         if (normaliseActivityText(record.tipo) === 'PROSPECCION' && isScheduled && appointmentAt >= start && appointmentAt <= end && normaliseActivityText(record.estado_cita) !== 'CANCELADA') _prospectCalendarAppointments.push({ id: child.key, ...record });
       });
+      if (promiseSnap?.exists()) promiseSnap.forEach(child => {
+        const record = child.val() || {};
+        const promiseAt = Number(record.promesa_timestamp || 0);
+        const isPromise = normaliseActivityText(record.tipo) === 'COBRANZA' && normaliseActivityText(record.gestion_realizada) === 'PROMESA DE PAGO';
+        if (isPromise && promiseAt >= start && promiseAt <= end && normaliseActivityText(record.estado_seguimiento_pago) !== 'COMPROBADO') _activityCalendarPromises.push({ id: child.key, ...record });
+      });
       _prospectCalendarAppointments.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
+      _activityCalendarPromises.sort((a, b) => Number(a.promesa_timestamp) - Number(b.promesa_timestamp));
       renderProspectCalendar();
     } catch (error) {
-      grid.innerHTML = `<div style="grid-column:1/-1;background:#FEF2F2;padding:24px;border-radius:12px;color:#B91C1C">❌ No se pudieron cargar las citas: ${activityText(error.message)}</div>`;
+      grid.innerHTML = `<div style="grid-column:1/-1;background:#FEF2F2;padding:24px;border-radius:12px;color:#B91C1C">❌ No se pudieron cargar las citas y promesas: ${activityText(error.message)}</div>`;
     }
   }
 
   function renderProspectCalendar() {
     const month = _prospectCalendarMonth;
     const title = month.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+    const events = activityCalendarEvents();
+    const citations = events.filter(item => item.calendarType === 'CITA');
+    const promises = events.filter(item => item.calendarType === 'PROMESA');
     document.getElementById('prospectCalendarTitle').textContent = title;
-    document.getElementById('prospectCalendarSub').textContent = `${_prospectCalendarAppointments.length} cita(s) programada(s) en ${title}. Los colores corresponden a la plaza.`;
-    const plazas = Array.from(new Set(_prospectCalendarAppointments.map(item => normaliseActivityText(item.plaza) || 'SIN PLAZA'))).sort();
-    document.getElementById('prospectCalendarLegend').innerHTML = plazas.map(plaza => `<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #E2E8F0;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;color:#334155"><span style="width:10px;height:10px;border-radius:50%;background:${prospectColor(plaza)}"></span>${activityText(plaza)}</span>`).join('') || '<span style="color:#64748B;font-size:13px">No hay citas programadas para este mes.</span>';
+    document.getElementById('prospectCalendarSub').textContent = `${citations.length} cita(s) y ${promises.length} promesa(s) de pago programada(s) en ${title}.`;
+    const plazas = Array.from(new Set(citations.map(item => normaliseActivityText(item.plaza) || 'SIN PLAZA'))).sort();
+    const plazaLegend = plazas.map(plaza => `<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #E2E8F0;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;color:#334155"><span style="width:10px;height:10px;border-radius:50%;background:${prospectColor(plaza)}"></span>${activityText(plaza)}</span>`).join('');
+    document.getElementById('prospectCalendarLegend').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;color:#9A3412"><span style="width:10px;height:10px;border-radius:50%;background:#EA580C"></span>Promesa de pago</span>${plazaLegend || '<span style="color:#64748B;font-size:13px">No hay citas de Prospección para este mes.</span>'}`;
+    activityCalendarTodayCard(events);
     const headers = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => `<div style="padding:9px 10px;font-size:12px;font-weight:900;color:#475569;text-align:center">${day}</div>`).join('');
     const offset = (month.getDay() + 6) % 7;
     const totalDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
     const cells = [];
-    for (let i = 0; i < offset; i += 1) cells.push('<div style="min-height:104px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
+    for (let i = 0; i < offset; i += 1) cells.push('<div style="min-height:112px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
     for (let day = 1; day <= totalDays; day += 1) {
       const dateKey = prospectDateKey(new Date(month.getFullYear(), month.getMonth(), day));
-      const events = _prospectCalendarAppointments.filter(item => prospectDateKey(new Date(Number(item.cita_timestamp))) === dateKey);
+      const dayEvents = events.filter(item => prospectDateKey(new Date(item.calendarTimestamp)) === dateKey);
+      const dayCitations = dayEvents.filter(item => item.calendarType === 'CITA');
+      const dayPromises = dayEvents.filter(item => item.calendarType === 'PROMESA');
       const selected = _prospectCalendarSelectedDate === dateKey;
-      const eventCounter = events.length ? `<button type="button" onclick="window.selectProspectCalendarDay('${dateKey}')" style="margin-top:10px;width:100%;border:0;border-radius:8px;background:${selected ? '#0F766E' : '#ECFDF5'};color:${selected ? '#fff' : '#047857'};padding:8px;font-size:12px;font-weight:900;cursor:pointer">${events.length} cita${events.length === 1 ? '' : 's'} · Ver día</button>` : '';
-      cells.push(`<div style="min-height:104px;background:${selected ? '#F0FDFA' : '#fff'};border:1px solid ${selected ? '#0F766E' : '#E2E8F0'};border-radius:10px;padding:9px;overflow:hidden"><div style="font-size:13px;font-weight:900;color:${events.length ? '#0F172A' : '#94A3B8'}">${day}</div>${eventCounter}</div>`);
+      const labels = `${dayCitations.length ? `<div style="margin-top:8px;color:${selected ? '#D1FAE5' : '#047857'};font-size:11px;font-weight:900">${activityCalendarTypeLabel('CITA', dayCitations.length)}</div>` : ''}${dayPromises.length ? `<div style="margin-top:4px;color:${selected ? '#FFEDD5' : '#C2410C'};font-size:11px;font-weight:900">${activityCalendarTypeLabel('PROMESA', dayPromises.length)}</div>` : ''}`;
+      const eventCounter = dayEvents.length ? `<button type="button" onclick="window.selectProspectCalendarDay('${dateKey}')" style="margin-top:8px;width:100%;border:0;border-radius:8px;background:${selected ? '#0F766E' : '#F1F5F9'};color:${selected ? '#fff' : '#334155'};padding:7px;font-size:11px;font-weight:900;cursor:pointer">${dayEvents.length} actividad${dayEvents.length === 1 ? '' : 'es'} · Ver día</button>` : '';
+      cells.push(`<div style="min-height:112px;background:${selected ? '#F0FDFA' : '#fff'};border:1px solid ${selected ? '#0F766E' : '#E2E8F0'};border-radius:10px;padding:9px;overflow:hidden"><div style="font-size:13px;font-weight:900;color:${dayEvents.length ? '#0F172A' : '#94A3B8'}">${day}</div>${labels}${eventCounter}</div>`);
     }
     const tail = (7 - ((offset + totalDays) % 7)) % 7;
-    for (let i = 0; i < tail; i += 1) cells.push('<div style="min-height:104px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
+    for (let i = 0; i < tail; i += 1) cells.push('<div style="min-height:112px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px"></div>');
     document.getElementById('prospectCalendarGrid').innerHTML = headers + cells.join('');
     const selectedDate = _prospectCalendarSelectedDate;
     if (selectedDate && selectedDate.slice(0, 7) === `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`) renderProspectCalendarDayDetail(selectedDate);
@@ -2883,7 +2935,7 @@
   }
 
   window.openProspectAppointmentsCalendar = async function() {
-    if (!activityIsAdministrative()) { alert('El calendario de citas es exclusivo para usuarios ADMINISTRATIVO.'); return; }
+    if (!activityIsAdministrative()) { alert('El Calendario de Actividades es exclusivo para usuarios ADMINISTRATIVO.'); return; }
     document.getElementById('prospectCalendarModal').style.display = 'block';
     await loadProspectCalendar();
   };
@@ -2909,12 +2961,33 @@
   function renderProspectCalendarDayDetail(dateKey) {
     const panel = document.getElementById('prospectCalendarDayDetail');
     const selected = new Date(`${dateKey}T12:00:00`);
-    const events = _prospectCalendarAppointments.filter(item => prospectDateKey(new Date(Number(item.cita_timestamp))) === dateKey);
+    const events = activityCalendarEvents().filter(item => prospectDateKey(new Date(item.calendarTimestamp)) === dateKey);
     const heading = selected.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    const list = events.length ? events.map(item => `<button type="button" onclick="window.viewProspectCalendarAppointment('${item.id}')" style="width:100%;text-align:left;border:1px solid #E2E8F0;border-left:5px solid ${prospectColor(item.plaza)};background:#fff;border-radius:10px;padding:12px 14px;margin-top:9px;cursor:pointer;color:#172033"><div style="display:flex;justify-content:space-between;gap:14px;align-items:start"><div><div style="font-size:15px;font-weight:900">${activityText(item.nombre_prospecto || 'Prospecto')}</div><div style="font-size:13px;color:#475569;margin-top:4px">${activityText(prospectTime(item.cita_timestamp))} · ${activityText(item.plaza || 'Sin plaza')}</div><div style="font-size:12px;color:#64748B;margin-top:3px">Responsable: ${activityText(item.responsable_cita_nombre || item.nombre_usuario || 'Sin responsable')}</div></div><span style="font-size:12px;font-weight:800;color:#0F766E;white-space:nowrap">Ver detalle →</span></div></button>`).join('') : '<div style="margin-top:14px;color:#64748B;font-size:14px">No hay citas programadas para esta fecha.</div>';
+    const citations = events.filter(item => item.calendarType === 'CITA');
+    const promises = events.filter(item => item.calendarType === 'PROMESA');
+    const list = events.length ? events.map(item => {
+      const isPromise = item.calendarType === 'PROMESA';
+      const color = isPromise ? '#EA580C' : prospectColor(item.plaza);
+      const title = isPromise ? item.nombre_contacto || 'Cliente / distribuidora' : item.nombre_prospecto || 'Prospecto';
+      const description = isPromise
+        ? `${activityText(item.hora_promesa || prospectTime(item.promesa_timestamp))} · ${activityText(item.plaza || 'Sin plaza')} · Monto: ${activityText(item.monto || item.monto_promesa || '—')}`
+        : `${activityText(item.hora_cita || prospectTime(item.cita_timestamp))} · ${activityText(item.plaza || 'Sin plaza')}`;
+      const responsible = isPromise ? item.nombre_usuario || 'Sin responsable' : item.responsable_cita_nombre || item.nombre_usuario || 'Sin responsable';
+      const tag = isPromise ? 'Promesa de pago' : 'Cita de Prospección';
+      return `<button type="button" onclick="window.viewActivityCalendarRecord('${item.id}','${item.calendarType}')" style="width:100%;text-align:left;border:1px solid #E2E8F0;border-left:5px solid ${color};background:#fff;border-radius:10px;padding:12px 14px;margin-top:9px;cursor:pointer;color:#172033"><div style="display:flex;justify-content:space-between;gap:14px;align-items:start"><div><div style="font-size:11px;font-weight:900;color:${color};text-transform:uppercase;letter-spacing:.03em">${tag}</div><div style="font-size:15px;font-weight:900;margin-top:3px">${activityText(title)}</div><div style="font-size:13px;color:#475569;margin-top:4px">${description}</div><div style="font-size:12px;color:#64748B;margin-top:3px">Responsable: ${activityText(responsible)}</div></div><span style="font-size:12px;font-weight:800;color:${color};white-space:nowrap">Ver detalle →</span></div></button>`;
+    }).join('') : '<div style="margin-top:14px;color:#64748B;font-size:14px">No hay citas ni promesas de pago para esta fecha.</div>';
     panel.style.display = 'block';
-    panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><div style="font-size:18px;font-weight:900;color:#0F172A;text-transform:capitalize">Citas del ${activityText(heading)}</div><div style="font-size:13px;color:#64748B;margin-top:4px">${events.length} cita${events.length === 1 ? '' : 's'} programada${events.length === 1 ? '' : 's'}.</div></div><div style="display:flex;gap:8px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendarDay(-1)">← Día anterior</button><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendarDay(1)">Día siguiente →</button></div></div><div>${list}</div>`;
+    panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><div style="font-size:18px;font-weight:900;color:#0F172A;text-transform:capitalize">Actividades del ${activityText(heading)}</div><div style="font-size:13px;color:#64748B;margin-top:4px">${citations.length} cita${citations.length === 1 ? '' : 's'} · ${promises.length} promesa${promises.length === 1 ? '' : 's'} de pago.</div></div><div style="display:flex;gap:8px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendarDay(-1)">← Día anterior</button><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendarDay(1)">Día siguiente →</button></div></div><div>${list}</div>`;
   }
+  window.viewActivityCalendarRecord = function(id, type) {
+    const isPromise = type === 'PROMESA';
+    const record = (isPromise ? _activityCalendarPromises : _prospectCalendarAppointments).find(item => item.id === id); if (!record) return;
+    document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
+    if (!isPromise) { window.viewProspectCalendarAppointment(id); return; }
+    document.getElementById('modalTitle').textContent = 'Promesa de pago';
+    document.getElementById('modalInfo').innerHTML = `<div style="line-height:1.65"><div style="background:#FFF7ED;padding:11px;border-radius:9px;margin-bottom:12px"><b>Cliente / contacto:</b> ${activityText(record.nombre_contacto || '—')}<br><b>Fecha y hora:</b> ${activityText(record.fecha_promesa || '—')} ${activityText(record.hora_promesa || prospectTime(record.promesa_timestamp))}<br><b>Plaza:</b> ${activityText(record.plaza || '—')}<br><b>Responsable:</b> ${activityText(record.nombre_usuario || '—')}<br><b>Monto comprometido:</b> ${activityText(record.monto || record.monto_promesa || '—')}</div><div><b>Se atiende a:</b> ${activityText(record.se_visita_a || '—')}</div><div><b>Número de distribuidora:</b> ${activityText(record.numero_cliente || '—')}</div><div><b>Comentarios:</b> ${activityText(record.comentarios || '—')}</div></div>`;
+    document.getElementById('photoModal').classList.add('active');
+  };
   window.viewProspectCalendarAppointment = function(id) {
     const record = _prospectCalendarAppointments.find(item => item.id === id); if (!record) return;
     document.getElementById('modalTitle').textContent = 'Cita de Prospección';
