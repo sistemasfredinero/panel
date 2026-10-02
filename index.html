@@ -639,13 +639,14 @@
     <div class="filter-row">
       <div class="filter-group"><label>Fecha inicial</label><input type="date" id="activityStartDate" /></div>
       <div class="filter-group"><label>Fecha final</label><input type="date" id="activityEndDate" /></div>
-      <div class="filter-group"><label>Tipo</label><select id="activityType"><option value="">Todos</option><option value="COBRANZA">Cobranza</option><option value="PROSPECCION">Prospección</option></select></div>
+      <div class="filter-group"><label>Tipo</label><select id="activityType"><option value="">Todos</option><option value="GENERAL">General</option><option value="COBRANZA">Cobranza</option><option value="PROSPECCION">Prospección</option></select></div>
       <div class="filter-group"><label>Etapa de expediente</label><select id="activityProspectStage"><option value="">Todas</option><option value="CITA_PROGRAMADA">Cita agendada / Documentación</option><option value="PENDIENTE_RAFIK">Cita agendada sin Rafik / Documentación</option><option value="PENDIENTE_DOCUMENTACION">Cita agendada / Documentación</option><option value="PENDIENTE_ONBOARDING">Onboarding</option><option value="PENDIENTE_ASIGNACION_GERENTE">Asignación</option><option value="PENDIENTE_VERIFICACION">Verificación</option><option value="PENDIENTE_VOBO_GERENTE">Pendiente VoBo Gerente</option><option value="PENDIENTE_REVISION_CREDITO_RIESGO">Pendiente VoBo Crédito y Riesgo</option><option value="DEVUELTA_A_GERENTE">Devolución de Prospecto</option><option value="AUTORIZADA">En espera de activación</option><option value="PENDIENTE_ACTIVACION">En espera de activación</option><option value="ALTA">Alta</option><option value="NO_ASISTIO">No asistió</option><option value="RECHAZADA_POR_PROSPECTO">Rechazada por prospecto</option><option value="RECHAZADA_CREDITO_RIESGO">Rechazada por Crédito y Riesgo</option></select></div>
       <div class="filter-group"><label>Gestión / resultado</label><input id="activityAction" placeholder="Ej. Promesa de pago" style="min-width:180px" /></div>
       <div class="filter-group"><label>Rol</label><select id="activityRole"><option value="">Todos</option><option value="GERENTE">Gerente</option><option value="LIDER A">Líder A</option><option value="LIDER B">Líder B</option><option value="LIDER C">Líder C</option><option value="CANJES">Canjes</option><option value="GESTOR">Gestor</option><option value="GESTOR DE COBRANZA">Gestor de cobranza</option></select></div>
       <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
       <div class="filter-group"><label>Buscar usuario</label><input id="activityUser" placeholder="Nombre o correo..." style="min-width:210px" /></div>
       <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
+      <button class="btn-export" style="background:#7C3AED" onclick="window.exportActivitiesCsv('GENERAL')">⬇ Exportar General</button>
       <button class="btn-export" style="background:#15803D" onclick="window.exportActivitiesCsv('COBRANZA')">⬇ Exportar Cobranza</button>
       <button class="btn-export" style="background:#2563EB" onclick="window.exportActivitiesCsv('PROSPECCION')">⬇ Exportar Prospección</button>
       <button class="btn-download" style="background:#7C3AED" onclick="window.downloadFotosActividades()">📷 Fotos Actividades</button>
@@ -656,6 +657,7 @@
 
   <div class="stats" style="margin-bottom:18px">
     <div class="stat-card" style="border-left-color:#6D28D9"><div class="stat-num" id="activityTotal" style="color:#6D28D9">—</div><div class="stat-label">Actividades encontradas</div></div>
+    <div class="stat-card" style="border-left-color:#7C3AED"><div class="stat-num" id="activityGeneral" style="color:#6D28D9">—</div><div class="stat-label">General</div></div>
     <div class="stat-card green"><div class="stat-num" id="activityCobranza">—</div><div class="stat-label">Cobranza</div></div>
     <div class="stat-card" style="border-left-color:#2563EB"><div class="stat-num" id="activityProspeccion" style="color:#2563EB">—</div><div class="stat-label">Prospección</div></div>
     <div class="stat-card" style="border-left-color:#F59E0B"><div class="stat-num" id="activityEvidence" style="color:#D97706">—</div><div class="stat-label">Con evidencia</div></div>
@@ -669,7 +671,7 @@
   <details id="activityGraphicsSection" style="margin-bottom:18px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden" ontoggle="window.initializeActivityGraphics(this)">
     <summary style="cursor:pointer;padding:15px 17px;color:#5B21B6;font-weight:900;font-size:15px">📊 Gráficos y análisis del resultado filtrado</summary>
     <div style="padding:0 17px 17px">
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 13px"><p style="margin:0;color:#5B21B6;font-size:13px;line-height:1.45">El análisis general se muestra aquí. Los reportes detallados se abren en una ventana para mantener la pantalla principal limpia.</p><div style="display:flex;gap:7px;flex-wrap:wrap"><button class="btn-export" style="background:#6D28D9;padding:8px 10px;font-size:12px" onclick="window.openAnnualFeedbackModal()">📈 Retroalimentación anual</button><button class="btn-export" style="background:#15803D;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('COBRANZA')">🥧 Respuestas Cobranza</button><button class="btn-export" style="background:#2563EB;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('PROSPECCION')">🥧 Respuestas Prospección</button></div></div>
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 13px"><p style="margin:0;color:#5B21B6;font-size:13px;line-height:1.45">El análisis general se muestra aquí. Los reportes detallados se abren en una ventana para mantener la pantalla principal limpia.</p><div style="display:flex;gap:7px;flex-wrap:wrap"><button class="btn-export" style="background:#6D28D9;padding:8px 10px;font-size:12px" onclick="window.openAnnualFeedbackModal()">📈 Retroalimentación anual</button><button class="btn-export" style="background:#7C3AED;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('GENERAL')">🥧 Respuestas General</button><button class="btn-export" style="background:#15803D;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('COBRANZA')">🥧 Respuestas Cobranza</button><button class="btn-export" style="background:#2563EB;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('PROSPECCION')">🥧 Respuestas Prospección</button></div></div>
       <div id="activityPerformanceContainer" style="color:#166534;font-size:13px">Realiza una búsqueda y abre este bloque para cargar el análisis general.</div>
     </div>
   </details>
@@ -2232,6 +2234,18 @@
     return String(value || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   }
 
+  function activityCategory(record = {}) {
+    const category = normaliseActivityText(record.categoria_actividad || record.activity_category || record.categoria || '');
+    if (category === 'GENERAL') return 'GENERAL';
+    const type = normaliseActivityText(record.tipo || record.activity_type || '');
+    return ['GENERAL', 'COBRANZA', 'PROSPECCION'].includes(type) ? type : 'COBRANZA';
+  }
+
+  function activityCategoryLabel(recordOrType) {
+    const type = typeof recordOrType === 'string' ? normaliseActivityText(recordOrType) : activityCategory(recordOrType);
+    return type === 'GENERAL' ? 'General' : type === 'PROSPECCION' ? 'Prospección' : 'Cobranza';
+  }
+
   function matchesActivityUser(record, rawQuery) {
     const terms = String(rawQuery || '').split(',').map(x => normaliseActivityText(x)).filter(Boolean);
     if (!terms.length) return true;
@@ -2357,11 +2371,12 @@
   window.showActivityPerformanceTooltip = function(event, index, activityType) {
     const collaborator = _activityPerformanceCollaborators[Number(index)];
     if (!collaborator) return;
-    const type = normaliseActivityText(activityType) === 'COBRANZA' ? 'COBRANZA' : 'PROSPECCION';
-    const count = Number(type === 'COBRANZA' ? collaborator.cobranza : collaborator.prospeccion) || 0;
-    const color = type === 'COBRANZA' ? '#4ADE80' : '#60A5FA';
+    const requested = normaliseActivityText(activityType);
+    const type = ['GENERAL', 'COBRANZA', 'PROSPECCION'].includes(requested) ? requested : 'PROSPECCION';
+    const count = Number(type === 'GENERAL' ? collaborator.general : type === 'COBRANZA' ? collaborator.cobranza : collaborator.prospeccion) || 0;
+    const color = type === 'GENERAL' ? '#C4B5FD' : type === 'COBRANZA' ? '#4ADE80' : '#60A5FA';
     const tooltip = ensureActivityPerformanceTooltip();
-    tooltip.innerHTML = `<div style="font-weight:900;font-size:13px;color:#fff">${activityText(collaborator.name || 'Sin nombre')}</div><div style="color:#CBD5E1;margin-top:1px">${activityText(collaborator.role || 'Sin rol')} · ${activityText(collaborator.plaza || 'Sin plaza')}</div><div style="margin-top:8px;border-top:1px solid rgba(255,255,255,.15);padding-top:7px"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span><b>${type === 'COBRANZA' ? 'Cobranza' : 'Prospección'}:</b> ${count} actividad(es)</div><div style="color:#CBD5E1;margin-top:3px">Total del periodo: <b style="color:#fff">${collaborator.total || 0}</b> · Citas: <b style="color:#fff">${collaborator.citas || 0}</b> · Altas: <b style="color:#fff">${collaborator.altas || 0}</b></div>`;
+    tooltip.innerHTML = `<div style="font-weight:900;font-size:13px;color:#fff">${activityText(collaborator.name || 'Sin nombre')}</div><div style="color:#CBD5E1;margin-top:1px">${activityText(collaborator.role || 'Sin rol')} · ${activityText(collaborator.plaza || 'Sin plaza')}</div><div style="margin-top:8px;border-top:1px solid rgba(255,255,255,.15);padding-top:7px"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span><b>${activityCategoryLabel(type)}:</b> ${count} actividad(es)</div><div style="color:#CBD5E1;margin-top:3px">Total del periodo: <b style="color:#fff">${collaborator.total || 0}</b> · Citas: <b style="color:#fff">${collaborator.citas || 0}</b> · Altas: <b style="color:#fff">${collaborator.altas || 0}</b></div>`;
     const left = Math.min(Number(event.clientX || 0) + 16, window.innerWidth - 278);
     const top = Math.min(Number(event.clientY || 0) + 16, window.innerHeight - 145);
     tooltip.style.left = `${Math.max(12, left)}px`;
@@ -2429,10 +2444,11 @@
   window.openAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', true); };
   window.closeAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', false); };
   window.openResponseChartsModal = function(type) {
-    const normalisedType = normaliseActivityText(type) === 'COBRANZA' ? 'COBRANZA' : 'PROSPECCION';
+    const requested = normaliseActivityText(type);
+    const normalisedType = ['GENERAL', 'COBRANZA', 'PROSPECCION'].includes(requested) ? requested : 'PROSPECCION';
     _activityResponseChartType = normalisedType;
     const title = document.getElementById('activityResponseChartsTitle');
-    if (title) title.textContent = `🥧 Respuestas de ${normalisedType === 'COBRANZA' ? 'Cobranza' : 'Prospección'}`;
+    if (title) title.textContent = `🥧 Respuestas de ${activityCategoryLabel(normalisedType)}`;
     setActivityModalVisibility('activityResponseChartsModal', true);
     window.renderActivityResponseCharts(normalisedType);
   };
@@ -2584,13 +2600,14 @@
         return;
       }
       const memberByUid = new Map(members.map(member => [member.uid, member]));
-      const stats = new Map(members.map(member => [member.uid, { ...member, cobranza: 0, prospeccion: 0, citasAlta: 0, citasSinAlta: 0 }]));
+      const stats = new Map(members.map(member => [member.uid, { ...member, general: 0, cobranza: 0, prospeccion: 0, citasAlta: 0, citasSinAlta: 0 }]));
       activities.forEach(record => {
         const uid = String(record.user_uid || record.uid || '');
         const member = memberByUid.get(uid);
         if (!member || normaliseActivityText(record.plaza) !== member.plaza) return;
         const stat = stats.get(uid);
-        const type = normaliseActivityText(record.tipo || record.activity_type);
+        const type = activityCategory(record);
+        if (type === 'GENERAL') stat.general += 1;
         if (type === 'COBRANZA') stat.cobranza += 1;
         if (type === 'PROSPECCION') {
           stat.prospeccion += 1;
@@ -2606,14 +2623,15 @@
         if (!plazaGroups.has(stat.plaza)) plazaGroups.set(stat.plaza, []);
         plazaGroups.get(stat.plaza).push(stat);
       });
-      const metricRows = (items, firstKey, secondKey, firstLabel, secondLabel, firstColor, secondColor) => {
-        const max = Math.max(1, ...items.flatMap(item => [item[firstKey], item[secondKey]]));
-        return items.sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name)).map(item => `<div style="padding:10px 0;border-bottom:1px solid #E9E5F6"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><div style="font-weight:900;color:#312E81;font-size:13px">${activityText(item.name)}</div><div style="font-size:11px;color:#6B7280">${activityText(item.role)}</div></div><div style="display:grid;grid-template-columns:92px 1fr 30px;gap:7px;align-items:center;margin-top:7px;font-size:11px"><span style="font-weight:800;color:${firstColor}">${firstLabel}</span><span style="height:8px;border-radius:99px;background:#EDE9FE;overflow:hidden"><span style="display:block;height:100%;width:${(item[firstKey] / max) * 100}%;background:${firstColor};border-radius:99px"></span></span><b style="color:${firstColor};text-align:right">${item[firstKey]}</b></div><div style="display:grid;grid-template-columns:92px 1fr 30px;gap:7px;align-items:center;margin-top:5px;font-size:11px"><span style="font-weight:800;color:${secondColor}">${secondLabel}</span><span style="height:8px;border-radius:99px;background:#EDE9FE;overflow:hidden"><span style="display:block;height:100%;width:${(item[secondKey] / max) * 100}%;background:${secondColor};border-radius:99px"></span></span><b style="color:${secondColor};text-align:right">${item[secondKey]}</b></div></div>`).join('');
+      const metricRows = (items, firstKey, secondKey, firstLabel, secondLabel, firstColor, secondColor, thirdKey = '', thirdLabel = '', thirdColor = '') => {
+        const max = Math.max(1, ...items.flatMap(item => [item[firstKey], item[secondKey], thirdKey ? item[thirdKey] : 0]));
+        const row = (item, key, label, color, marginTop) => `<div style="display:grid;grid-template-columns:92px 1fr 30px;gap:7px;align-items:center;margin-top:${marginTop}px;font-size:11px"><span style="font-weight:800;color:${color}">${label}</span><span style="height:8px;border-radius:99px;background:#EDE9FE;overflow:hidden"><span style="display:block;height:100%;width:${(item[key] / max) * 100}%;background:${color};border-radius:99px"></span></span><b style="color:${color};text-align:right">${item[key]}</b></div>`;
+        return items.sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name)).map(item => `<div style="padding:10px 0;border-bottom:1px solid #E9E5F6"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><div style="font-weight:900;color:#312E81;font-size:13px">${activityText(item.name)}</div><div style="font-size:11px;color:#6B7280">${activityText(item.role)}</div></div>${row(item, firstKey, firstLabel, firstColor, 7)}${row(item, secondKey, secondLabel, secondColor, 5)}${thirdKey ? row(item, thirdKey, thirdLabel, thirdColor, 5) : ''}</div>`).join('');
       };
       const reports = Array.from(plazaGroups.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([plaza, items]) => {
-        const total = items.reduce((sum, item) => sum + item.cobranza + item.prospeccion, 0);
+        const total = items.reduce((sum, item) => sum + item.general + item.cobranza + item.prospeccion, 0);
         const totalCitas = items.reduce((sum, item) => sum + item.citasAlta + item.citasSinAlta, 0);
-        return `<section style="margin-top:18px;background:#fff;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden"><div style="padding:14px 16px;background:linear-gradient(135deg,#F5F3FF,#EEF2FF);display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><div><div style="font-size:17px;font-weight:900;color:#4C1D95">${activityText(plaza)}</div><div style="font-size:12px;color:#6D28D9;margin-top:3px">${items.length} usuario(s) operativo(s) configurado(s)</div></div><div style="display:flex;gap:8px"><span style="background:#fff;border:1px solid #DDD6FE;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;color:#5B21B6">${total} actividades</span><span style="background:#fff;border:1px solid #DDD6FE;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;color:#5B21B6">${totalCitas} citas</span></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px;padding:16px"><div style="border:1px solid #E9D5FF;border-radius:12px;padding:13px"><div style="font-weight:900;color:#5B21B6">Retroalimentación de citas</div><div style="font-size:11px;color:#7E22CE;margin:3px 0 8px">Altas versus citas aún sin alta.</div>${metricRows(items, 'citasAlta', 'citasSinAlta', 'Alta', 'Sin alta', '#16A34A', '#EA580C')}</div><div style="border:1px solid #BFDBFE;border-radius:12px;padding:13px"><div style="font-weight:900;color:#1D4ED8">Actividades por tipo</div><div style="font-size:11px;color:#2563EB;margin:3px 0 8px">Cobranza y Prospección por usuario.</div>${metricRows(items, 'cobranza', 'prospeccion', 'Cobranza', 'Prospección', '#15803D', '#2563EB')}</div></div></section>`;
+        return `<section style="margin-top:18px;background:#fff;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden"><div style="padding:14px 16px;background:linear-gradient(135deg,#F5F3FF,#EEF2FF);display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><div><div style="font-size:17px;font-weight:900;color:#4C1D95">${activityText(plaza)}</div><div style="font-size:12px;color:#6D28D9;margin-top:3px">${items.length} usuario(s) operativo(s) configurado(s)</div></div><div style="display:flex;gap:8px"><span style="background:#fff;border:1px solid #DDD6FE;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;color:#5B21B6">${total} actividades</span><span style="background:#fff;border:1px solid #DDD6FE;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;color:#5B21B6">${totalCitas} citas</span></div></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px;padding:16px"><div style="border:1px solid #E9D5FF;border-radius:12px;padding:13px"><div style="font-weight:900;color:#5B21B6">Retroalimentación de citas</div><div style="font-size:11px;color:#7E22CE;margin:3px 0 8px">Altas versus citas aún sin alta.</div>${metricRows(items, 'citasAlta', 'citasSinAlta', 'Alta', 'Sin alta', '#16A34A', '#EA580C')}</div><div style="border:1px solid #BFDBFE;border-radius:12px;padding:13px"><div style="font-weight:900;color:#1D4ED8">Actividades por tipo</div><div style="font-size:11px;color:#2563EB;margin:3px 0 8px">General, Cobranza y Prospección por usuario.</div>${metricRows(items, 'general', 'cobranza', 'General', 'Cobranza', '#7C3AED', '#15803D', 'prospeccion', 'Prospección', '#2563EB')}</div></div></section>`;
       }).join('');
       _annualFeedbackExport = { year, selectedPlaza, stats: Array.from(stats.values()) };
       if (downloadActions) downloadActions.style.display = 'flex';
@@ -2630,20 +2648,20 @@
     if (!cached?.stats?.length) return null;
     const plazas = ANNUAL_FEEDBACK_PLAZAS.filter(plaza => !cached.selectedPlaza || plaza.code === cached.selectedPlaza);
     const metrics = reportType === 'CITAS'
-      ? { title: 'Grafico de Retroalimentacion de citas por Año', description: 'Se cuentan cuantas citas se convierten en altas y cuales se quedaron sin respuesta', firstKey: 'citasAlta', secondKey: 'citasSinAlta', firstLabel: 'SI', secondLabel: 'NO', sheetName: 'Retroalimentación Citas', fileName: 'Retroalimentacion_Anual_Citas' }
-      : { title: 'Grafico de Retroalimentacion de actividades por Año', description: 'Se cuentan cuantas actividades por tipo hizo cada quien', firstKey: 'cobranza', secondKey: 'prospeccion', firstLabel: 'COBRANZA', secondLabel: 'PROSPECCION', sheetName: 'Actividades Anuales', fileName: 'Retroalimentacion_Anual_Actividades' };
+      ? { title: 'Grafico de Retroalimentacion de citas por Año', description: 'Se cuentan cuantas citas se convierten en altas y cuales se quedaron sin respuesta', columns: [{ key: 'citasAlta', label: 'SI' }, { key: 'citasSinAlta', label: 'NO' }], sheetName: 'Retroalimentación Citas', fileName: 'Retroalimentacion_Anual_Citas' }
+      : { title: 'Grafico de Retroalimentacion de actividades por Año', description: 'Se cuentan cuantas actividades por tipo hizo cada quien', columns: [{ key: 'general', label: 'GENERAL' }, { key: 'cobranza', label: 'COBRANZA' }, { key: 'prospeccion', label: 'PROSPECCION' }], sheetName: 'Actividades Anuales', fileName: 'Retroalimentacion_Anual_Actividades' };
     const roles = ANNUAL_FEEDBACK_ROLES.filter(role => cached.stats.some(stat => annualFeedbackRole(stat.role) === role.key && plazas.some(plaza => plaza.code === stat.plaza)));
-    const totalColumns = 1 + (plazas.length * 2);
+    const categoryColumns = metrics.columns.length;
+    const totalColumns = 1 + (plazas.length * categoryColumns);
     const blankRow = () => Array(totalColumns).fill('');
     const rows = [blankRow(), blankRow(), blankRow(), blankRow()];
     rows[0][0] = metrics.title;
     rows[1][0] = metrics.description;
     rows[3][0] = 'Rol';
     plazas.forEach((plaza, index) => {
-      const column = 1 + (index * 2);
+      const column = 1 + (index * categoryColumns);
       rows[2][column] = plaza.label;
-      rows[3][column] = metrics.firstLabel;
-      rows[3][column + 1] = metrics.secondLabel;
+      metrics.columns.forEach((metric, metricIndex) => { rows[3][column + metricIndex] = metric.label; });
     });
     roles.forEach(role => {
       const row = blankRow();
@@ -2651,9 +2669,8 @@
       plazas.forEach((plaza, index) => {
         const records = cached.stats.filter(stat => stat.plaza === plaza.code && annualFeedbackRole(stat.role) === role.key);
         if (!records.length) return;
-        const column = 1 + (index * 2);
-        row[column] = records.reduce((sum, record) => sum + Number(record[metrics.firstKey] || 0), 0);
-        row[column + 1] = records.reduce((sum, record) => sum + Number(record[metrics.secondKey] || 0), 0);
+        const column = 1 + (index * categoryColumns);
+        metrics.columns.forEach((metric, metricIndex) => { row[column + metricIndex] = records.reduce((sum, record) => sum + Number(record[metric.key] || 0), 0); });
       });
       rows.push(row);
     });
@@ -2662,8 +2679,8 @@
       { s: { r: 0, c: 0 }, e: { r: 0, c: totalColumns - 1 } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: totalColumns - 1 } },
       ...plazas.map((_, index) => {
-        const column = 1 + (index * 2);
-        return { s: { r: 2, c: column }, e: { r: 2, c: column + 1 } };
+        const column = 1 + (index * categoryColumns);
+        return { s: { r: 2, c: column }, e: { r: 2, c: column + categoryColumns - 1 } };
       })
     ];
     worksheet['!cols'] = [{ wch: 16 }, ...Array.from({ length: totalColumns - 1 }, () => ({ wch: 14 }))];
@@ -2701,9 +2718,9 @@
 
   window.renderActivityResponseCharts = function(type) {
     const container = document.getElementById('activityResponseChartsContainer');
-    const records = (_activitiesFiltered || []).filter(record => normaliseActivityText(record.tipo || record.activity_type) === type);
+    const records = (_activitiesFiltered || []).filter(record => activityCategory(record) === type);
     if (!records.length) {
-      container.innerHTML = `<div style="background:#fff;border:1px solid #BFDBFE;border-radius:10px;padding:14px;color:#1D4ED8">No hay registros de ${type === 'COBRANZA' ? 'Cobranza' : 'Prospección'} dentro de la búsqueda actual.</div>`;
+      container.innerHTML = `<div style="background:#fff;border:1px solid #BFDBFE;border-radius:10px;padding:14px;color:#1D4ED8">No hay registros de ${activityCategoryLabel(type)} dentro de la búsqueda actual.</div>`;
       return;
     }
     const palette = ['#2563EB', '#16A34A', '#EA580C', '#9333EA', '#DC2626', '#0891B2', '#CA8A04', '#DB2777'];
@@ -2739,20 +2756,27 @@
       const legend = entries.map(([label, count], index) => `<div style="display:grid;grid-template-columns:10px 1fr auto;gap:7px;align-items:center;font-size:11px;color:#334155"><span style="width:10px;height:10px;border-radius:50%;background:${palette[index % palette.length]}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${activityText(label)}">${activityText(label)}</span><b>${count} · ${Math.round((count / total) * 100)}%</b></div>`).join('');
       return `<article style="background:#fff;border:1px solid #BFDBFE;border-radius:14px;padding:14px;display:grid;grid-template-columns:128px 1fr;gap:15px;align-items:center;min-width:0"><div style="width:128px;height:128px;border-radius:50%;background:conic-gradient(${slices});position:relative"><span style="position:absolute;inset:27px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;font-weight:900;color:#1E3A8A;padding:8px">${total}<br><small style="font-size:9px;color:#64748B">respuestas</small></span></div><div style="min-width:0"><div style="font-size:14px;font-weight:900;color:#1E3A8A">${title}</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">${subtitle}</div><div style="display:grid;gap:6px">${legend}</div></div></article>`;
     };
-    const fields = type === 'COBRANZA'
+    const fields = type === 'GENERAL'
       ? [
-          ['¿A quién se atendió?', 'Distribución de la persona o referencia visitada.', makeCounts(['se_atiende_a', 'visitado_a', 'persona_atendida'])],
-          ['Gestión realizada', 'Resultado registrado en la actividad de Cobranza.', makeCounts(['gestion_realizada', 'gestion'])],
+          ['¿A quién se atendió?', 'Distribución de la persona o referencia atendida.', makeCounts(['se_atiende_a', 'visitado_a', 'persona_atendida'])],
+          ['Gestión realizada', 'Resultado registrado en la actividad General.', makeCounts(['gestion_realizada', 'gestion'])],
+          ['Motivos o comentarios', 'Motivos declarados en la gestión general.', makeCounts(['motivo', 'comentarios'], 'Sin comentario')],
           ['Evidencia fotográfica', 'Registros que incluyen evidencia asociada.', makeCounts([], '', (_value, record) => record.has_evidence || record.tiene_evidencia || record.evidencia_fotografica || record.evidencia ? 'Con evidencia' : 'Sin evidencia')]
         ]
-      : [
-          ['Tipo de Prospección', 'Origen declarado para el prospecto.', makeCounts(['tipo_prospeccion'], 'Sin especificar', (value, record) => normaliseActivityText(value) === 'OTRA' ? (record.tipo_prospeccion_otro || 'Otra') : value)],
-          ['Tipo de acción', 'Medio con el que se realizó la Prospección.', makeCounts(['tipo_accion', 'accion_prospeccion'])],
-          ['¿Se agenda cita?', 'Prospecciones con o sin cita programada.', makeCounts([], '', (_value, record) => (record.se_agenda_cita === true || normaliseActivityText(record.se_agenda_cita) === 'SI') ? 'Sí' : 'No')],
-          ['Motivo sin cita', 'Motivos registrados cuando no se agenda cita.', makeCounts(['motivo_no_cita', 'motivo_no_agenda', 'motivo'])],
-          ['Referido interno', 'Prospecciones que reportaron recomendación interna.', makeCounts([], '', (_value, record) => String(record.referido_interno || '').trim() ? 'Con referido interno' : 'Sin referido interno')]
-        ];
-    container.innerHTML = `<div style="font-weight:900;color:#1D4ED8;margin-bottom:4px">Respuestas de ${type === 'COBRANZA' ? 'Cobranza' : 'Prospección'} · ${records.length} registro(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los porcentajes corresponden únicamente al resultado que cargaste con los filtros actuales.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">${fields.map(([title, subtitle, entries]) => pie(title, subtitle, entries)).join('')}</div>`;
+      : type === 'COBRANZA'
+        ? [
+            ['¿A quién se atendió?', 'Distribución de la persona o referencia visitada.', makeCounts(['se_atiende_a', 'visitado_a', 'persona_atendida'])],
+            ['Gestión realizada', 'Resultado registrado en la actividad de Cobranza.', makeCounts(['gestion_realizada', 'gestion'])],
+            ['Evidencia fotográfica', 'Registros que incluyen evidencia asociada.', makeCounts([], '', (_value, record) => record.has_evidence || record.tiene_evidencia || record.evidencia_fotografica || record.evidencia ? 'Con evidencia' : 'Sin evidencia')]
+          ]
+        : [
+            ['Tipo de Prospección', 'Origen declarado para el prospecto.', makeCounts(['tipo_prospeccion'], 'Sin especificar', (value, record) => normaliseActivityText(value) === 'OTRA' ? (record.tipo_prospeccion_otro || 'Otra') : value)],
+            ['Tipo de acción', 'Medio con el que se realizó la Prospección.', makeCounts(['tipo_accion', 'accion_prospeccion'])],
+            ['¿Se agenda cita?', 'Prospecciones con o sin cita programada.', makeCounts([], '', (_value, record) => (record.se_agenda_cita === true || normaliseActivityText(record.se_agenda_cita) === 'SI') ? 'Sí' : 'No')],
+            ['Motivo sin cita', 'Motivos registrados cuando no se agenda cita.', makeCounts(['motivo_no_cita', 'motivo_no_agenda', 'motivo'])],
+            ['Referido interno', 'Prospecciones que reportaron recomendación interna.', makeCounts([], '', (_value, record) => String(record.referido_interno || '').trim() ? 'Con referido interno' : 'Sin referido interno')]
+          ];
+    container.innerHTML = `<div style="font-weight:900;color:#1D4ED8;margin-bottom:4px">Respuestas de ${activityCategoryLabel(type)} · ${records.length} registro(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los porcentajes corresponden únicamente al resultado que cargaste con los filtros actuales.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">${fields.map(([title, subtitle, entries]) => pie(title, subtitle, entries)).join('')}</div>`;
   };
 
   window.renderActivityPerformanceDashboard = function() {
@@ -2766,20 +2790,21 @@
     const userStats = new Map();
     const plazaStats = new Map();
     const dayStats = new Map();
-    let cobranza = 0, prospeccion = 0, citas = 0, altas = 0, payments = 0;
+    let general = 0, cobranza = 0, prospeccion = 0, citas = 0, altas = 0, payments = 0;
     records.forEach(record => {
-      const type = normaliseActivityText(record.tipo || record.activity_type);
+      const type = activityCategory(record);
       const uid = String(record.user_uid || record.uid || record.correo_usuario || record.nombre_usuario || 'SIN_USUARIO');
       const name = record.nombre_usuario || record.nombre || record.email_usuario || 'Usuario sin nombre';
       const role = record.rol || record.role || 'Sin rol';
       const plaza = normaliseActivityText(record.plaza) || 'SIN PLAZA';
       const timestamp = Number(record.created_at || record.timestamp || 0);
       const day = activityDateInput(timestamp) || 'Sin fecha';
-      if (!userStats.has(uid)) userStats.set(uid, { uid, name, role, plaza, cobranza: 0, prospeccion: 0, total: 0, citas: 0, altas: 0, pagos: 0 });
-      if (!plazaStats.has(plaza)) plazaStats.set(plaza, { plaza, cobranza: 0, prospeccion: 0, total: 0, citas: 0 });
-      if (!dayStats.has(day)) dayStats.set(day, { day, cobranza: 0, prospeccion: 0, total: 0 });
+      if (!userStats.has(uid)) userStats.set(uid, { uid, name, role, plaza, general: 0, cobranza: 0, prospeccion: 0, total: 0, citas: 0, altas: 0, pagos: 0 });
+      if (!plazaStats.has(plaza)) plazaStats.set(plaza, { plaza, general: 0, cobranza: 0, prospeccion: 0, total: 0, citas: 0 });
+      if (!dayStats.has(day)) dayStats.set(day, { day, general: 0, cobranza: 0, prospeccion: 0, total: 0 });
       const user = userStats.get(uid), office = plazaStats.get(plaza), daily = dayStats.get(day);
-      [user, office, daily].forEach(item => { item.total += 1; if (type === 'COBRANZA') item.cobranza += 1; if (type === 'PROSPECCION') item.prospeccion += 1; });
+      [user, office, daily].forEach(item => { item.total += 1; if (type === 'GENERAL') item.general += 1; if (type === 'COBRANZA') item.cobranza += 1; if (type === 'PROSPECCION') item.prospeccion += 1; });
+      if (type === 'GENERAL') general += 1;
       if (type === 'COBRANZA') cobranza += 1;
       if (type === 'PROSPECCION') prospeccion += 1;
       const hasAppointment = record.se_agenda_cita === true || normaliseActivityText(record.se_agenda_cita) === 'SI';
@@ -2790,18 +2815,18 @@
     const users = Array.from(userStats.values()).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
     const plazas = Array.from(plazaStats.values()).sort((a, b) => b.total - a.total || a.plaza.localeCompare(b.plaza));
     const days = Array.from(dayStats.values()).sort((a, b) => a.day.localeCompare(b.day));
-    const maxPlaza = Math.max(1, ...plazas.map(item => Math.max(item.cobranza, item.prospeccion)));
+    const maxPlaza = Math.max(1, ...plazas.map(item => Math.max(item.general, item.cobranza, item.prospeccion)));
     const maxDay = Math.max(1, ...days.map(item => item.total));
-    const doubleBars = (items, max, label) => items.map(item => `<div style="padding:10px 0;border-bottom:1px solid #DCFCE7"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><div style="font-size:13px;font-weight:900;color:#14532D;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${activityText(item.name || item.plaza)}">${activityText(item.name || item.plaza)}</div><div style="font-size:11px;color:#64748B">${activityText(item.role || label || '')}</div></div><div style="display:grid;grid-template-columns:92px 1fr 32px;gap:7px;align-items:center;margin-top:7px;font-size:11px"><span style="font-weight:800;color:#15803D">Cobranza</span><span style="height:9px;background:#DCFCE7;border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(item.cobranza / max) * 100}%;background:#16A34A;border-radius:99px"></span></span><b style="text-align:right;color:#166534">${item.cobranza}</b></div><div style="display:grid;grid-template-columns:92px 1fr 32px;gap:7px;align-items:center;margin-top:5px;font-size:11px"><span style="font-weight:800;color:#2563EB">Prospección</span><span style="height:9px;background:#DBEAFE;border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(item.prospeccion / max) * 100}%;background:#2563EB;border-radius:99px"></span></span><b style="text-align:right;color:#1D4ED8">${item.prospeccion}</b></div><div style="font-size:11px;color:#64748B;margin-top:6px">Total: <b>${item.total}</b>${item.citas !== undefined ? ` · Citas: <b>${item.citas}</b>` : ''}${item.altas !== undefined ? ` · Altas: <b>${item.altas}</b>` : ''}</div></div>`).join('');
+    const doubleBars = (items, max, label) => items.map(item => `<div style="padding:10px 0;border-bottom:1px solid #DCFCE7"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><div style="font-size:13px;font-weight:900;color:#14532D;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${activityText(item.name || item.plaza)}">${activityText(item.name || item.plaza)}</div><div style="font-size:11px;color:#64748B">${activityText(item.role || label || '')}</div></div>${[['general','General','#7C3AED','#F3E8FF'],['cobranza','Cobranza','#16A34A','#DCFCE7'],['prospeccion','Prospección','#2563EB','#DBEAFE']].map(([key,name,color,bg]) => `<div style="display:grid;grid-template-columns:92px 1fr 32px;gap:7px;align-items:center;margin-top:5px;font-size:11px"><span style="font-weight:800;color:${color}">${name}</span><span style="height:9px;background:${bg};border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(item[key] / max) * 100}%;background:${color};border-radius:99px"></span></span><b style="text-align:right;color:${color}">${item[key]}</b></div>`).join('')}<div style="font-size:11px;color:#64748B;margin-top:6px">Total: <b>${item.total}</b>${item.citas !== undefined ? ` · Citas: <b>${item.citas}</b>` : ''}${item.altas !== undefined ? ` · Altas: <b>${item.altas}</b>` : ''}</div></div>`).join('');
     _activityPerformanceCollaborators = users;
     const maxUserTotal = Math.max(1, ...users.map(item => item.total));
-    const collaboratorChart = `<div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:4px 0 10px"><div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#475569"><span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#16A34A;margin-right:5px"></i>Cobranza</span><span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#2563EB;margin-right:5px"></i>Prospección</span></div><span style="font-size:11px;color:#64748B">${users.length} colaborador(es) · coloca el cursor sobre un color para ver el detalle</span></div><div style="max-height:410px;overflow-y:auto;padding:2px 7px 2px 1px">${users.map((item, index) => { const totalWidth = Math.max(item.total ? (item.total / maxUserTotal) * 100 : 0, item.total ? 3 : 0); const cobranzaWidth = item.total ? (item.cobranza / item.total) * 100 : 0; const prospeccionWidth = item.total ? (item.prospeccion / item.total) * 100 : 0; return `<div style="display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #F1F5F9"><div style="height:20px;background:#E2E8F0;border-radius:999px;overflow:hidden"><div style="display:flex;width:${totalWidth}%;min-width:${item.total ? '3px' : '0'};height:100%;border-radius:999px;overflow:hidden">${item.cobranza ? `<span onmouseenter="window.showActivityPerformanceTooltip(event,${index},'COBRANZA')" onmousemove="window.showActivityPerformanceTooltip(event,${index},'COBRANZA')" onmouseleave="window.hideActivityPerformanceTooltip()" style="display:block;width:${cobranzaWidth}%;height:100%;background:#16A34A;cursor:help"></span>` : ''}${item.prospeccion ? `<span onmouseenter="window.showActivityPerformanceTooltip(event,${index},'PROSPECCION')" onmousemove="window.showActivityPerformanceTooltip(event,${index},'PROSPECCION')" onmouseleave="window.hideActivityPerformanceTooltip()" style="display:block;width:${prospeccionWidth}%;height:100%;background:#2563EB;cursor:help"></span>` : ''}</div></div><b style="font-size:11px;color:#334155;text-align:right">${item.total}</b></div>`; }).join('')}</div>`;
-    const dailyBars = days.map(day => `<div style="display:grid;grid-template-columns:82px 1fr 32px;gap:7px;align-items:center;padding:7px 0;border-bottom:1px solid #DCFCE7;font-size:11px"><span style="font-weight:800;color:#14532D">${activityText(day.day)}</span><span style="height:12px;background:#DCFCE7;border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(day.total / maxDay) * 100}%;background:linear-gradient(90deg,#16A34A,#2563EB);border-radius:99px"></span></span><b style="text-align:right;color:#14532D">${day.total}</b></div>`).join('');
+    const collaboratorChart = `<div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:4px 0 10px"><div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#475569"><span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#7C3AED;margin-right:5px"></i>General</span><span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#16A34A;margin-right:5px"></i>Cobranza</span><span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#2563EB;margin-right:5px"></i>Prospección</span></div><span style="font-size:11px;color:#64748B">${users.length} colaborador(es) · coloca el cursor sobre un color para ver el detalle</span></div><div style="max-height:410px;overflow-y:auto;padding:2px 7px 2px 1px">${users.map((item, index) => { const totalWidth = Math.max(item.total ? (item.total / maxUserTotal) * 100 : 0, item.total ? 3 : 0); const parts = [['GENERAL','general','#7C3AED'],['COBRANZA','cobranza','#16A34A'],['PROSPECCION','prospeccion','#2563EB']]; return `<div style="display:grid;grid-template-columns:1fr 34px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #F1F5F9"><div style="height:20px;background:#E2E8F0;border-radius:999px;overflow:hidden"><div style="display:flex;width:${totalWidth}%;min-width:${item.total ? '3px' : '0'};height:100%;border-radius:999px;overflow:hidden">${parts.map(([type,key,color]) => item[key] ? `<span onmouseenter="window.showActivityPerformanceTooltip(event,${index},'${type}')" onmousemove="window.showActivityPerformanceTooltip(event,${index},'${type}')" onmouseleave="window.hideActivityPerformanceTooltip()" style="display:block;width:${(item[key] / item.total) * 100}%;height:100%;background:${color};cursor:help"></span>` : '').join('')}</div></div><b style="font-size:11px;color:#334155;text-align:right">${item.total}</b></div>`; }).join('')}</div>`;
+    const dailyBars = days.map(day => `<div style="display:grid;grid-template-columns:82px 1fr 32px;gap:7px;align-items:center;padding:7px 0;border-bottom:1px solid #DCFCE7;font-size:11px"><span style="font-weight:800;color:#14532D">${activityText(day.day)}</span><span style="height:12px;background:#DCFCE7;border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(day.total / maxDay) * 100}%;background:linear-gradient(90deg,#7C3AED,#16A34A,#2563EB);border-radius:99px"></span></span><b style="text-align:right;color:#14532D">${day.total}</b></div>`).join('');
     const appointmentRate = prospeccion ? Math.round((citas / prospeccion) * 100) : 0;
     const conversionRate = citas ? Math.round((altas / citas) * 100) : 0;
     const topUser = users[0];
     const topPlaza = plazas[0];
-    container.innerHTML = `<div style="font-weight:900;color:#166534;margin-bottom:4px">Análisis general · ${records.length} actividad(es) filtrada(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los indicadores sirven para retroalimentar carga de trabajo, seguimiento y oportunidades de mejora; no sustituyen metas formales por puesto.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:15px"><div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#14532D">${records.length}</div><div style="font-size:11px;color:#166534">Actividades totales</div></div><div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#16A34A">${cobranza}</div><div style="font-size:11px;color:#166534">Cobranza</div></div><div style="background:#fff;border:1px solid #BFDBFE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#2563EB">${prospeccion}</div><div style="font-size:11px;color:#1D4ED8">Prospección</div></div><div style="background:#fff;border:1px solid #DDD6FE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#6D28D9">${appointmentRate}%</div><div style="font-size:11px;color:#5B21B6">Prospección con cita</div></div><div style="background:#fff;border:1px solid #FEF3C7;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#B45309">${conversionRate}%</div><div style="font-size:11px;color:#92400E">Citas convertidas en alta</div></div></div><div style="display:grid;grid-template-columns:minmax(460px,1.45fr) repeat(3,minmax(260px,1fr));gap:14px"><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px;min-width:0"><div style="font-size:15px;font-weight:900;color:#14532D">Actividad por colaborador</div><div style="font-size:11px;color:#64748B;margin:3px 0 8px">Una barra apilada por persona; la longitud refleja el total y cada color su tipo de actividad.</div>${collaboratorChart}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Barras dobles por sucursal</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Volumen de Cobranza y Prospección por plaza.</div>${doubleBars(plazas, maxPlaza, 'Sucursal')}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Ritmo diario de operación</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Total de actividades por día del periodo filtrado.</div>${dailyBars}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Lectura para retroalimentación</div><div style="font-size:12px;color:#475569;line-height:1.6;margin-top:8px"><div>• Mayor volumen individual: <b>${activityText(topUser?.name || '—')}</b> con ${topUser?.total || 0} actividad(es).</div><div>• Plaza con mayor volumen: <b>${activityText(topPlaza?.plaza || '—')}</b> con ${topPlaza?.total || 0} actividad(es).</div><div>• Prospecciones que generan cita: <b>${citas} de ${prospeccion}</b> (${appointmentRate}%).</div><div>• Citas con alta registrada: <b>${altas} de ${citas}</b> (${conversionRate}%).</div><div>• Gestiones de pago informadas: <b>${payments}</b>.</div><div style="margin-top:8px;color:#166534;font-weight:800">Usa estos datos para conversar sobre cobertura, seguimiento y cumplimiento, definiendo metas por puesto antes de evaluar desempeño.</div></div></article></div>`;
+    container.innerHTML = `<div style="font-weight:900;color:#166534;margin-bottom:4px">Análisis general · ${records.length} actividad(es) filtrada(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los indicadores sirven para retroalimentar carga de trabajo, seguimiento y oportunidades de mejora; no sustituyen metas formales por puesto.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:15px"><div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#14532D">${records.length}</div><div style="font-size:11px;color:#166534">Actividades totales</div></div><div style="background:#fff;border:1px solid #DDD6FE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#6D28D9">${general}</div><div style="font-size:11px;color:#5B21B6">General</div></div><div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#16A34A">${cobranza}</div><div style="font-size:11px;color:#166534">Cobranza</div></div><div style="background:#fff;border:1px solid #BFDBFE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#2563EB">${prospeccion}</div><div style="font-size:11px;color:#1D4ED8">Prospección</div></div><div style="background:#fff;border:1px solid #DDD6FE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#6D28D9">${appointmentRate}%</div><div style="font-size:11px;color:#5B21B6">Prospección con cita</div></div><div style="background:#fff;border:1px solid #FEF3C7;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#B45309">${conversionRate}%</div><div style="font-size:11px;color:#92400E">Citas convertidas en alta</div></div></div><div style="display:grid;grid-template-columns:minmax(460px,1.45fr) repeat(3,minmax(260px,1fr));gap:14px"><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px;min-width:0"><div style="font-size:15px;font-weight:900;color:#14532D">Actividad por colaborador</div><div style="font-size:11px;color:#64748B;margin:3px 0 8px">Una barra apilada por persona; la longitud refleja el total y cada color su tipo de actividad.</div>${collaboratorChart}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Barras por sucursal</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Volumen de General, Cobranza y Prospección por plaza.</div>${doubleBars(plazas, maxPlaza, 'Sucursal')}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Ritmo diario de operación</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Total de actividades por día del periodo filtrado.</div>${dailyBars}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Lectura para retroalimentación</div><div style="font-size:12px;color:#475569;line-height:1.6;margin-top:8px"><div>• Mayor volumen individual: <b>${activityText(topUser?.name || '—')}</b> con ${topUser?.total || 0} actividad(es).</div><div>• Plaza con mayor volumen: <b>${activityText(topPlaza?.plaza || '—')}</b> con ${topPlaza?.total || 0} actividad(es).</div><div>• Actividades Generales: <b>${general}</b>.</div><div>• Prospecciones que generan cita: <b>${citas} de ${prospeccion}</b> (${appointmentRate}%).</div><div>• Citas con alta registrada: <b>${altas} de ${citas}</b> (${conversionRate}%).</div><div>• Gestiones de pago informadas: <b>${payments}</b>.</div><div style="margin-top:8px;color:#166534;font-weight:800">Usa estos datos para conversar sobre cobertura, seguimiento y cumplimiento, definiendo metas por puesto antes de evaluar desempeño.</div></div></article></div>`;
   };
 
   window.searchActivities = async function() {
@@ -3029,7 +3054,7 @@
     const action = normaliseActivityText(document.getElementById('activityAction').value);
     const userSearch = document.getElementById('activityUser').value;
     _activitiesFiltered = _activitiesData.filter(record => {
-      const recordType = normaliseActivityText(record.tipo);
+      const recordType = activityCategory(record);
       const recordRole = normaliseActivityText(record.rol);
       const recordPlaza = normaliseActivityText(record.plaza);
       const searchable = normaliseActivityText([
@@ -3040,8 +3065,9 @@
         && (!action || searchable.includes(action)) && matchesActivityUser(record, userSearch);
     });
     document.getElementById('activityTotal').textContent = _activitiesFiltered.length;
-    document.getElementById('activityCobranza').textContent = _activitiesFiltered.filter(x => x.tipo === 'COBRANZA').length;
-    document.getElementById('activityProspeccion').textContent = _activitiesFiltered.filter(x => x.tipo === 'PROSPECCION').length;
+    document.getElementById('activityGeneral').textContent = _activitiesFiltered.filter(x => activityCategory(x) === 'GENERAL').length;
+    document.getElementById('activityCobranza').textContent = _activitiesFiltered.filter(x => activityCategory(x) === 'COBRANZA').length;
+    document.getElementById('activityProspeccion').textContent = _activitiesFiltered.filter(x => activityCategory(x) === 'PROSPECCION').length;
     document.getElementById('activityEvidence').textContent = _activitiesFiltered.filter(x => x.tiene_evidencia).length;
     document.getElementById('activityRecordCount').textContent = `${_activitiesFiltered.length} registro(s)`;
     renderActivityRoutesReport(_activitiesFiltered);
@@ -3062,20 +3088,22 @@
       return;
     }
     const renderActivityCard = (record) => {
-      const cobranza = record.tipo === 'COBRANZA';
+      const category = activityCategory(record);
+      const cobranza = category === 'COBRANZA';
+      const general = category === 'GENERAL';
       const responsible = activityText(record.nombre_usuario || 'Sin nombre');
       const counterpart = activityText(record.nombre_contacto || record.nombre_prospecto || 'Sin nombre');
       const mainAction = activityText(record.gestion_realizada || record.tipo_accion || 'Sin detalle');
-      const typeColor = cobranza ? '#15803D' : '#2563EB';
-      const typeBg = cobranza ? '#DCFCE7' : '#DBEAFE';
-      const stage = cobranza ? '' : prospectWorkflowStage(record);
+      const typeColor = general ? '#6D28D9' : cobranza ? '#15803D' : '#2563EB';
+      const typeBg = general ? '#F3E8FF' : cobranza ? '#DCFCE7' : '#DBEAFE';
+      const stage = cobranza || general ? '' : prospectWorkflowStage(record);
       const stageColors = PROSPECT_WORKFLOW_COLORS[stage] || ['#F3F4F6', '#374151'];
-      const stageChip = cobranza ? '' : `<span class="chip" title="Etapa actual del expediente" style="background:${stageColors[0]};color:${stageColors[1]};font-weight:800">${activityText(PROSPECT_WORKFLOW_LABELS[stage] || stage || 'Sin etapa')}</span>`;
-      const subDetail = cobranza
+      const stageChip = cobranza || general ? '' : `<span class="chip" title="Etapa actual del expediente" style="background:${stageColors[0]};color:${stageColors[1]};font-weight:800">${activityText(PROSPECT_WORKFLOW_LABELS[stage] || stage || 'Sin etapa')}</span>`;
+      const subDetail = cobranza || general
         ? `${activityText(record.se_visita_a || '—')}${record.numero_cliente ? ` · Cliente ${activityText(record.numero_cliente)}` : ''}`
         : record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : `Sin cita${record.motivos_no_cita?.length ? ` · ${activityText(record.motivos_no_cita.join(', '))}` : ''}`;
       return `<div class="rec-card" style="border-left-color:${typeColor};align-items:flex-start">
-        <div class="tipo-badge" style="background:${typeBg};color:${typeColor}">${cobranza ? 'Cobranza' : 'Prospección'}</div>
+        <div class="tipo-badge" style="background:${typeBg};color:${typeColor}">${activityCategoryLabel(category)}</div>
         <div class="rec-info"><div class="rec-nombre">${counterpart}</div><div class="rec-correo">${responsible} · ${activityText(record.correo_usuario || '—')}</div>
           <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span>${stageChip}<span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
           <div style="font-size:12px;color:#667085;margin-top:7px">${subDetail}</div></div>
@@ -3117,8 +3145,8 @@
   }
 
   window.exportActivitiesCsv = function(type) {
-    const selected = _activitiesFiltered.filter(record => normaliseActivityText(record.tipo) === type);
-    const typeName = type === 'COBRANZA' ? 'Cobranza' : 'Prospección';
+    const selected = _activitiesFiltered.filter(record => activityCategory(record) === type);
+    const typeName = activityCategoryLabel(type);
     if (!selected.length) {
       alert(`No hay registros de ${typeName} en el resultado actual. Ajusta los filtros y presiona Buscar.`);
       return;
@@ -3128,9 +3156,11 @@
       ['tipo', 'Tipo de actividad'], ['fecha_hora_registro', 'Fecha y hora de registro'], ['created_at', 'Marca de tiempo de creación'], ['timestamp', 'Marca de tiempo'],
       ['latitud', 'Latitud'], ['longitud', 'Longitud'], ['tiene_evidencia', 'Tiene evidencia'], ['ruta_evidencia', 'Ruta de evidencia'], ['editable', 'Editable'],
     ];
-    const specificFields = type === 'COBRANZA'
-      ? [['se_visita_a', 'Se atiende a'], ['numero_cliente', 'Número de cliente'], ['nombre_contacto', 'Nombre'], ['gestion_realizada', 'Gestión realizada'], ['comentarios', 'Comentarios'], ['monto', 'Monto depositado'], ['folio_recibo', 'Folio de recibo o comprobante'], ['fecha_promesa', 'Fecha de promesa'], ['hora_promesa', 'Hora de promesa']]
-      : [['nombre_prospecto', 'Nombre completo del prospecto'], ['direccion', 'Dirección'], ['telefono', 'Teléfono'], ['referido_interno', 'Referido interno'], ['modalidad_prospeccion', 'Tipo de Prospección'], ['tipo_prospeccion', 'Origen de prospección'], ['tipo_prospeccion_otro', 'Otro origen de prospección'], ['tipo_accion', 'Tipo de acción'], ['se_agenda_cita', 'Se agenda cita'], ['fecha_cita', 'Fecha de cita'], ['hora_cita', 'Hora de cita'], ['cita_timestamp', 'Marca de tiempo de cita'], ['estado_cita', 'Estado de cita'], ['responsable_cita_nombre', 'Responsable de cita'], ['gerente_cita_nombre', 'Gerente de cita'], ['motivos_no_cita', 'Motivos de no cita'], ['observaciones', 'Observaciones'], ['estado_expediente', 'Etapa del expediente'], ['tipo_cierre', 'Tipo de cierre'], ['motivo_cierre', 'Motivo de cierre'], ['cierre_negativo_por_nombre', 'Cierre registrado por'], ['cierre_negativo_en', 'Marca de tiempo del cierre'], ['hilo_prospecto', 'Hilo de prospecto'], ['prospecto_raiz_id', 'ID de prospecto raíz'], ['seguimiento_de', 'Seguimiento de'], ['numero_seguimiento', 'Número de seguimiento'], ['es_seguimiento', 'Es seguimiento'], ['cambio_de_opinion', 'Cambió de opinión']];
+    const specificFields = type === 'GENERAL'
+      ? [['se_visita_a', 'Se atiende a'], ['numero_cliente', 'Número de distribuidora'], ['nombre_contacto', 'Nombre'], ['gestion_realizada', 'Gestión realizada'], ['comentarios', 'Comentarios o motivos'], ['motivo', 'Motivo'], ['tiene_evidencia', 'Tiene evidencia']]
+      : type === 'COBRANZA'
+        ? [['se_visita_a', 'Se atiende a'], ['numero_cliente', 'Número de cliente'], ['nombre_contacto', 'Nombre'], ['gestion_realizada', 'Gestión realizada'], ['comentarios', 'Comentarios'], ['monto', 'Monto depositado'], ['folio_recibo', 'Folio de recibo o comprobante'], ['fecha_promesa', 'Fecha de promesa'], ['hora_promesa', 'Hora de promesa']]
+        : [['nombre_prospecto', 'Nombre completo del prospecto'], ['direccion', 'Dirección'], ['telefono', 'Teléfono'], ['referido_interno', 'Referido interno'], ['modalidad_prospeccion', 'Tipo de Prospección'], ['tipo_prospeccion', 'Origen de prospección'], ['tipo_prospeccion_otro', 'Otro origen de prospección'], ['tipo_accion', 'Tipo de acción'], ['se_agenda_cita', 'Se agenda cita'], ['fecha_cita', 'Fecha de cita'], ['hora_cita', 'Hora de cita'], ['cita_timestamp', 'Marca de tiempo de cita'], ['estado_cita', 'Estado de cita'], ['responsable_cita_nombre', 'Responsable de cita'], ['gerente_cita_nombre', 'Gerente de cita'], ['motivos_no_cita', 'Motivos de no cita'], ['observaciones', 'Observaciones'], ['estado_expediente', 'Etapa del expediente'], ['tipo_cierre', 'Tipo de cierre'], ['motivo_cierre', 'Motivo de cierre'], ['cierre_negativo_por_nombre', 'Cierre registrado por'], ['cierre_negativo_en', 'Marca de tiempo del cierre'], ['hilo_prospecto', 'Hilo de prospecto'], ['prospecto_raiz_id', 'ID de prospecto raíz'], ['seguimiento_de', 'Seguimiento de'], ['numero_seguimiento', 'Número de seguimiento'], ['es_seguimiento', 'Es seguimiento'], ['cambio_de_opinion', 'Cambió de opinión']];
     const definedFields = [...commonFields, ...specificFields];
     const knownKeys = new Set(definedFields.map(([key]) => key));
     const extraKeys = Array.from(new Set(selected.flatMap(record => Object.keys(record).filter(key => !knownKeys.has(key))))).sort();
@@ -3187,9 +3217,17 @@
   }
 
   function renderFullActivityDetail(record, options = {}) {
-    const isCobranza = normaliseActivityText(record.tipo || record.activity_type) === 'COBRANZA';
-    const rows = isCobranza
+    const category = activityCategory(record);
+    const isCobranza = category === 'COBRANZA';
+    const isGeneral = category === 'GENERAL';
+    const isProspeccion = category === 'PROSPECCION';
+    const rows = isGeneral
       ? [
+          ['Se atiende a', record.se_visita_a], ['Número de distribuidora', record.numero_cliente], ['Nombre / contacto', record.nombre_contacto],
+          ['Gestión realizada', record.gestion_realizada], ['Motivos / comentarios', record.motivo || record.comentarios], ['Evidencia', record.tiene_evidencia ? 'Sí' : 'No']
+        ]
+      : isCobranza
+        ? [
           ['Se atiende a', record.se_visita_a], ['Número de distribuidora', record.numero_cliente], ['Nombre / contacto', record.nombre_contacto],
           ['Gestión realizada', record.gestion_realizada], ['Monto comprometido', record.monto || record.monto_promesa],
           ['Fecha y hora de promesa', detailDateTime(record, 'promesa_timestamp', 'fecha_promesa', 'hora_promesa')], ['Modalidad de promesa', record.modalidad_promesa],
@@ -3206,7 +3244,7 @@
           ['Etapa del expediente', prospectWorkflowLabel(record)], ['Ubicación', record.latitud != null && record.longitud != null ? `${record.latitud}, ${record.longitud}` : '—'],
         ];
     const detail = detailRowsHtml(rows);
-    const history = !isCobranza ? (() => {
+    const history = isProspeccion ? (() => {
       const entries = Object.values(record.historial_expediente || {}).sort((a, b) => Number(b.fecha || 0) - Number(a.fecha || 0));
       if (!entries.length) return '<div class="activity-detail-history-title">Bitácora completa del expediente</div><div style="color:#64748B;font-size:13px;margin-top:8px">Sin movimientos en la bitácora.</div>';
       const cards = entries.map((entry, index) => {
@@ -3216,8 +3254,8 @@
       }).join('');
       return `<div class="activity-detail-history-title">Bitácora completa del expediente</div>${cards}`;
     })() : '';
-    const prospectHeading = !isCobranza ? `<div class="activity-detail-prospect"><div class="activity-detail-name">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto')}</div><span class="activity-detail-stage">${activityText(prospectWorkflowLabel(record))}</span></div>` : '';
-    const closure = !isCobranza ? prospectClosureData(record) : null;
+    const prospectHeading = isProspeccion ? `<div class="activity-detail-prospect"><div class="activity-detail-name">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto')}</div><span class="activity-detail-stage">${activityText(prospectWorkflowLabel(record))}</span></div>` : '';
+    const closure = isProspeccion ? prospectClosureData(record) : null;
     const closureNotice = closure ? `<aside style="margin:0 0 14px;padding:12px 14px;border:1px solid #FCA5A5;border-left:5px solid #B91C1C;border-radius:10px;background:#FFF1F2;color:#7F1D1D"><div style="font-size:13px;font-weight:900">⛔ ${activityText(closure.label)}</div><div style="margin-top:6px;font-size:13px;line-height:1.5"><b>Comentario obligatorio:</b> ${activityText(closure.reason)}</div>${closure.actor ? `<div style="margin-top:5px;font-size:12px;color:#9F1239"><b>Registrado por:</b> ${activityText(closure.actor)}${closure.timestamp ? ` · ${activityText(formatDate(closure.timestamp))}` : ''}</div>` : ''}</aside>` : '';
     const primaryAttachments = `<button onclick="window.viewActivityAttachments('${record.id}')" style="margin:14px 0 2px;padding:9px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver fotos, evidencias y firma</button>`;
     let paymentChain = '';
@@ -3225,7 +3263,7 @@
       const chain = options.paymentChain;
       paymentChain = `<div style="margin-top:16px;border-top:1px solid #E2E8F0;padding-top:4px"><div style="font-size:16px;font-weight:900;color:#0F172A;margin:12px 0 4px">Flujo completo de pago</div>${paymentStepDetail('1. Promesa de pago', '#EA580C', record, [['Monto comprometido', record.monto || record.monto_promesa], ['Fecha y hora', detailDateTime(record, 'promesa_timestamp', 'fecha_promesa', 'hora_promesa')], ['Firma digital', record.tiene_firma_promesa ? 'Capturada' : 'No registrada'], ['Comentarios', record.comentarios]], 'No existe promesa registrada.')}${paymentStepDetail('2. Recepción de pago', '#0F766E', chain.reception, [['Modalidad', chain.reception?.modalidad_recepcion], ['Monto recibido', chain.reception?.monto], ['Folio de recibo', chain.reception?.folio_recibo], ['Comentarios', chain.reception?.comentarios]], 'Pendiente de registrar la recepción de pago.')}${paymentStepDetail('3. Comprobación de pago', '#2563EB', chain.verification, [['Monto depositado', chain.verification?.monto], ['Folio de comprobante', chain.verification?.folio_comprobante || chain.verification?.folio_recibo], ['Resultado de conciliación', chain.verification?.resultado_conciliacion || chain.verification?.estado_conciliacion], ['Comentarios', chain.verification?.comentarios]], 'Pendiente de registrar la comprobación de pago.')}</div>`;
     }
-    document.getElementById('modalTitle').textContent = isCobranza ? 'Detalle completo de Cobranza' : 'Expediente completo de Prospección';
+    document.getElementById('modalTitle').textContent = isGeneral ? 'Detalle completo de Actividad General' : isCobranza ? 'Detalle completo de Cobranza' : 'Expediente completo de Prospección';
     document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
     document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><div class="activity-detail-summary"><strong>Responsable:</strong> ${activityText(record.nombre_usuario || '—')}<br><strong>Correo:</strong> ${activityText(record.correo_usuario || '—')}<br><strong>Rol y plaza:</strong> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><strong>Registro:</strong> ${formatDate(record.created_at || record.timestamp || record.actualizado_en)}</div>${prospectHeading}${closureNotice}${detail}${primaryAttachments}${paymentChain}${history}</div>`;
     document.getElementById('photoModal').classList.add('active');
@@ -3354,8 +3392,10 @@
     return String(index + 1);
   }
 
-  function activityRouteTypeStyle(type) {
-    return normaliseActivityText(type) === 'PROSPECCION'
+  function activityRouteTypeStyle(recordOrType) {
+    const type = typeof recordOrType === 'string' ? normaliseActivityText(recordOrType) : activityCategory(recordOrType);
+    if (type === 'GENERAL') return { color: '#7C3AED', label: 'General', shortLabel: 'G' };
+    return type === 'PROSPECCION'
       ? { color: '#2563EB', label: 'Prospección', shortLabel: 'P' }
       : { color: '#15803D', label: 'Cobranza', shortLabel: 'C' };
   }
@@ -3447,9 +3487,10 @@
       group.records.sort((a, b) => Number(a.created_at || a.timestamp || 0) - Number(b.created_at || b.timestamp || 0));
       const first = group.records[0] || {};
       const metrics = calculateActivityRouteMetrics(group.records);
-      const cobranzaCount = group.records.filter(record => normaliseActivityText(record.tipo) === 'COBRANZA').length;
-      const prospeccionCount = group.records.filter(record => normaliseActivityText(record.tipo) === 'PROSPECCION').length;
-      return { ...group, ...metrics, cobranzaCount, prospeccionCount, color: activityRouteColor(group.key), nombre: first.nombre_usuario || 'Sin nombre', correo: first.correo_usuario || '—', plaza: first.plaza || 'Sin plaza' };
+      const generalCount = group.records.filter(record => activityCategory(record) === 'GENERAL').length;
+      const cobranzaCount = group.records.filter(record => activityCategory(record) === 'COBRANZA').length;
+      const prospeccionCount = group.records.filter(record => activityCategory(record) === 'PROSPECCION').length;
+      return { ...group, ...metrics, generalCount, cobranzaCount, prospeccionCount, color: activityRouteColor(group.key), nombre: first.nombre_usuario || 'Sin nombre', correo: first.correo_usuario || '—', plaza: first.plaza || 'Sin plaza' };
     }).sort((a, b) => a.day.localeCompare(b.day) || a.nombre.localeCompare(b.nombre));
   }
 
@@ -3489,7 +3530,7 @@
     const legendRows = [];
     groups.forEach(group => {
       const groupDate = group.day === 'Sin fecha' ? group.day : group.day.split('-').reverse().join('/');
-      legendRows.push(`<div style="display:flex;align-items:center;gap:7px;margin:4px 0"><span style="width:18px;border-top:3px dashed ${group.color}"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)}<br>${group.records.length} punto(s) · <b>${formatActivityDistance(group.totalMeters)}</b><br><span style="color:#15803D">● ${group.cobranzaCount} Cobranza</span> <span style="color:#2563EB">● ${group.prospeccionCount} Prospección</span></span></div>`);
+      legendRows.push(`<div style="display:flex;align-items:center;gap:7px;margin:4px 0"><span style="width:18px;border-top:3px dashed ${group.color}"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)}<br>${group.records.length} punto(s) · <b>${formatActivityDistance(group.totalMeters)}</b><br><span style="color:#7C3AED">● ${group.generalCount} General</span> <span style="color:#15803D">● ${group.cobranzaCount} Cobranza</span> <span style="color:#2563EB">● ${group.prospeccionCount} Prospección</span></span></div>`);
       const routePoints = [];
       group.records.forEach((record, index) => {
         const latitude = Number(record.latitud);
@@ -3497,7 +3538,7 @@
         const point = [latitude, longitude];
         const pointLabel = activityRoutePointLabel(index);
         const detail = record.gestion_realizada || record.tipo_accion || 'Sin detalle';
-        const typeStyle = activityRouteTypeStyle(record.tipo);
+        const typeStyle = activityRouteTypeStyle(record);
         const offset = activityMarkerOffset(group.records, index);
         const segment = index ? group.segments[index - 1] : null;
         const isRouteBoundary = index === 0 || index === group.records.length - 1;
@@ -4038,7 +4079,7 @@
           : Object.entries(photos || {}).filter(([key, value]) => key === 'foto_base64' || (key.endsWith('_base64') && typeof value === 'string'));
         if (!photoEntries.length) { sinFoto++; continue; }
         const timestamp = Number(record.created_at || record.timestamp || record.cita_timestamp || 0);
-        const baseType = record.tipo === 'PROSPECCION' ? 'PROSPECCION' : 'COBRANZA';
+        const baseType = activityCategory(record);
         const management = safePhotoText(record.gestion_realizada || record.tipo_accion || '', 'EVIDENCIA');
         for (const [photoKey, base64] of photoEntries) {
           const photoType = photoKey === 'foto_base64' ? `${baseType}_${management}` : `${baseType}_${photoKey.replace(/_base64$/, '')}`;
