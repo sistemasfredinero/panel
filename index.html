@@ -1000,7 +1000,10 @@
         <h3 style="margin:0;color:#4C1D95">🗺️ Rutas de actividades del período</h3>
         <div style="font-size:12px;color:#64748B;margin-top:4px">Cada línea punteada reúne las actividades de un mismo usuario durante un mismo día, en el orden en que fueron registradas.</div>
       </div>
-      <button class="modal-close" onclick="window.closeActivityRoutesMap()" style="background:#6B7280">✕ Cerrar</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <button id="refreshActivityRoutesMapBtn" type="button" onclick="window.refreshActivityRoutesMap()" style="margin:0;width:auto;background:#4F46E5">↻ Actualizar datos</button>
+        <button class="modal-close" onclick="window.closeActivityRoutesMap()" style="margin:0;width:auto;background:#6B7280">✕ Cerrar</button>
+      </div>
     </div>
     <div id="activityRoutesMap" style="flex:1;min-height:0;border-radius:9px;border:1px solid #C7D2FE;overflow:hidden"></div>
   </div>
@@ -2857,8 +2860,10 @@
         return timestamp >= start && timestamp <= end;
       });
       window.renderActivities();
+      return true;
     } catch (error) {
       document.getElementById('activitiesTableContainer').innerHTML = `<div class="loading" style="color:#B91C1C">❌ Error al cargar actividades: ${activityText(error.message)}</div>`;
+      return false;
     }
   };
 
@@ -3547,6 +3552,39 @@
 
   window.closeActivityRoutesMap = function() {
     document.getElementById('activityRoutesMapModal').classList.remove('active');
+  };
+
+  window.refreshActivityRoutesMap = async function() {
+    const button = document.getElementById('refreshActivityRoutesMapBtn');
+    if (button?.dataset.loading === 'true') return;
+    const originalLabel = button?.innerHTML || '↻ Actualizar datos';
+    if (button) {
+      button.dataset.loading = 'true';
+      button.disabled = true;
+      button.innerHTML = '⏳ Actualizando...';
+      button.style.opacity = '0.75';
+      button.style.cursor = 'wait';
+    }
+    try {
+      const loaded = await window.searchActivities();
+      if (!loaded) return;
+      if (!(window.__activityRouteGroups || []).length) {
+        if (activityRoutesMapInstance) { activityRoutesMapInstance.remove(); activityRoutesMapInstance = null; }
+        const mapElement = document.getElementById('activityRoutesMap');
+        if (mapElement) mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#64748B">No hay actividades con ubicación GPS para mostrar con los filtros actuales.</div>';
+        return;
+      }
+      window.openActivityRoutesMap();
+    } finally {
+      const refreshedButton = document.getElementById('refreshActivityRoutesMapBtn');
+      if (refreshedButton) {
+        refreshedButton.dataset.loading = 'false';
+        refreshedButton.disabled = false;
+        refreshedButton.innerHTML = originalLabel;
+        refreshedButton.style.opacity = '';
+        refreshedButton.style.cursor = 'pointer';
+      }
+    }
   };
 
   window.openActivityRoutesMap = function() {

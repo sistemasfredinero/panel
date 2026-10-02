@@ -26,3 +26,4 @@
 - [x] Incluir Actividad General en gráficas, análisis y exportación de Actividades.
 - [x] Añadir filtros visuales por gestión y Prospección al mapa de rutas.
 - [x] Añadir filtros visuales por usuario y ampliar el mapa de rutas al 98% de la pantalla.
+- [x] Añadir actualización manual al mapa reutilizando los filtros de Actividades vigentes.
