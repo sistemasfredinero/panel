@@ -24,3 +24,4 @@
 - [x] Mostrar desde el calendario la cadena de pago, firma y todas las evidencias relacionadas.
 - [x] Incluir Actividad General en filtros, resultados y totales de Actividades.
 - [x] Incluir Actividad General en gráficas, análisis y exportación de Actividades.
+- [x] Añadir filtros visuales por gestión y Prospección al mapa de rutas.
