@@ -28,3 +28,4 @@
 - [x] Añadir filtros visuales por usuario y ampliar el mapa de rutas al 98% de la pantalla.
 - [x] Añadir actualización manual al mapa reutilizando los filtros de Actividades vigentes.
 - [x] Optimizar búsquedas del panel y añadir diagnóstico de descargas visible solo para soporte.
+- [x] Mostrar en el diagnóstico de descargas el desglose por usuario y acción para Soporte.
