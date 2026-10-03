@@ -468,6 +468,9 @@
     <button id="privacyAdminEntry" onclick="window.showPrivacyConsentAdmin()" style="display:none;margin-top:20px;width:100%;padding:14px 18px;border:1px solid #C7D7EB;border-radius:14px;background:#F4F8FF;color:#1E3A5F;cursor:pointer;font-size:14px;font-weight:800;text-align:left">
       🔐 Administración de avisos de privacidad <span style="float:right">Ver aceptaciones →</span>
     </button>
+    <button id="dataUsageAdminEntry" onclick="window.showDataUsageDiagnostics()" style="display:none;margin-top:10px;width:100%;padding:14px 18px;border:1px solid #FCD34D;border-radius:14px;background:#FFFBEB;color:#92400E;cursor:pointer;font-size:14px;font-weight:800;text-align:left">
+      📡 Diagnóstico de descargas <span style="float:right">Ver acciones y estimaciones →</span>
+    </button>
   </section>
 
   <section id="privacyConsentSection" style="display:none;padding:24px 32px">
@@ -481,6 +484,24 @@
       </div>
       <div id="privacyConsentSummary" style="margin-top:18px"></div>
       <div id="privacyConsentTable" style="margin-top:14px"><div style="padding:28px;text-align:center;color:#5B6F5F">Selecciona esta sección para cargar consentimientos.</div></div>
+    </div>
+  </section>
+
+  <section id="dataUsageDiagnosticsSection" style="display:none;padding:24px 32px">
+    <div class="filter-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <div>
+          <h2 style="margin-bottom:6px;color:#92400E">📡 Diagnóstico de descargas</h2>
+          <p style="margin:0;color:#78350F;font-size:13px;line-height:20px">Muestra lecturas registradas por la app y el panel desde esta actualización. Los tamaños son estimaciones del JSON recibido; Firebase Console sigue siendo la fuente oficial de facturación.</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="dataUsageDays" style="padding:8px 10px;border:1px solid #FCD34D;border-radius:8px;background:#fff;font-size:12px"><option value="1">Hoy</option><option value="7" selected>Últimos 7 días</option><option value="30">Últimos 30 días</option></select>
+          <button onclick="window.loadDataUsageDiagnostics()" style="padding:9px 13px;background:#D97706;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">↻ Actualizar</button>
+          <button onclick="window.showPanelHome()" style="padding:9px 13px;background:#64748B;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700">← Volver</button>
+        </div>
+      </div>
+      <div id="dataUsageDiagnosticsSummary" style="margin-top:18px"></div>
+      <div id="dataUsageDiagnosticsTable" style="margin-top:14px"><div style="padding:28px;text-align:center;color:#92400E">Selecciona esta sección para cargar el diagnóstico.</div></div>
     </div>
   </section>
 
@@ -1015,7 +1036,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import { getDatabase, ref, get, remove, update, query, orderByChild, startAt, endAt, onValue, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import { getDatabase, ref, get, remove, update, increment, query, orderByChild, equalTo, startAt, endAt } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
   // ── Firebase config ────────────────────────────────────────────────────────
   window._RKEY = ['re_Z43VX','V9_Y37Jz','9Mp8tUmq','t7NmKyNw','xem'].join('');
@@ -1036,7 +1057,56 @@
   let allRecords = [];
   let usersMap   = {};
   let _panelProfile = {};
+  const DATA_USAGE_COOLDOWN_MS = 45_000;
+  const DATA_USAGE_RETENTION_DAYS = 31;
+  const ACTIVITY_SEARCH_CACHE_MS = 120_000;
+  const _panelDataUsageCooldown = new Map();
+  const _activitySearchCache = new Map();
   const PANEL_ACTIVITY_ONLY_ROLES = new Set(['CANJES', 'LIDER A', 'LIDER B', 'LIDER C', 'GESTOR', 'GESTOR DE COBRANZA', 'GERENTE']);
+
+  function dataUsageDateKey(timestamp = Date.now()) {
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function dataUsageActionKey(action) {
+    return String(action || 'LECTURA_SIN_ETIQUETA').trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || 'LECTURA_SIN_ETIQUETA';
+  }
+
+  function estimateDataUsageBytes(payload) {
+    try { return Math.min(Math.max(JSON.stringify(payload ?? null).length, 0), 50 * 1024 * 1024); }
+    catch { return 0; }
+  }
+
+  // Estimación direccional, no un contador oficial de facturación de Firebase.
+  // Está limitada por acción cada 45 segundos para que el diagnóstico no genere tráfico relevante.
+  function recordPanelDataUsage(action, { records = 0, payload = null, scope = '' } = {}) {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const now = Date.now();
+    const day = dataUsageDateKey(now);
+    const actionKey = dataUsageActionKey(action);
+    const cooldownKey = `${uid}/${day}/${actionKey}`;
+    const previous = Number(_panelDataUsageCooldown.get(cooldownKey) || 0);
+    if (now - previous < DATA_USAGE_COOLDOWN_MS) return;
+    _panelDataUsageCooldown.set(cooldownKey, now);
+    const estimatedBytes = estimateDataUsageBytes(payload);
+    const expiredDay = dataUsageDateKey(now - (DATA_USAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000));
+    update(ref(database, `users/${uid}/data_usage_metrics`), {
+      [expiredDay]: null,
+      [`${day}/${actionKey}/read_count`]: increment(1), [`${day}/${actionKey}/estimated_bytes`]: increment(estimatedBytes),
+      [`${day}/${actionKey}/last_estimated_bytes`]: estimatedBytes, [`${day}/${actionKey}/last_records`]: Math.max(0, Math.trunc(Number(records) || 0)),
+      [`${day}/${actionKey}/last_scope`]: String(scope || '').slice(0, 120), [`${day}/${actionKey}/last_at`]: now, [`${day}/${actionKey}/source`]: 'PANEL',
+    }).catch(() => {});
+  }
+
+  function formatDataUsageBytes(bytes) {
+    const value = Math.max(0, Number(bytes) || 0);
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
 
   function panelRole() {
     return normaliseActivityText(_panelProfile?.rol || _panelProfile?.role || '');
@@ -1076,6 +1146,8 @@
   function applyPrivacyAdminAccess() {
     const entry = document.getElementById('privacyAdminEntry');
     if (entry) entry.style.display = privacyIsSupport() ? '' : 'none';
+    const dataUsageEntry = document.getElementById('dataUsageAdminEntry');
+    if (dataUsageEntry) dataUsageEntry.style.display = privacyIsSupport() ? '' : 'none';
   }
 
   function privacyEscape(value) {
@@ -1088,9 +1160,94 @@
     return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
   }
 
+  function dataUsageActionLabel(action) {
+    const labels = {
+      APP_ACTIVITIES_SUMMARY: 'App · Resumen de Actividades',
+      APP_HOME_REQUEST_COUNTERS: 'App · Contadores de Solicitudes',
+      APP_VACATION_LIST: 'App · Lista de Vacaciones',
+      APP_PERMISSION_LIST: 'App · Lista de Permisos',
+      PANEL_ACTIVITY_SEARCH: 'Panel · Búsqueda de Actividades',
+      PANEL_TODAY_ACTIVITY_CALENDAR: 'Panel · Calendario de hoy',
+      PANEL_PENDING_PROSPECTS: 'Panel · Expedientes de Prospección',
+      PANEL_ANNUAL_FEEDBACK: 'Panel · Retroalimentación anual',
+      PANEL_REQUEST_SEARCH: 'Panel · Búsqueda de Vacaciones y Permisos',
+      PANEL_ACTIVITY_PHOTO_VIEW: 'Panel · Ver fotos de Actividad',
+      PANEL_ACTIVITY_PHOTO_EXPORT: 'Panel · Exportar fotos de Actividades',
+    };
+    return labels[action] || String(action || '').replace(/_/g, ' ').toLowerCase().replace(/(^|\s)\S/g, letter => letter.toUpperCase());
+  }
+
+  window.showDataUsageDiagnostics = function() {
+    if (!privacyIsSupport()) { alert('Esta sección es exclusiva para Soporte.'); return; }
+    ['moduleLanding', 'attendanceWorkspace', 'vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection', 'privacyConsentSection'].forEach(id => {
+      const section = document.getElementById(id);
+      if (section) section.style.display = 'none';
+    });
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('dataUsageDiagnosticsSection').style.display = 'block';
+    setPanelHeader('home');
+    void window.loadDataUsageDiagnostics();
+  };
+
+  window.loadDataUsageDiagnostics = async function() {
+    if (!privacyIsSupport()) return;
+    const summary = document.getElementById('dataUsageDiagnosticsSummary');
+    const table = document.getElementById('dataUsageDiagnosticsTable');
+    const days = Math.max(1, Number(document.getElementById('dataUsageDays')?.value || 7));
+    summary.innerHTML = '';
+    table.innerHTML = '<div style="padding:28px;text-align:center;color:#92400E">⏳ Cargando métricas agregadas...</div>';
+    try {
+      const snap = await get(ref(database, 'users'));
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (days - 1));
+      const startKey = dataUsageDateKey(start.getTime());
+      const aggregate = new Map();
+      const contributorTotals = new Map();
+      let usersWithMetrics = 0;
+      if (snap.exists()) snap.forEach(child => {
+        const profile = child.val() || {};
+        const metrics = profile.data_usage_metrics || {};
+        let userHasMetrics = false;
+        Object.entries(metrics).forEach(([dateKey, actions]) => {
+          if (dateKey < startKey || !actions || typeof actions !== 'object') return;
+          Object.entries(actions).forEach(([action, raw]) => {
+            const metric = raw || {};
+            const key = String(action);
+            const row = aggregate.get(key) || { action: key, reads: 0, bytes: 0, users: new Set(), latest: 0, source: new Set(), scopes: new Set() };
+            const reads = Number(metric.read_count || 0), bytes = Number(metric.estimated_bytes || 0);
+            row.reads += reads;
+            row.bytes += bytes;
+            row.users.add(child.key);
+            if (metric.last_at > row.latest) row.latest = Number(metric.last_at || 0);
+            if (metric.source) row.source.add(String(metric.source));
+            if (metric.last_scope) row.scopes.add(String(metric.last_scope));
+            aggregate.set(key, row);
+            const userName = profile.nombre_completo || profile.nombre || profile.correo || child.key;
+            const person = contributorTotals.get(child.key) || { name: userName, bytes: 0, reads: 0 };
+            person.bytes += bytes; person.reads += reads;
+            contributorTotals.set(child.key, person);
+            userHasMetrics = true;
+          });
+        });
+        if (userHasMetrics) usersWithMetrics++;
+      });
+      const rows = Array.from(aggregate.values()).sort((a, b) => b.bytes - a.bytes || b.reads - a.reads);
+      const totalBytes = rows.reduce((total, row) => total + row.bytes, 0);
+      const totalReads = rows.reduce((total, row) => total + row.reads, 0);
+      const topPeople = Array.from(contributorTotals.values()).sort((a, b) => b.bytes - a.bytes).slice(0, 3);
+      summary.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap"><span style="padding:8px 12px;border-radius:999px;background:#FEF3C7;color:#92400E;font-weight:800;font-size:12px">≈ ${formatDataUsageBytes(totalBytes)} estimados</span><span style="padding:8px 12px;border-radius:999px;background:#FFEDD5;color:#9A3412;font-weight:800;font-size:12px">${totalReads} lectura(s) registradas</span><span style="padding:8px 12px;border-radius:999px;background:#EFF6FF;color:#1D4ED8;font-weight:800;font-size:12px">${usersWithMetrics} usuario(s) con telemetría</span></div>${topPeople.length ? `<div style="margin-top:11px;font-size:12px;color:#78350F"><b>Mayor carga estimada:</b> ${topPeople.map(person => `${privacyEscape(person.name)} (${formatDataUsageBytes(person.bytes)})`).join(' · ')}</div>` : ''}`;
+      if (!rows.length) {
+        table.innerHTML = '<div style="padding:28px;text-align:center;color:#92400E">Aún no hay métricas. Se registrarán cuando los teléfonos y el panel usen las pantallas monitoreadas después de instalar/publicar esta actualización.</div>';
+        return;
+      }
+      table.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3"><thead><tr style="background:#FFFBEB;color:#78350F"><th style="padding:8px 9px;text-align:left">Acción</th><th style="padding:8px 9px;text-align:right">Lecturas</th><th style="padding:8px 9px;text-align:right">Tamaño estimado</th><th style="padding:8px 9px;text-align:center">Usuarios</th><th style="padding:8px 9px;text-align:center">Origen</th><th style="padding:8px 9px;text-align:left">Última lectura</th><th style="padding:8px 9px;text-align:left">Alcance reciente</th></tr></thead><tbody>${rows.map(row => `<tr style="border-bottom:1px solid #FDE68A"><td style="padding:8px 9px;font-weight:800;color:#78350F">${privacyEscape(dataUsageActionLabel(row.action))}</td><td style="padding:8px 9px;text-align:right">${row.reads}</td><td style="padding:8px 9px;text-align:right;font-weight:800">${formatDataUsageBytes(row.bytes)}</td><td style="padding:8px 9px;text-align:center">${row.users.size}</td><td style="padding:8px 9px;text-align:center">${privacyEscape(Array.from(row.source).join(', ') || '—')}</td><td style="padding:8px 9px;color:#475569">${privacyFormatDate(row.latest)}</td><td style="padding:8px 9px;color:#475569;max-width:230px">${privacyEscape(Array.from(row.scopes).slice(-2).join(' · ') || '—')}</td></tr>`).join('')}</tbody></table></div>`;
+    } catch (error) {
+      table.innerHTML = `<div style="padding:20px;color:#B91C1C;font-weight:700">❌ No se pudo cargar el diagnóstico: ${privacyEscape(error?.message || 'Error desconocido')}</div>`;
+    }
+  };
+
   window.showPrivacyConsentAdmin = async function() {
     if (!privacyIsSupport()) { alert('Esta sección es exclusiva para Soporte.'); return; }
-    ['moduleLanding', 'attendanceWorkspace', 'vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection'].forEach(id => {
+    ['moduleLanding', 'attendanceWorkspace', 'vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection', 'dataUsageDiagnosticsSection'].forEach(id => {
       const section = document.getElementById(id);
       if (section) section.style.display = 'none';
     });
@@ -1235,7 +1392,7 @@
   };
 
   window.showPanelHome = function() {
-    ['vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection', 'privacyConsentSection'].forEach(id => {
+    ['vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection', 'privacyConsentSection', 'dataUsageDiagnosticsSection'].forEach(id => {
       const section = document.getElementById(id);
       if (section) section.style.display = 'none';
     });
@@ -2484,16 +2641,10 @@
     const end = new Date(); end.setHours(23, 59, 59, 999);
     const from = start.getTime(); const to = end.getTime();
     try {
-      let appointmentSnap; let promiseSnap;
-      try {
-        [appointmentSnap, promiseSnap] = await Promise.all([
-          get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(from), endAt(to))),
-          get(query(ref(database, 'gestor_activities'), orderByChild('promesa_timestamp'), startAt(from), endAt(to))),
-        ]);
-      } catch {
-        const all = await get(ref(database, 'gestor_activities'));
-        appointmentSnap = all; promiseSnap = all;
-      }
+      const [appointmentSnap, promiseSnap] = await Promise.all([
+        get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(from), endAt(to))),
+        get(query(ref(database, 'gestor_activities'), orderByChild('promesa_timestamp'), startAt(from), endAt(to))),
+      ]);
       const citas = [];
       const promesas = [];
       if (appointmentSnap?.exists()) appointmentSnap.forEach(child => {
@@ -2510,6 +2661,11 @@
       });
       citas.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
       promesas.sort((a, b) => Number(a.promesa_timestamp) - Number(b.promesa_timestamp));
+      recordPanelDataUsage('PANEL_TODAY_ACTIVITY_CALENDAR', {
+        records: citas.length + promesas.length,
+        payload: [appointmentSnap.val(), promiseSnap.val()],
+        scope: activityDateInput(from),
+      });
       const citaPreview = citas.slice(0, 2).map(item => `<span style="display:inline-block;background:#fff;border:1px solid #A7F3D0;border-radius:999px;padding:5px 9px;margin:8px 6px 0 0;font-size:12px;font-weight:700">${activityText(item.hora_cita || prospectTime(item.cita_timestamp))} · ${activityText(item.nombre_prospecto || 'Prospecto')}</span>`).join('');
       const promisePreview = promesas.slice(0, 2).map(item => `<span style="display:inline-block;background:#fff;border:1px solid #FED7AA;border-radius:999px;padding:5px 9px;margin:8px 6px 0 0;font-size:12px;font-weight:700;color:#9A3412">${activityText(item.hora_promesa || prospectTime(item.promesa_timestamp))} · ${activityText(item.nombre_contacto || 'Cliente')} · ${activityText(item.plaza || 'Sin plaza')}</span>`).join('');
       container.innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap"><div><strong style="font-size:16px">🗓️ Calendario de Actividades · hoy</strong><div style="font-size:13px;margin-top:4px;color:#047857">${start.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}.</div></div><button type="button" class="btn-export" style="background:#0F766E;padding:8px 11px;font-size:12px" onclick="window.openProspectAppointmentsCalendar()">Abrir calendario</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:8px"><span style="background:#D1FAE5;color:#065F46;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900">Citas: ${citas.length}</span><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900">Promesas de pago: ${promesas.length}</span></div>${citaPreview || promisePreview ? `<div>${citaPreview}${promisePreview}</div>` : '<div style="font-size:13px;margin-top:9px;color:#047857">No hay citas ni promesas de pago programadas para hoy.</div>'}`;
@@ -2528,13 +2684,18 @@
     const container = document.getElementById('pendingProspectsContainer');
     container.innerHTML = '<div style="padding:8px 0;color:#9A3412">⏳ Cargando expedientes de Prospección...</div>';
     try {
-      const snap = await get(ref(database, 'gestor_activities'));
+      const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION')));
       const files = [];
       if (snap.exists()) snap.forEach(child => {
         const record = { id: child.key, ...(child.val() || {}) };
         const isProspection = normaliseActivityText(record.tipo || record.activity_type) === 'PROSPECCION';
         const isRootFile = record.es_expediente_prospeccion === true || !record.seguimiento_de;
         if (isProspection && isRootFile) files.push(record);
+      });
+      recordPanelDataUsage('PANEL_PENDING_PROSPECTS', {
+        records: files.length,
+        payload: snap.val(),
+        scope: 'Expedientes de Prospección',
       });
       files.sort((a, b) => Number(b.actualizado_en || activityCreatedTimestamp(b) || 0) - Number(a.actualizado_en || activityCreatedTimestamp(a) || 0));
       _prospectAdminData = files;
@@ -2579,15 +2740,18 @@
     try {
       const start = new Date(year, 0, 1).getTime();
       const end = new Date(year + 1, 0, 1).getTime() - 1;
-      let activitySnap;
-      try { activitySnap = await get(query(ref(database, 'gestor_activities'), orderByChild('created_at'), startAt(start), endAt(end))); }
-      catch { activitySnap = await get(ref(database, 'gestor_activities')); }
+      const activitySnap = await get(query(ref(database, 'gestor_activities'), orderByChild('created_at'), startAt(start), endAt(end)));
       const usersSnap = await get(ref(database, 'users'));
       const activities = [];
       if (activitySnap.exists()) activitySnap.forEach(child => {
         const record = { id: child.key, ...(child.val() || {}) };
         const timestamp = Number(record.created_at || record.timestamp || 0);
         if (timestamp >= start && timestamp <= end) activities.push(record);
+      });
+      recordPanelDataUsage('PANEL_ANNUAL_FEEDBACK', {
+        records: activities.length,
+        payload: [activitySnap.val(), usersSnap.val()],
+        scope: `${year}${selectedPlaza ? ` · ${selectedPlaza}` : ''}`,
       });
       const actualRoles = new Set(['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA']);
       const members = [];
@@ -2832,7 +2996,7 @@
     container.innerHTML = `<div style="font-weight:900;color:#166534;margin-bottom:4px">Análisis general · ${records.length} actividad(es) filtrada(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los indicadores sirven para retroalimentar carga de trabajo, seguimiento y oportunidades de mejora; no sustituyen metas formales por puesto.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:15px"><div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#14532D">${records.length}</div><div style="font-size:11px;color:#166534">Actividades totales</div></div><div style="background:#fff;border:1px solid #DDD6FE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#6D28D9">${general}</div><div style="font-size:11px;color:#5B21B6">General</div></div><div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#16A34A">${cobranza}</div><div style="font-size:11px;color:#166534">Cobranza</div></div><div style="background:#fff;border:1px solid #BFDBFE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#2563EB">${prospeccion}</div><div style="font-size:11px;color:#1D4ED8">Prospección</div></div><div style="background:#fff;border:1px solid #DDD6FE;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#6D28D9">${appointmentRate}%</div><div style="font-size:11px;color:#5B21B6">Prospección con cita</div></div><div style="background:#fff;border:1px solid #FEF3C7;border-radius:12px;padding:12px"><div style="font-size:23px;font-weight:900;color:#B45309">${conversionRate}%</div><div style="font-size:11px;color:#92400E">Citas convertidas en alta</div></div></div><div style="display:grid;grid-template-columns:minmax(460px,1.45fr) repeat(3,minmax(260px,1fr));gap:14px"><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px;min-width:0"><div style="font-size:15px;font-weight:900;color:#14532D">Actividad por colaborador</div><div style="font-size:11px;color:#64748B;margin:3px 0 8px">Una barra apilada por persona; la longitud refleja el total y cada color su tipo de actividad.</div>${collaboratorChart}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Barras por sucursal</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Volumen de General, Cobranza y Prospección por plaza.</div>${doubleBars(plazas, maxPlaza, 'Sucursal')}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Ritmo diario de operación</div><div style="font-size:11px;color:#64748B;margin:3px 0 10px">Total de actividades por día del periodo filtrado.</div>${dailyBars}</article><article style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;padding:14px"><div style="font-size:15px;font-weight:900;color:#14532D">Lectura para retroalimentación</div><div style="font-size:12px;color:#475569;line-height:1.6;margin-top:8px"><div>• Mayor volumen individual: <b>${activityText(topUser?.name || '—')}</b> con ${topUser?.total || 0} actividad(es).</div><div>• Plaza con mayor volumen: <b>${activityText(topPlaza?.plaza || '—')}</b> con ${topPlaza?.total || 0} actividad(es).</div><div>• Actividades Generales: <b>${general}</b>.</div><div>• Prospecciones que generan cita: <b>${citas} de ${prospeccion}</b> (${appointmentRate}%).</div><div>• Citas con alta registrada: <b>${altas} de ${citas}</b> (${conversionRate}%).</div><div>• Gestiones de pago informadas: <b>${payments}</b>.</div><div style="margin-top:8px;color:#166534;font-weight:800">Usa estos datos para conversar sobre cobertura, seguimiento y cumplimiento, definiendo metas por puesto antes de evaluar desempeño.</div></div></article></div>`;
   };
 
-  window.searchActivities = async function() {
+  window.searchActivities = async function(options = {}) {
     const startValue = document.getElementById('activityStartDate').value;
     const endValue = document.getElementById('activityEndDate').value;
     if (!startValue || !endValue) { alert('Selecciona fecha inicial y fecha final.'); return; }
@@ -2841,16 +3005,31 @@
     if (start > end) { alert('La fecha inicial no puede ser posterior a la fecha final.'); return; }
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">⏳ Cargando actividades...</div>';
     try {
-      // Se consulta el nodo completo para conservar visibilidad de expedientes creados
-      // antes de que todas las actividades guardaran created_at de forma uniforme.
-      const snap = await get(ref(database, 'gestor_activities'));
+      const forceRefresh = options === true || options?.force === true;
+      const scopeKey = `${auth.currentUser?.uid || 'ANON'}|${panelRole()}|${normaliseActivityText(_activityProfile?.plaza || '')}`;
+      const cacheKey = `${scopeKey}|${start}|${end}`;
+      const cached = _activitySearchCache.get(cacheKey);
+      const cacheIsFresh = cached && (Date.now() - cached.cachedAt) < ACTIVITY_SEARCH_CACHE_MS;
+      let rawRecords;
+      if (!forceRefresh && cacheIsFresh) {
+        rawRecords = cached.records;
+      } else {
+        // Todas las actividades actuales escriben created_at y el nodo tiene índice.
+        // Nunca se vuelve a descargar gestor_activities completo como respaldo: eso fue
+        // la principal causa de consumo excesivo al buscar repetidamente desde el panel.
+        const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('created_at'), startAt(start), endAt(end)));
+        rawRecords = [];
+        if (snap.exists()) snap.forEach(child => rawRecords.push({ id: child.key, ...(child.val() || {}) }));
+        _activitySearchCache.set(cacheKey, { cachedAt: Date.now(), records: rawRecords });
+        while (_activitySearchCache.size > 8) _activitySearchCache.delete(_activitySearchCache.keys().next().value);
+        recordPanelDataUsage('PANEL_ACTIVITY_SEARCH', {
+          records: rawRecords.length,
+          payload: snap.val(),
+          scope: `${startValue} a ${endValue}${forceRefresh ? ' · actualización manual' : ''}`,
+        });
+      }
       const scopedRecords = [];
-      if (snap.exists()) snap.forEach(child => {
-        const record = { id: child.key, ...(child.val() || {}) };
-        // Conserva la etapa actual de un expediente aunque su registro inicial
-        // sea anterior al período y algún seguimiento esté dentro del filtro.
-        if (isInManagerActivityScope(record)) scopedRecords.push(record);
-      });
+      rawRecords.forEach(record => { if (isInManagerActivityScope(record)) scopedRecords.push(record); });
       const consolidated = consolidateProspectFiles(scopedRecords);
       _activitiesData = consolidated.filter(record => {
         const isProspection = normaliseActivityText(record.tipo || record.activity_type) === 'PROSPECCION';
@@ -2898,16 +3077,10 @@
     const grid = document.getElementById('prospectCalendarGrid');
     grid.innerHTML = '<div style="grid-column:1/-1;background:#fff;padding:24px;border-radius:12px;color:#64748B">⏳ Cargando citas y promesas de pago...</div>';
     try {
-      let appointmentSnap; let promiseSnap;
-      try {
-        [appointmentSnap, promiseSnap] = await Promise.all([
-          get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(start), endAt(end))),
-          get(query(ref(database, 'gestor_activities'), orderByChild('promesa_timestamp'), startAt(start), endAt(end))),
-        ]);
-      } catch {
-        const all = await get(ref(database, 'gestor_activities'));
-        appointmentSnap = all; promiseSnap = all;
-      }
+      const [appointmentSnap, promiseSnap] = await Promise.all([
+        get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(start), endAt(end))),
+        get(query(ref(database, 'gestor_activities'), orderByChild('promesa_timestamp'), startAt(start), endAt(end))),
+      ]);
       _prospectCalendarAppointments = [];
       _activityCalendarPromises = [];
       if (appointmentSnap?.exists()) appointmentSnap.forEach(child => {
@@ -2924,6 +3097,11 @@
       });
       _prospectCalendarAppointments.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
       _activityCalendarPromises.sort((a, b) => Number(a.promesa_timestamp) - Number(b.promesa_timestamp));
+      recordPanelDataUsage('PANEL_TODAY_ACTIVITY_CALENDAR', {
+        records: _prospectCalendarAppointments.length + _activityCalendarPromises.length,
+        payload: [appointmentSnap.val(), promiseSnap.val()],
+        scope: `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')} · calendario mensual`,
+      });
       renderProspectCalendar();
     } catch (error) {
       grid.innerHTML = `<div style="grid-column:1/-1;background:#FEF2F2;padding:24px;border-radius:12px;color:#B91C1C">❌ No se pudieron cargar las citas y promesas: ${activityText(error.message)}</div>`;
@@ -3336,6 +3514,11 @@
     modal.classList.add('active');
     try {
       const snap = await get(ref(database, `gestor_photos/${id}`));
+      recordPanelDataUsage('PANEL_ACTIVITY_PHOTO_VIEW', {
+        records: snap.exists() ? 1 : 0,
+        payload: snap.val(),
+        scope: record.nombre_usuario || record.correo_usuario || record.plaza || 'Actividad individual',
+      });
       const attachments = panelMediaEntries(snap.val());
       if (!attachments.length) {
         info.innerHTML = '<div class="panel-media-empty">Este registro no tiene fotografías, evidencias ni firma almacenadas.</div>';
@@ -3566,7 +3749,7 @@
       button.style.cursor = 'wait';
     }
     try {
-      const loaded = await window.searchActivities();
+      const loaded = await window.searchActivities({ force: true });
       if (!loaded) return;
       if (!(window.__activityRouteGroups || []).length) {
         if (activityRoutesMapInstance) { activityRoutesMapInstance.remove(); activityRoutesMapInstance = null; }
@@ -4239,11 +4422,13 @@
     if (!confirm(`Se revisarán evidencias de ${_activitiesFiltered.length} actividad(es) en el resultado actual. ¿Continuar?`)) return;
     const zip = new JSZip();
     let descargadas = 0, sinFoto = 0;
+    const usagePayload = [];
     for (const record of _activitiesFiltered) {
       try {
         const snap = await get(ref(database, `gestor_photos/${record.id}`));
         if (!snap.exists()) { sinFoto++; continue; }
         const photos = snap.val();
+        usagePayload.push(photos);
         const photoEntries = typeof photos === 'string'
           ? [['foto_base64', photos]]
           : Object.entries(photos || {}).filter(([key, value]) => key === 'foto_base64' || (key.endsWith('_base64') && typeof value === 'string'));
@@ -4260,6 +4445,11 @@
       } catch (error) { console.warn('No se pudo descargar evidencia de actividad', record.id, error); sinFoto++; }
     }
     if (!descargadas) { alert('No se encontraron fotografías en las actividades filtradas.'); return; }
+    recordPanelDataUsage('PANEL_ACTIVITY_PHOTO_EXPORT', {
+      records: descargadas,
+      payload: usagePayload,
+      scope: `${_activitiesFiltered.length} actividades del resultado filtrado`,
+    });
     descargarBlob(await zip.generateAsync({ type: 'blob' }), `fotos_actividades_${new Date().toISOString().slice(0, 10)}.zip`);
     alert(`✅ ZIP descargado.\n\nFotos incluidas: ${descargadas}\nActividades sin foto o no disponibles: ${sinFoto}`);
   };
@@ -4537,26 +4727,22 @@
 
   // ── Cargar desde Firebase ─────────────────────────────────────────────────────────────────────
   let _vacUnsub = null;
-  window.loadVacaciones = function() {
+  window.loadVacaciones = async function() {
     document.getElementById('vacTableContainer').innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Cargando solicitudes...</div>';
-    if (_vacUnsub) { _vacUnsub(); _vacUnsub = null; }
-    _vacUnsub = onValue(ref(database, 'vacation_requests'), (snap) => {
+    try {
+      const snap = await get(ref(database, 'vacation_requests'));
       vacData = [];
-      let _vacCount = 0; snap.forEach(() => { _vacCount++; });
-      console.log('[VAC] snapshot exists:', snap.exists(), '| numChildren:', _vacCount);
       if (snap.exists()) {
         snap.forEach(child => {
-          console.log('[VAC] nodo:', child.key, '| nombre:', child.val().nombre_solicitante);
           vacData.push({ id: child.key, ...child.val() });
         });
       }
-      console.log('[VAC] vacData.length:', vacData.length);
+      recordPanelDataUsage('PANEL_REQUEST_SEARCH', { records: vacData.length, payload: snap.val(), scope: 'Vacaciones heredadas' });
       vacData.sort((a,b) => (b.timestamp_creacion||0) - (a.timestamp_creacion||0));
       window.renderVacaciones();
-    }, (e) => {
-      console.error('[VAC] Error onValue:', e);
+    } catch (e) {
       document.getElementById('vacTableContainer').innerHTML = '<div style="color:#D32F2F;padding:20px">❌ Error al cargar: ' + e.message + '</div>';
-    });
+    }
   };
 
   // ── Renderizar tabla ─────────────────────────────────────────────────────────────────────
@@ -4881,10 +5067,10 @@
   };
 
   let _permUnsub = null;
-  window.loadPermisos = function() {
+  window.loadPermisos = async function() {
     document.getElementById('permTableContainer').innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Cargando...</div>';
-    if (_permUnsub) { _permUnsub(); _permUnsub = null; }
-    _permUnsub = onValue(ref(database, 'permission_requests'), (snap) => {
+    try {
+      const snap = await get(ref(database, 'permission_requests'));
       permData = [];
       if (snap.exists()) {
         snap.forEach(child => {
@@ -4892,10 +5078,11 @@
         });
         permData.sort((a,b) => (b.timestamp_creacion||0) - (a.timestamp_creacion||0));
       }
+      recordPanelDataUsage('PANEL_REQUEST_SEARCH', { records: permData.length, payload: snap.val(), scope: 'Permisos heredados' });
       window.renderPermisos();
-    }, (e) => {
+    } catch (e) {
       document.getElementById('permTableContainer').innerHTML = '<div style="color:#D32F2F;padding:20px">❌ Error: ' + e.message + '</div>';
-    });
+    }
   };
 
   // Calcula el estado visible de un permiso igual que la app móvil (getEstado)
@@ -5171,9 +5358,11 @@
     const coincideFecha = ts => (!fechaIni && !fechaFin) || (ts >= tsStart && ts <= tsEnd);
     const canSeeCleon = vpIsAlfredo() || vpEsSoporte();
     _vpData = [];
+    const usagePayload = [];
     try {
       if (tipo === '' || tipo === 'vacaciones') {
         const snapVac = await get(ref(database, 'vacation_requests'));
+        usagePayload.push(snapVac.val());
         if (snapVac.exists()) {
           snapVac.forEach(child => {
             const s = { id: child.key, _tipo: 'vacaciones', ...child.val() };
@@ -5191,6 +5380,7 @@
       }
       if (tipo === '' || tipo === 'permisos') {
         const snapPerm = await get(ref(database, 'permission_requests'));
+        usagePayload.push(snapPerm.val());
         if (snapPerm.exists()) {
           snapPerm.forEach(child => {
             const s = { id: child.key, _tipo: 'permisos', ...child.val() };
@@ -5212,6 +5402,7 @@
       // ── Cargar Vac. RH de Cleon (cleon_solicitudes/vacaciones) ──
       if (canSeeCleon && (tipo === '' || tipo === 'vac_rh')) {
         const snapRH = await get(ref(database, 'cleon_solicitudes/vacaciones'));
+        usagePayload.push(snapRH.val());
         if (snapRH.exists()) {
           snapRH.forEach(child => {
             const s = { id: child.key, _tipo: 'vac_rh', ...child.val() };
@@ -5243,6 +5434,11 @@
           });
         }
       }
+      recordPanelDataUsage('PANEL_REQUEST_SEARCH', {
+        records: _vpData.length,
+        payload: usagePayload,
+        scope: `${fechaIni || 'sin inicio'} a ${fechaFin || 'sin fin'} · ${tipo || 'todos'}`,
+      });
       // Ordenar por timestamp descendente (todos los tipos usan 'timestamp' o 'timestamp_creacion')
       _vpData.sort((a, b) => {
         const getTs = x => x.timestamp || x.timestamp_creacion || 0;
