@@ -33,3 +33,4 @@
 - [x] Generalizar la etiqueta de conexión en Privacidad para reflejar futuras versiones de la app.
 - [x] Forzar búsqueda fresca de todos los registros del rango y reiniciar filtros ocultos de Actividades.
 - [x] Incluir registros históricos cuyo timestamp fue guardado como texto dentro del rango de Actividades.
+- [x] Recuperar todas las Actividades del rango por el ID cronológico de Firebase, incluso sin campos de fecha.

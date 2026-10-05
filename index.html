@@ -1036,7 +1036,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import { getDatabase, ref, get, remove, update, increment, query, orderByChild, equalTo, startAt, endAt } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import { getDatabase, ref, get, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, endAt } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
   // ── Firebase config ────────────────────────────────────────────────────────
   window._RKEY = ['re_Z43VX','V9_Y37Jz','9Mp8tUmq','t7NmKyNw','xem'].join('');
@@ -2435,9 +2435,34 @@
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  // Firebase push IDs incluyen los milisegundos de creación en sus primeros ocho
+  // caracteres. Esto permite consultar por fecha incluso para registros viejos
+  // que no guardaron created_at ni timestamp como campo propio.
+  const FIREBASE_PUSH_ID_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+  function firebasePushIdBoundary(timestamp, fill = '-') {
+    let value = Number(timestamp);
+    let key = '';
+    for (let index = 7; index >= 0; index -= 1) {
+      key = FIREBASE_PUSH_ID_CHARS.charAt(value % 64) + key;
+      value = Math.floor(value / 64);
+    }
+    return key + String(fill).repeat(12);
+  }
+  function firebasePushIdTimestamp(id) {
+    const key = String(id || '');
+    if (key.length < 8) return null;
+    let value = 0;
+    for (let index = 0; index < 8; index += 1) {
+      const digit = FIREBASE_PUSH_ID_CHARS.indexOf(key.charAt(index));
+      if (digit < 0) return null;
+      value = value * 64 + digit;
+    }
+    return Number.isFinite(value) && value >= new Date(2020, 0, 1).getTime() ? value : null;
+  }
+
   function activityCreatedTimestamp(record) {
     const historyDates = Object.values(record?.historial_expediente || {}).map(entry => entry?.fecha);
-    const candidates = [record?.created_at, record?.timestamp, record?.fecha_hora_registro, ...historyDates];
+    const candidates = [record?.created_at, record?.timestamp, record?.fecha_hora_registro, ...historyDates, firebasePushIdTimestamp(record?.id)];
     for (const value of candidates) {
       const numeric = Number(value);
       if (Number.isFinite(numeric) && numeric >= new Date(2020, 0, 1).getTime()) return numeric;
@@ -2988,7 +3013,7 @@
       const name = record.nombre_usuario || record.nombre || record.email_usuario || 'Usuario sin nombre';
       const role = record.rol || record.role || 'Sin rol';
       const plaza = normaliseActivityText(record.plaza) || 'SIN PLAZA';
-      const timestamp = Number(record.created_at || record.timestamp || 0);
+      const timestamp = Number(activityCreatedTimestamp(record) || 0);
       const day = activityDateInput(timestamp) || 'Sin fecha';
       if (!userStats.has(uid)) userStats.set(uid, { uid, name, role, plaza, general: 0, cobranza: 0, prospeccion: 0, total: 0, citas: 0, altas: 0, pagos: 0 });
       if (!plazaStats.has(plaza)) plazaStats.set(plaza, { plaza, general: 0, cobranza: 0, prospeccion: 0, total: 0, citas: 0 });
@@ -3035,36 +3060,30 @@
       // reingreso al módulo limpia este caché antes de consultar de nuevo.
       const forceRefresh = manualRefresh;
       const scopeKey = `${auth.currentUser?.uid || 'ANON'}|${panelRole()}|${normaliseActivityText(_activityProfile?.plaza || '')}`;
-      const cacheKey = `${scopeKey}|timestamp-v2|${start}|${end}`;
+      const cacheKey = `${scopeKey}|pushid-v3|${start}|${end}`;
       const cached = _activitySearchCache.get(cacheKey);
       const cacheIsFresh = cached && (Date.now() - cached.cachedAt) < ACTIVITY_SEARCH_CACHE_MS;
       let rawRecords;
       if (!forceRefresh && cacheIsFresh) {
         rawRecords = cached.records;
       } else {
-        // timestamp existe tanto en los registros históricos como en General,
-        // Cobranza y Prospección actuales. Firebase ordena números y textos por
-        // separado; por eso se consultan ambos formatos y se consolidan por ID.
-        // Ninguna consulta abandona el rango seleccionado.
+        // Todos los registros creados por la app usan push IDs. La fecha queda
+        // codificada en el ID, aun si una versión histórica no guardó timestamp.
+        // Así se consulta sólo el intervalo pedido, sin leer el nodo completo.
         const activityRef = ref(database, 'gestor_activities');
-        const isoStart = `${startValue}T00:00:00.000Z`;
-        const isoEnd = `${endValue}T23:59:59.999Z`;
-        const [numericTimestampSnap, textTimestampSnap, isoTimestampSnap] = await Promise.all([
-          get(query(activityRef, orderByChild('timestamp'), startAt(start), endAt(end))),
-          get(query(activityRef, orderByChild('timestamp'), startAt(String(start)), endAt(String(end)))),
-          get(query(activityRef, orderByChild('timestamp'), startAt(isoStart), endAt(isoEnd))),
-        ]);
-        const recordsById = new Map();
-        [numericTimestampSnap, textTimestampSnap, isoTimestampSnap].forEach(snap => {
-          if (!snap.exists()) return;
-          snap.forEach(child => recordsById.set(String(child.key), { id: child.key, ...(child.val() || {}) }));
-        });
-        rawRecords = Array.from(recordsById.values());
+        const snap = await get(query(
+          activityRef,
+          orderByKey(),
+          startAt(firebasePushIdBoundary(start, '-')),
+          endAt(firebasePushIdBoundary(end, 'z')),
+        ));
+        rawRecords = [];
+        if (snap.exists()) snap.forEach(child => rawRecords.push({ id: child.key, ...(child.val() || {}) }));
         _activitySearchCache.set(cacheKey, { cachedAt: Date.now(), records: rawRecords });
         while (_activitySearchCache.size > 8) _activitySearchCache.delete(_activitySearchCache.keys().next().value);
         recordPanelDataUsage('PANEL_ACTIVITY_SEARCH', {
           records: rawRecords.length,
-          payload: [numericTimestampSnap.val(), textTimestampSnap.val(), isoTimestampSnap.val()],
+          payload: snap.val(),
           scope: `${startValue} a ${endValue}${manualRefresh ? ' · actualización manual' : ''}`,
         });
       }
@@ -3330,7 +3349,7 @@
         <div class="rec-info"><div class="rec-nombre">${counterpart}</div><div class="rec-correo">${responsible} · ${activityText(record.correo_usuario || '—')}</div>
           <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span>${stageChip}<span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
           <div style="font-size:12px;color:#667085;margin-top:7px">${subDetail}</div></div>
-        <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(record.created_at || record.timestamp)}</div>
+        <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(activityCreatedTimestamp(record) || record.actualizado_en)}</div>
           <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button><button class="btn-accion btn-foto" title="Ver fotos, evidencias y firma del registro" onclick="window.viewActivityAttachments('${record.id}')">🖼️</button>${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
       </div>`;
     };
@@ -3340,7 +3359,7 @@
     }
     const groups = new Map();
     _activitiesFiltered.forEach(record => {
-      const date = new Date(Number(record.created_at || record.timestamp || 0));
+      const date = new Date(Number(activityCreatedTimestamp(record) || 0));
       const dayKey = Number.isNaN(date.getTime()) ? 'SIN_FECHA' : date.toISOString().slice(0, 10);
       const userKey = String(record.user_uid || record.uid || record.correo_usuario || record.nombre_usuario || 'SIN_USUARIO');
       const key = `${dayKey}|${userKey}`;
@@ -3389,7 +3408,7 @@
     const extraKeys = Array.from(new Set(selected.flatMap(record => Object.keys(record).filter(key => !knownKeys.has(key))))).sort();
     const columns = [...definedFields, ...extraKeys.map(key => [key, key])];
     const rows = selected.map(record => columns.map(([key]) => {
-      if (key === 'fecha_hora_registro') return formatRecordDateTime(record.created_at || record.timestamp);
+      if (key === 'fecha_hora_registro') return formatRecordDateTime(activityCreatedTimestamp(record));
       if (key === 'ruta_evidencia') return record.tiene_evidencia ? `gestor_photos/${record.id}/foto_base64` : '';
       return activityExportValue(record[key]);
     }));
@@ -3488,7 +3507,7 @@
     }
     document.getElementById('modalTitle').textContent = isGeneral ? 'Detalle completo de Actividad General' : isCobranza ? 'Detalle completo de Cobranza' : 'Expediente completo de Prospección';
     document.getElementById('modalImg').removeAttribute('src'); document.getElementById('modalImg').style.display = 'none';
-    document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><div class="activity-detail-summary"><strong>Responsable:</strong> ${activityText(record.nombre_usuario || '—')}<br><strong>Correo:</strong> ${activityText(record.correo_usuario || '—')}<br><strong>Rol y plaza:</strong> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><strong>Registro:</strong> ${formatDate(record.created_at || record.timestamp || record.actualizado_en)}</div>${prospectHeading}${closureNotice}${detail}${primaryAttachments}${paymentChain}${history}</div>`;
+    document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><div class="activity-detail-summary"><strong>Responsable:</strong> ${activityText(record.nombre_usuario || '—')}<br><strong>Correo:</strong> ${activityText(record.correo_usuario || '—')}<br><strong>Rol y plaza:</strong> ${activityText(record.rol || '—')} · ${activityText(record.plaza || '—')}<br><strong>Registro:</strong> ${formatDate(activityCreatedTimestamp(record) || record.actualizado_en)}</div>${prospectHeading}${closureNotice}${detail}${primaryAttachments}${paymentChain}${history}</div>`;
     document.getElementById('photoModal').classList.add('active');
   }
 
@@ -3531,7 +3550,7 @@
     image.alt = panelMediaLabel(selected.key);
     image.style.display = '';
     const responsible = activityText(record.nombre_usuario || record.nombre || '—');
-    const timestamp = formatDate(record.created_at || record.timestamp || record.actualizado_en || Date.now());
+    const timestamp = formatDate(activityCreatedTimestamp(record) || record.actualizado_en || Date.now());
     info.innerHTML = `<div class="panel-media-summary"><b>${attachments.length} archivo(s) adjunto(s)</b> · ${responsible} · ${timestamp}<br><span>Selecciona cada miniatura para visualizarla individualmente.</span></div><div class="panel-media-gallery">${attachments.map((attachment, index) => `<button class="panel-media-tile${index === safeIndex ? ' active' : ''}" onclick="window.selectPanelMediaAttachment(${index})" title="Ver ${activityText(panelMediaLabel(attachment.key))}"><img src="${panelMediaSource(attachment.value)}" alt="${activityText(panelMediaLabel(attachment.key))}" /><span>${activityText(panelMediaLabel(attachment.key))}</span></button>`).join('')}</div>`;
   }
 
@@ -3743,7 +3762,7 @@
   function buildActivityRouteGroups(records) {
     const grouped = new Map();
     records.filter(record => validCoordinates(record.latitud, record.longitud)).forEach(record => {
-      const timestamp = Number(record.created_at || record.timestamp || 0);
+      const timestamp = Number(activityCreatedTimestamp(record) || 0);
       const day = activityDateInput(timestamp) || 'Sin fecha';
       const key = `${activityRouteIdentity(record)}::${day}`;
       if (!grouped.has(key)) grouped.set(key, { key, day, records: [] });
