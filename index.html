@@ -497,6 +497,7 @@
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="dataUsageDays" style="padding:8px 10px;border:1px solid #FCD34D;border-radius:8px;background:#fff;font-size:12px"><option value="1">Hoy</option><option value="7" selected>Últimos 7 días</option><option value="30">Últimos 30 días</option></select>
           <button onclick="window.loadDataUsageDiagnostics()" style="padding:9px 13px;background:#D97706;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">↻ Actualizar</button>
+          <button onclick="window.rebuildActiveProspectCounters()" style="padding:9px 13px;background:#0F766E;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">♻ Reconstruir activas</button>
           <button onclick="window.showPanelHome()" style="padding:9px 13px;background:#64748B;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700">← Volver</button>
         </div>
       </div>
@@ -1036,7 +1037,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import { getDatabase, ref, get, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, endAt, limitToLast } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import { getDatabase, ref, get, set, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, endAt, limitToLast } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
   // ── Firebase config ────────────────────────────────────────────────────────
   window._RKEY = ['re_Z43VX','V9_Y37Jz','9Mp8tUmq','t7NmKyNw','xem'].join('');
@@ -1253,6 +1254,42 @@
       table.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3"><thead><tr style="background:#FFFBEB;color:#78350F"><th style="padding:8px 9px;text-align:left">Acción</th><th style="padding:8px 9px;text-align:right">Lecturas</th><th style="padding:8px 9px;text-align:right">Tamaño estimado</th><th style="padding:8px 9px;text-align:left">Quién la ejecutó</th><th style="padding:8px 9px;text-align:center">Origen</th><th style="padding:8px 9px;text-align:right">Registros última lectura</th><th style="padding:8px 9px;text-align:left">Última lectura</th><th style="padding:8px 9px;text-align:left">Alcance reciente</th></tr></thead><tbody>${rows.map(row => { const people = Array.from(row.people.values()).sort((a, b) => b.bytes - a.bytes || b.reads - a.reads); const peopleHtml = people.map(person => `<div style="display:flex;justify-content:space-between;gap:8px;min-width:200px;padding:2px 0"><span>${privacyEscape(person.name)}</span><b style="white-space:nowrap;color:#92400E">${formatDataUsageBytes(person.bytes)}</b></div>`).join(''); return `<tr style="border-bottom:1px solid #FDE68A"><td style="padding:8px 9px;font-weight:800;color:#78350F">${privacyEscape(dataUsageActionLabel(row.action))}</td><td style="padding:8px 9px;text-align:right">${row.reads}</td><td style="padding:8px 9px;text-align:right;font-weight:800">${formatDataUsageBytes(row.bytes)}</td><td style="padding:8px 9px;color:#475569">${peopleHtml || '—'}</td><td style="padding:8px 9px;text-align:center">${privacyEscape(Array.from(row.source).join(', ') || '—')}</td><td style="padding:8px 9px;text-align:right">${row.latestRecords}</td><td style="padding:8px 9px;color:#475569">${privacyFormatDate(row.latest)}</td><td style="padding:8px 9px;color:#475569;max-width:230px">${privacyEscape(Array.from(row.scopes).slice(-2).join(' · ') || '—')}</td></tr>`; }).join('')}</tbody></table></div>`;
     } catch (error) {
       table.innerHTML = `<div style="padding:20px;color:#B91C1C;font-weight:700">❌ No se pudo cargar el diagnóstico: ${privacyEscape(error?.message || 'Error desconocido')}</div>`;
+    }
+  };
+
+  function prospectCounterKey(value) {
+    return String(value || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  }
+
+  window.rebuildActiveProspectCounters = async function() {
+    if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
+    if (!confirm('Se hará una lectura única de los expedientes de Prospección para reconstruir sus contadores activos. No descarga fotos, no modifica expedientes y no se ejecuta automáticamente. ¿Continuar?')) return;
+    try {
+      const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION')));
+      const counters = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', total: 0, por_plaza: {}, por_lider: {}, por_etapa: {} };
+      const add = (bucket, key) => {
+        if (!key) return;
+        bucket[key] = Math.max(0, Number(bucket[key] || 0)) + 1;
+      };
+      let scanned = 0;
+      if (snap.exists()) snap.forEach(child => {
+        const record = { id: child.key, ...(child.val() || {}) };
+        if (!isStoredActivityRecord(record)) return;
+        const isRoot = record.es_expediente_prospeccion === true || !record.seguimiento_de;
+        if (!isRoot) return;
+        scanned += 1;
+        const stage = prospectWorkflowStage(record);
+        if (PROSPECT_FINAL_STAGES.has(stage) || stage === 'RECHAZADA_POR_PROSPECTO') return;
+        counters.total += 1;
+        add(counters.por_plaza, prospectCounterKey(record.plaza));
+        add(counters.por_lider, String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim());
+        add(counters.por_etapa, prospectCounterKey(stage));
+      });
+      await set(ref(database, 'app_config/prospect_active_counters'), counters);
+      recordPanelDataUsage('PANEL_REBUILD_ACTIVE_PROSPECT_COUNTERS', { records: scanned, payload: { scanned, active: counters.total }, scope: 'Reconstrucción manual de soporte' });
+      alert(`✅ Contadores reconstruidos.\n\nExpedientes de Prospección revisados: ${scanned}\nExpedientes activos: ${counters.total}\n\nLa app solo leerá una cifra pequeña desde ahora; no volverá a descargar estos expedientes para el contador.`);
+    } catch (error) {
+      alert(`❌ No se pudo reconstruir el contador: ${error?.message || 'Error desconocido'}`);
     }
   };
 
