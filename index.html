@@ -1161,11 +1161,18 @@
   }
 
   function dataUsageActionLabel(action) {
-    const labels = {
-      APP_ACTIVITIES_SUMMARY: 'App · Resumen de Actividades',
-      APP_HOME_REQUEST_COUNTERS: 'App · Contadores de Solicitudes',
-      APP_VACATION_LIST: 'App · Lista de Vacaciones',
-      APP_PERMISSION_LIST: 'App · Lista de Permisos',
+      const labels = {
+        APP_ACTIVITIES_SUMMARY: 'App · Resumen de Actividades',
+        APP_ACTIVITIES_OWN_SCOPE: 'App · Actividades propias',
+        APP_ACTIVITIES_PROSPECT_SCOPE: 'App · Actividades y Prospección',
+        APP_ACTIVITIES_MANAGER_SCOPE: 'App · Actividades de la sucursal',
+        APP_HOME_REQUEST_COUNTERS: 'App · Contadores de Solicitudes',
+        APP_VACATION_LIST: 'App · Lista de Vacaciones',
+        APP_VACATION_LIST_OWN: 'App · Mis Vacaciones',
+        APP_VACATION_LIST_APPROVAL: 'App · Vacaciones por aprobar',
+        APP_PERMISSION_LIST: 'App · Lista de Permisos',
+        APP_PERMISSION_LIST_OWN: 'App · Mis Permisos',
+        APP_PERMISSION_LIST_APPROVAL: 'App · Permisos por aprobar',
       PANEL_ACTIVITY_SEARCH: 'Panel · Búsqueda de Actividades',
       PANEL_TODAY_ACTIVITY_CALENDAR: 'Panel · Calendario de hoy',
       PANEL_PENDING_PROSPECTS: 'Panel · Expedientes de Prospección',
@@ -1212,12 +1219,15 @@
           Object.entries(actions).forEach(([action, raw]) => {
             const metric = raw || {};
             const key = String(action);
-            const row = aggregate.get(key) || { action: key, reads: 0, bytes: 0, users: new Set(), people: new Map(), latest: 0, source: new Set(), scopes: new Set() };
+            const row = aggregate.get(key) || { action: key, reads: 0, bytes: 0, users: new Set(), people: new Map(), latest: 0, latestRecords: 0, source: new Set(), scopes: new Set() };
             const reads = Number(metric.read_count || 0), bytes = Number(metric.estimated_bytes || 0);
             row.reads += reads;
             row.bytes += bytes;
             row.users.add(child.key);
-            if (metric.last_at > row.latest) row.latest = Number(metric.last_at || 0);
+            if (metric.last_at > row.latest) {
+              row.latest = Number(metric.last_at || 0);
+              row.latestRecords = Math.max(0, Number(metric.last_records || 0));
+            }
             if (metric.source) row.source.add(String(metric.source));
             if (metric.last_scope) row.scopes.add(String(metric.last_scope));
             aggregate.set(key, row);
@@ -1242,7 +1252,7 @@
         table.innerHTML = '<div style="padding:28px;text-align:center;color:#92400E">Aún no hay métricas. Se registrarán cuando los teléfonos y el panel usen las pantallas monitoreadas después de instalar/publicar esta actualización.</div>';
         return;
       }
-      table.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3"><thead><tr style="background:#FFFBEB;color:#78350F"><th style="padding:8px 9px;text-align:left">Acción</th><th style="padding:8px 9px;text-align:right">Lecturas</th><th style="padding:8px 9px;text-align:right">Tamaño estimado</th><th style="padding:8px 9px;text-align:left">Quién la ejecutó</th><th style="padding:8px 9px;text-align:center">Origen</th><th style="padding:8px 9px;text-align:left">Última lectura</th><th style="padding:8px 9px;text-align:left">Alcance reciente</th></tr></thead><tbody>${rows.map(row => { const people = Array.from(row.people.values()).sort((a, b) => b.bytes - a.bytes || b.reads - a.reads); const peopleHtml = people.map(person => `<div style="display:flex;justify-content:space-between;gap:8px;min-width:200px;padding:2px 0"><span>${privacyEscape(person.name)}</span><b style="white-space:nowrap;color:#92400E">${formatDataUsageBytes(person.bytes)}</b></div>`).join(''); return `<tr style="border-bottom:1px solid #FDE68A"><td style="padding:8px 9px;font-weight:800;color:#78350F">${privacyEscape(dataUsageActionLabel(row.action))}</td><td style="padding:8px 9px;text-align:right">${row.reads}</td><td style="padding:8px 9px;text-align:right;font-weight:800">${formatDataUsageBytes(row.bytes)}</td><td style="padding:8px 9px;color:#475569">${peopleHtml || '—'}</td><td style="padding:8px 9px;text-align:center">${privacyEscape(Array.from(row.source).join(', ') || '—')}</td><td style="padding:8px 9px;color:#475569">${privacyFormatDate(row.latest)}</td><td style="padding:8px 9px;color:#475569;max-width:230px">${privacyEscape(Array.from(row.scopes).slice(-2).join(' · ') || '—')}</td></tr>`; }).join('')}</tbody></table></div>`;
+      table.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.3"><thead><tr style="background:#FFFBEB;color:#78350F"><th style="padding:8px 9px;text-align:left">Acción</th><th style="padding:8px 9px;text-align:right">Lecturas</th><th style="padding:8px 9px;text-align:right">Tamaño estimado</th><th style="padding:8px 9px;text-align:left">Quién la ejecutó</th><th style="padding:8px 9px;text-align:center">Origen</th><th style="padding:8px 9px;text-align:right">Registros última lectura</th><th style="padding:8px 9px;text-align:left">Última lectura</th><th style="padding:8px 9px;text-align:left">Alcance reciente</th></tr></thead><tbody>${rows.map(row => { const people = Array.from(row.people.values()).sort((a, b) => b.bytes - a.bytes || b.reads - a.reads); const peopleHtml = people.map(person => `<div style="display:flex;justify-content:space-between;gap:8px;min-width:200px;padding:2px 0"><span>${privacyEscape(person.name)}</span><b style="white-space:nowrap;color:#92400E">${formatDataUsageBytes(person.bytes)}</b></div>`).join(''); return `<tr style="border-bottom:1px solid #FDE68A"><td style="padding:8px 9px;font-weight:800;color:#78350F">${privacyEscape(dataUsageActionLabel(row.action))}</td><td style="padding:8px 9px;text-align:right">${row.reads}</td><td style="padding:8px 9px;text-align:right;font-weight:800">${formatDataUsageBytes(row.bytes)}</td><td style="padding:8px 9px;color:#475569">${peopleHtml || '—'}</td><td style="padding:8px 9px;text-align:center">${privacyEscape(Array.from(row.source).join(', ') || '—')}</td><td style="padding:8px 9px;text-align:right">${row.latestRecords}</td><td style="padding:8px 9px;color:#475569">${privacyFormatDate(row.latest)}</td><td style="padding:8px 9px;color:#475569;max-width:230px">${privacyEscape(Array.from(row.scopes).slice(-2).join(' · ') || '—')}</td></tr>`; }).join('')}</tbody></table></div>`;
     } catch (error) {
       table.innerHTML = `<div style="padding:20px;color:#B91C1C;font-weight:700">❌ No se pudo cargar el diagnóstico: ${privacyEscape(error?.message || 'Error desconocido')}</div>`;
     }
@@ -1275,14 +1285,17 @@
       const pending = rows.length - accepted - revoked;
       summary.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap"><span style="padding:8px 12px;border-radius:999px;background:#E8F5E9;color:#1A7A3C;font-weight:800;font-size:12px">✓ ${accepted} aceptaron</span><span style="padding:8px 12px;border-radius:999px;background:#FFF3E0;color:#B45309;font-weight:800;font-size:12px">◷ ${pending} pendientes</span><span style="padding:8px 12px;border-radius:999px;background:#FEE2E2;color:#B91C1C;font-weight:800;font-size:12px">↺ ${revoked} revocados</span></div>`;
       if (rows.length === 0) { table.innerHTML = '<div style="padding:28px;text-align:center;color:#5B6F5F">No hay usuarios ni consentimientos registrados.</div>'; return; }
-      table.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.25"><thead><tr style="background:#EFF6FF;color:#1E3A5F"><th style="padding:7px 9px;text-align:left">Usuario</th><th style="padding:7px 9px;text-align:left">Rol / Plaza</th><th style="padding:7px 9px;text-align:center">Estado</th><th style="padding:7px 9px;text-align:left">Aceptación</th><th style="padding:7px 9px;text-align:center">Versión</th><th style="padding:7px 9px;text-align:center">Acción</th></tr></thead><tbody>${rows.map(row => {
+      table.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.25"><thead><tr style="background:#EFF6FF;color:#1E3A5F"><th style="padding:7px 9px;text-align:left">Usuario</th><th style="padding:7px 9px;text-align:left">Rol / Plaza</th><th style="padding:7px 9px;text-align:center">Estado</th><th style="padding:7px 9px;text-align:left">Aceptación</th><th style="padding:7px 9px;text-align:left">App instalada / última conexión</th><th style="padding:7px 9px;text-align:center">Versión aviso</th><th style="padding:7px 9px;text-align:center">Acción</th></tr></thead><tbody>${rows.map(row => {
         const profile = row.profile || {}, consent = row.consent || null;
         const name = profile.nombre_completo || profile.nombre || consent?.user_name || 'Sin nombre';
         const email = profile.correo || profile.email || consent?.user_email || '—';
+        const connection = profile.app_connection || {};
+        const installedVersion = connection.version ? `v${connection.version}${connection.version_code ? ` (${connection.version_code})` : ''}` : 'Sin registro aún';
+        const connectionLabel = connection.last_connected_at ? privacyFormatDate(connection.last_connected_at) : 'Aún no se conecta con v21';
         const acceptedNow = consent?.accepted === true;
         const status = acceptedNow ? '<span style="background:#DCFCE7;color:#166534;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px">Aceptado</span>' : consent ? '<span style="background:#FEE2E2;color:#B91C1C;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px">Revocado</span>' : '<span style="background:#FFF3E0;color:#B45309;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px">Pendiente</span>';
         const action = acceptedNow ? `<button onclick="window.revokePrivacyConsent('${privacyEscape(row.uid)}')" style="padding:4px 8px;background:#B91C1C;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700">Revocar</button>` : '—';
-        return `<tr style="border-bottom:1px solid #E5E7EB"><td style="padding:6px 9px"><div style="font-weight:800;color:#1F2937">${privacyEscape(name)}</div><div style="font-size:10px;color:#64748B">${privacyEscape(email)}</div></td><td style="padding:6px 9px;color:#475569">${privacyEscape(profile.rol || consent?.user_role || '—')}<br><span style="font-size:10px">${privacyEscape(profile.plaza || consent?.user_plaza || '—')}</span></td><td style="padding:6px 9px;text-align:center">${status}</td><td style="padding:6px 9px;color:#475569">${privacyFormatDate(consent?.accepted_at || consent?.revoked_at)}</td><td style="padding:6px 9px;text-align:center;color:#475569">${privacyEscape(consent?.notice_version || '—')}</td><td style="padding:6px 9px;text-align:center">${action}</td></tr>`;
+        return `<tr style="border-bottom:1px solid #E5E7EB"><td style="padding:6px 9px"><div style="font-weight:800;color:#1F2937">${privacyEscape(name)}</div><div style="font-size:10px;color:#64748B">${privacyEscape(email)}</div></td><td style="padding:6px 9px;color:#475569">${privacyEscape(profile.rol || consent?.user_role || '—')}<br><span style="font-size:10px">${privacyEscape(profile.plaza || consent?.user_plaza || '—')}</span></td><td style="padding:6px 9px;text-align:center">${status}</td><td style="padding:6px 9px;color:#475569">${privacyFormatDate(consent?.accepted_at || consent?.revoked_at)}</td><td style="padding:6px 9px;color:#475569"><b style="color:#1E3A5F">${privacyEscape(installedVersion)}</b><br><span style="font-size:10px">${privacyEscape(connectionLabel)}</span></td><td style="padding:6px 9px;text-align:center;color:#475569">${privacyEscape(consent?.notice_version || '—')}</td><td style="padding:6px 9px;text-align:center">${action}</td></tr>`;
       }).join('')}</tbody></table></div>`;
     } catch (error) {
       table.innerHTML = `<div style="padding:20px;color:#B91C1C;font-weight:700">❌ No se pudieron cargar los consentimientos: ${privacyEscape(error?.message || 'Error desconocido')}</div>`;

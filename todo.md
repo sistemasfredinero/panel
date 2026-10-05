@@ -29,3 +29,4 @@
 - [x] Añadir actualización manual al mapa reutilizando los filtros de Actividades vigentes.
 - [x] Optimizar búsquedas del panel y añadir diagnóstico de descargas visible solo para soporte.
 - [x] Mostrar en el diagnóstico de descargas el desglose por usuario y acción para Soporte.
+- [x] Mostrar última conexión y versión instalada de la app en Aviso de privacidad para Soporte.
