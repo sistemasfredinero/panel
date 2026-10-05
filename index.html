@@ -2460,6 +2460,52 @@
     return Number.isFinite(value) && value >= new Date(2020, 0, 1).getTime() ? value : null;
   }
 
+  function isStoredActivityRecord(record) {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
+    const hasType = Boolean(normaliseActivityText(record.tipo || record.activity_type || record.categoria_actividad));
+    const hasDetail = Boolean(record.gestion_realizada || record.tipo_accion || record.nombre_contacto || record.nombre_prospecto || record.se_visita_a);
+    return hasType && hasDetail;
+  }
+
+  async function loadUserScopedHistoricalActivities(start, end) {
+    // Algunas actividades históricas fueron guardadas bajo el UID del usuario.
+    // Este respaldo sólo se ejecuta para Soporte y consulta cada UID en el rango
+    // de IDs solicitado; no vuelve a descargar gestor_activities completo.
+    if (!activityCanManageAll()) return { records: [], payload: null };
+    const usersSnap = await get(ref(database, 'users'));
+    if (!usersSnap.exists()) return { records: [], payload: [null] };
+    const userIds = new Set();
+    usersSnap.forEach(child => {
+      const profile = child.val() || {};
+      [child.key, profile.uid].filter(Boolean).forEach(value => userIds.add(String(value)));
+    });
+    const minKey = firebasePushIdBoundary(start, '-');
+    const maxKey = firebasePushIdBoundary(end, 'z');
+    const ids = Array.from(userIds);
+    const records = [];
+    const payload = [usersSnap.val()];
+    const batchSize = 8;
+    for (let index = 0; index < ids.length; index += batchSize) {
+      const batch = ids.slice(index, index + batchSize);
+      const results = await Promise.all(batch.map(async uid => {
+        try {
+          const snap = await get(query(ref(database, `gestor_activities/${uid}`), orderByKey(), startAt(minKey), endAt(maxKey)));
+          return { uid, snap };
+        } catch { return { uid, snap: null }; }
+      }));
+      results.forEach(({ uid, snap }) => {
+        if (!snap?.exists()) return;
+        payload.push(snap.val());
+        snap.forEach(child => {
+          const value = child.val() || {};
+          if (!isStoredActivityRecord(value)) return;
+          records.push({ id: child.key, ...value, _activity_path: `gestor_activities/${uid}/${child.key}` });
+        });
+      });
+    }
+    return { records, payload };
+  }
+
   function activityCreatedTimestamp(record) {
     const historyDates = Object.values(record?.historial_expediente || {}).map(entry => entry?.fecha);
     const candidates = [record?.created_at, record?.timestamp, record?.fecha_hora_registro, ...historyDates, firebasePushIdTimestamp(record?.id)];
@@ -3077,14 +3123,25 @@
           startAt(firebasePushIdBoundary(start, '-')),
           endAt(firebasePushIdBoundary(end, 'z')),
         ));
-        rawRecords = [];
-        if (snap.exists()) snap.forEach(child => rawRecords.push({ id: child.key, ...(child.val() || {}) }));
+        const directRecords = [];
+        if (snap.exists()) snap.forEach(child => {
+          const value = child.val() || {};
+          if (isStoredActivityRecord(value)) directRecords.push({ id: child.key, ...value, _activity_path: `gestor_activities/${child.key}` });
+        });
+        const historical = await loadUserScopedHistoricalActivities(start, end);
+        const recordsByPath = new Map();
+        [...directRecords, ...historical.records].forEach(record => {
+          const key = record._activity_path || `gestor_activities/${record.id}`;
+          recordsByPath.set(key, record);
+        });
+        rawRecords = Array.from(recordsByPath.values());
+        window.__activitySearchSources = { direct: directRecords.length, historical: historical.records.length };
         _activitySearchCache.set(cacheKey, { cachedAt: Date.now(), records: rawRecords });
         while (_activitySearchCache.size > 8) _activitySearchCache.delete(_activitySearchCache.keys().next().value);
         recordPanelDataUsage('PANEL_ACTIVITY_SEARCH', {
           records: rawRecords.length,
-          payload: snap.val(),
-          scope: `${startValue} a ${endValue}${manualRefresh ? ' · actualización manual' : ''}`,
+          payload: [snap.val(), historical.payload],
+          scope: `${startValue} a ${endValue} · directas ${directRecords.length} · históricas ${historical.records.length}${manualRefresh ? ' · actualización manual' : ''}`,
         });
       }
       const scopedRecords = [];
@@ -3311,7 +3368,11 @@
     document.getElementById('activityCobranza').textContent = _activitiesFiltered.filter(x => activityCategory(x) === 'COBRANZA').length;
     document.getElementById('activityProspeccion').textContent = _activitiesFiltered.filter(x => activityCategory(x) === 'PROSPECCION').length;
     document.getElementById('activityEvidence').textContent = _activitiesFiltered.filter(x => x.tiene_evidencia).length;
-    document.getElementById('activityRecordCount').textContent = `${_activitiesFiltered.length} registro(s)`;
+    const sources = window.__activitySearchSources || {};
+    const sourceLabel = Number.isFinite(sources.direct) || Number.isFinite(sources.historical)
+      ? ` · directas: ${Number(sources.direct || 0)} · históricas: ${Number(sources.historical || 0)}`
+      : '';
+    document.getElementById('activityRecordCount').textContent = `${_activitiesFiltered.length} registro(s)${sourceLabel}`;
     renderActivityRoutesReport(_activitiesFiltered);
     const graphics = document.getElementById('activityGraphicsSection');
     const graphicsContainer = document.getElementById('activityPerformanceContainer');
