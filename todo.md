@@ -36,3 +36,4 @@
 - [x] Recuperar todas las Actividades del rango por el ID cronológico de Firebase, incluso sin campos de fecha.
 - [x] Detectar y consultar actividades históricas anidadas sin descargar el nodo completo.
 - [x] Cargar registros directos del rango por sus IDs de Firebase y excluir nodos sin datos de actividad.
+- [x] Convertir la búsqueda del panel en páginas de 50 actividades y detalle bajo demanda, sin modificar la app.

@@ -1036,7 +1036,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import { getDatabase, ref, get, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, endAt } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import { getDatabase, ref, get, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, endAt, limitToLast } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
   // ── Firebase config ────────────────────────────────────────────────────────
   window._RKEY = ['re_Z43VX','V9_Y37Jz','9Mp8tUmq','t7NmKyNw','xem'].join('');
@@ -1059,9 +1059,7 @@
   let _panelProfile = {};
   const DATA_USAGE_COOLDOWN_MS = 45_000;
   const DATA_USAGE_RETENTION_DAYS = 31;
-  const ACTIVITY_SEARCH_CACHE_MS = 120_000;
   const _panelDataUsageCooldown = new Map();
-  const _activitySearchCache = new Map();
   const PANEL_ACTIVITY_ONLY_ROLES = new Set(['CANJES', 'LIDER A', 'LIDER B', 'LIDER C', 'GESTOR', 'GESTOR DE COBRANZA', 'GERENTE']);
 
   function dataUsageDateKey(timestamp = Date.now()) {
@@ -2324,6 +2322,10 @@
   // ── Actividades de Cobranza y Prospección ────────────────────────────────────
   let _activitiesData = [];
   let _activitiesFiltered = [];
+  let _activitiesVisibleCount = 50;
+  const ACTIVITY_RESULTS_PAGE_SIZE = 50;
+  const _activityDetailCache = new Map();
+  let _activityPageSession = null;
   let _activityResponseChartType = null;
   let _prospectAdminData = [];
   let _activityProfile = null;
@@ -2467,45 +2469,6 @@
     return hasType && hasDetail;
   }
 
-  async function loadUserScopedHistoricalActivities(start, end) {
-    // Algunas actividades históricas fueron guardadas bajo el UID del usuario.
-    // Este respaldo sólo se ejecuta para Soporte y consulta cada UID en el rango
-    // de IDs solicitado; no vuelve a descargar gestor_activities completo.
-    if (!activityCanManageAll()) return { records: [], payload: null };
-    const usersSnap = await get(ref(database, 'users'));
-    if (!usersSnap.exists()) return { records: [], payload: [null] };
-    const userIds = new Set();
-    usersSnap.forEach(child => {
-      const profile = child.val() || {};
-      [child.key, profile.uid].filter(Boolean).forEach(value => userIds.add(String(value)));
-    });
-    const minKey = firebasePushIdBoundary(start, '-');
-    const maxKey = firebasePushIdBoundary(end, 'z');
-    const ids = Array.from(userIds);
-    const records = [];
-    const payload = [usersSnap.val()];
-    const batchSize = 8;
-    for (let index = 0; index < ids.length; index += batchSize) {
-      const batch = ids.slice(index, index + batchSize);
-      const results = await Promise.all(batch.map(async uid => {
-        try {
-          const snap = await get(query(ref(database, `gestor_activities/${uid}`), orderByKey(), startAt(minKey), endAt(maxKey)));
-          return { uid, snap };
-        } catch { return { uid, snap: null }; }
-      }));
-      results.forEach(({ uid, snap }) => {
-        if (!snap?.exists()) return;
-        payload.push(snap.val());
-        snap.forEach(child => {
-          const value = child.val() || {};
-          if (!isStoredActivityRecord(value)) return;
-          records.push({ id: child.key, ...value, _activity_path: `gestor_activities/${uid}/${child.key}` });
-        });
-      });
-    }
-    return { records, payload };
-  }
-
   function activityCreatedTimestamp(record) {
     const historyDates = Object.values(record?.historial_expediente || {}).map(entry => entry?.fecha);
     const candidates = [record?.created_at, record?.timestamp, record?.fecha_hora_registro, ...historyDates, firebasePushIdTimestamp(record?.id)];
@@ -2527,6 +2490,97 @@
       if (Number.isFinite(parsed) && parsed >= new Date(2020, 0, 1).getTime()) return parsed;
     }
     return null;
+  }
+
+  function activityRecordPath(record) {
+    return record?._activity_path || `gestor_activities/${record?.id || ''}`;
+  }
+
+  function activityPreview(record) {
+    const source = record || {};
+    return {
+      id: source.id,
+      _activity_path: activityRecordPath(source),
+      created_at: source.created_at,
+      timestamp: source.timestamp,
+      actualizado_en: source.actualizado_en,
+      tipo: source.tipo,
+      activity_type: source.activity_type,
+      categoria_actividad: source.categoria_actividad,
+      uid: source.uid,
+      user_uid: source.user_uid,
+      nombre_usuario: source.nombre_usuario,
+      correo_usuario: source.correo_usuario,
+      rol: source.rol,
+      plaza: source.plaza,
+      se_visita_a: source.se_visita_a,
+      numero_cliente: source.numero_cliente,
+      nombre_contacto: source.nombre_contacto,
+      nombre_prospecto: source.nombre_prospecto,
+      gestion_realizada: source.gestion_realizada,
+      tipo_accion: source.tipo_accion,
+      se_agenda_cita: source.se_agenda_cita,
+      fecha_cita: source.fecha_cita,
+      hora_cita: source.hora_cita,
+      cita_timestamp: source.cita_timestamp,
+      estado_expediente: source.estado_expediente,
+      tiene_evidencia: source.tiene_evidencia === true,
+      tiene_firma_promesa: source.tiene_firma_promesa === true,
+    };
+  }
+
+  async function loadFullActivityRecord(record, action = 'PANEL_ACTIVITY_DETAIL_VIEW') {
+    if (!record?.id) return null;
+    const path = activityRecordPath(record);
+    const cached = _activityDetailCache.get(path);
+    if (cached) return cached;
+    const snap = await get(ref(database, path));
+    if (!snap.exists()) return null;
+    const complete = { id: record.id, ...(snap.val() || {}), _activity_path: path };
+    _activityDetailCache.set(path, complete);
+    recordPanelDataUsage(action, {
+      records: 1,
+      payload: snap.val(),
+      scope: record.nombre_usuario || record.correo_usuario || record.plaza || 'Actividad individual',
+    });
+    return complete;
+  }
+
+  async function loadFullActivityRecords(records, action = 'PANEL_ACTIVITY_EXPORT') {
+    const results = [];
+    const batchSize = 8;
+    for (let index = 0; index < records.length; index += batchSize) {
+      const batch = records.slice(index, index + batchSize);
+      const hydrated = await Promise.all(batch.map(record => loadFullActivityRecord(record, action).catch(() => null)));
+      results.push(...hydrated.filter(Boolean));
+    }
+    return results;
+  }
+
+  async function loadActivityTextPage(session) {
+    const snap = await get(query(
+      ref(database, 'gestor_activities'),
+      orderByKey(),
+      startAt(firebasePushIdBoundary(session.start, '-')),
+      endAt(session.cursorKey),
+      limitToLast(ACTIVITY_RESULTS_PAGE_SIZE + 1),
+    ));
+    const rows = [];
+    const scannedKeys = [];
+    if (snap.exists()) snap.forEach(child => {
+      const value = child.val() || {};
+      scannedKeys.push(String(child.key));
+      if (!isStoredActivityRecord(value) || session.seen.has(String(child.key))) return;
+      rows.push(activityPreview({ id: child.key, ...value, _activity_path: `gestor_activities/${child.key}` }));
+    });
+    rows.sort((a, b) => Number(activityCreatedTimestamp(b) || 0) - Number(activityCreatedTimestamp(a) || 0));
+    const page = rows.slice(0, ACTIVITY_RESULTS_PAGE_SIZE);
+    page.forEach(record => session.seen.add(String(record.id)));
+    const oldest = page[page.length - 1];
+    const nextCursor = oldest?.id || scannedKeys[0];
+    if (nextCursor) session.cursorKey = String(nextCursor);
+    session.hasMore = scannedKeys.length > ACTIVITY_RESULTS_PAGE_SIZE && Boolean(nextCursor);
+    return { page, payload: snap.val() };
   }
 
   /** Consolida los seguimientos técnicos de Prospección en una sola tarjeta por expediente raíz. */
@@ -2664,7 +2718,6 @@
       const element = document.getElementById(id);
       if (element) element.value = '';
     });
-    _activitySearchCache.clear();
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div>';
     document.getElementById('activityRoutesReport').style.display = 'none';
     try {
@@ -3101,49 +3154,21 @@
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">⏳ Cargando actividades...</div>';
     try {
       const manualRefresh = options === true || options?.force === true;
-      // El resultado completo se conserva sólo dos minutos para evitar descargas
-      // duplicadas si se pulsa Buscar varias veces. El mapa usa force:true y el
-      // reingreso al módulo limpia este caché antes de consultar de nuevo.
-      const forceRefresh = manualRefresh;
-      const scopeKey = `${auth.currentUser?.uid || 'ANON'}|${panelRole()}|${normaliseActivityText(_activityProfile?.plaza || '')}`;
-      const cacheKey = `${scopeKey}|pushid-v3|${start}|${end}`;
-      const cached = _activitySearchCache.get(cacheKey);
-      const cacheIsFresh = cached && (Date.now() - cached.cachedAt) < ACTIVITY_SEARCH_CACHE_MS;
-      let rawRecords;
-      if (!forceRefresh && cacheIsFresh) {
-        rawRecords = cached.records;
-      } else {
-        // Todos los registros creados por la app usan push IDs. La fecha queda
-        // codificada en el ID, aun si una versión histórica no guardó timestamp.
-        // Así se consulta sólo el intervalo pedido, sin leer el nodo completo.
-        const activityRef = ref(database, 'gestor_activities');
-        const snap = await get(query(
-          activityRef,
-          orderByKey(),
-          startAt(firebasePushIdBoundary(start, '-')),
-          endAt(firebasePushIdBoundary(end, 'z')),
-        ));
-        const directRecords = [];
-        if (snap.exists()) snap.forEach(child => {
-          const value = child.val() || {};
-          if (isStoredActivityRecord(value)) directRecords.push({ id: child.key, ...value, _activity_path: `gestor_activities/${child.key}` });
-        });
-        const historical = await loadUserScopedHistoricalActivities(start, end);
-        const recordsByPath = new Map();
-        [...directRecords, ...historical.records].forEach(record => {
-          const key = record._activity_path || `gestor_activities/${record.id}`;
-          recordsByPath.set(key, record);
-        });
-        rawRecords = Array.from(recordsByPath.values());
-        window.__activitySearchSources = { direct: directRecords.length, historical: historical.records.length };
-        _activitySearchCache.set(cacheKey, { cachedAt: Date.now(), records: rawRecords });
-        while (_activitySearchCache.size > 8) _activitySearchCache.delete(_activitySearchCache.keys().next().value);
-        recordPanelDataUsage('PANEL_ACTIVITY_SEARCH', {
-          records: rawRecords.length,
-          payload: [snap.val(), historical.payload],
-          scope: `${startValue} a ${endValue} · directas ${directRecords.length} · históricas ${historical.records.length}${manualRefresh ? ' · actualización manual' : ''}`,
-        });
-      }
+      _activityPageSession = {
+        start,
+        end,
+        cursorKey: firebasePushIdBoundary(end, 'z'),
+        seen: new Set(),
+        hasMore: false,
+      };
+      const firstPage = await loadActivityTextPage(_activityPageSession);
+      const rawRecords = firstPage.page;
+      window.__activitySearchSources = { direct: rawRecords.length, historical: 0, paginated: true };
+      recordPanelDataUsage('PANEL_ACTIVITY_SEARCH_PAGE', {
+        records: rawRecords.length,
+        payload: firstPage.payload,
+        scope: `${startValue} a ${endValue} · página 1${_activityPageSession.hasMore ? ' · hay más resultados' : ''}${manualRefresh ? ' · actualización manual' : ''}`,
+      });
       const scopedRecords = [];
       rawRecords.forEach(record => { if (isInManagerActivityScope(record)) scopedRecords.push(record); });
       const consolidated = consolidateProspectFiles(scopedRecords);
@@ -3154,6 +3179,7 @@
           : Number(activityCreatedTimestamp(record) || 0);
         return timestamp >= start && timestamp <= end;
       });
+      _activitiesVisibleCount = ACTIVITY_RESULTS_PAGE_SIZE;
       window.renderActivities();
       return true;
     } catch (error) {
@@ -3363,13 +3389,18 @@
       return (!type || recordType === type) && (!prospectStage || (recordType === 'PROSPECCION' && prospectWorkflowStage(record) === prospectStage)) && (!role || recordRole === role) && (!plaza || recordPlaza === plaza)
         && (!action || searchable.includes(action)) && matchesActivityUser(record, userSearch);
     });
+    const visibleRecords = _activitiesFiltered.slice(0, _activitiesVisibleCount);
+    const remainingRecords = Math.max(0, _activitiesFiltered.length - visibleRecords.length);
+    const serverHasMore = Boolean(_activityPageSession?.hasMore);
     document.getElementById('activityTotal').textContent = _activitiesFiltered.length;
     document.getElementById('activityGeneral').textContent = _activitiesFiltered.filter(x => activityCategory(x) === 'GENERAL').length;
     document.getElementById('activityCobranza').textContent = _activitiesFiltered.filter(x => activityCategory(x) === 'COBRANZA').length;
     document.getElementById('activityProspeccion').textContent = _activitiesFiltered.filter(x => activityCategory(x) === 'PROSPECCION').length;
     document.getElementById('activityEvidence').textContent = _activitiesFiltered.filter(x => x.tiene_evidencia).length;
     const sources = window.__activitySearchSources || {};
-    const sourceLabel = Number.isFinite(sources.direct) || Number.isFinite(sources.historical)
+    const sourceLabel = sources.paginated
+      ? ` · ${Number(sources.direct || 0)} cargadas por páginas${serverHasMore ? ' · hay más disponibles' : ''}`
+      : Number.isFinite(sources.direct) || Number.isFinite(sources.historical)
       ? ` · directas: ${Number(sources.direct || 0)} · históricas: ${Number(sources.historical || 0)}`
       : '';
     document.getElementById('activityRecordCount').textContent = `${_activitiesFiltered.length} registro(s)${sourceLabel}`;
@@ -3411,15 +3442,18 @@
           <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span>${stageChip}<span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
           <div style="font-size:12px;color:#667085;margin-top:7px">${subDetail}</div></div>
         <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(activityCreatedTimestamp(record) || record.actualizado_en)}</div>
-          <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button><button class="btn-accion btn-foto" title="Ver fotos, evidencias y firma del registro" onclick="window.viewActivityAttachments('${record.id}')">🖼️</button>${record.latitud != null && record.longitud != null ? `<button class="btn-accion btn-maps" title="Ver ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>` : ''}${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
+          <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button><button class="btn-accion btn-foto" title="Ver fotos, evidencias y firma del registro" onclick="window.viewActivityAttachments('${record.id}')">🖼️</button><button class="btn-accion btn-maps" title="Consultar ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
       </div>`;
     };
+    const loadMore = (remainingRecords || serverHasMore)
+      ? `<div style="padding:16px 0;text-align:center"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Cargar ${Math.min(ACTIVITY_RESULTS_PAGE_SIZE, remainingRecords || ACTIVITY_RESULTS_PAGE_SIZE)} más${remainingRecords ? ` · quedan ${remainingRecords}` : ''}</button></div>`
+      : '';
     if (!activityIsManagerScope()) {
-      container.innerHTML = `<div class="record-list">${_activitiesFiltered.map(renderActivityCard).join('')}</div>`;
+      container.innerHTML = `<div class="record-list">${visibleRecords.map(renderActivityCard).join('')}</div>${loadMore}`;
       return;
     }
     const groups = new Map();
-    _activitiesFiltered.forEach(record => {
+    visibleRecords.forEach(record => {
       const date = new Date(Number(activityCreatedTimestamp(record) || 0));
       const dayKey = Number.isNaN(date.getTime()) ? 'SIN_FECHA' : date.toISOString().slice(0, 10);
       const userKey = String(record.user_uid || record.uid || record.correo_usuario || record.nombre_usuario || 'SIN_USUARIO');
@@ -3436,7 +3470,39 @@
       const dayLabel = group.dayKey === 'SIN_FECHA' ? 'Sin fecha' : new Date(`${group.dayKey}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
       return `<section style="margin-bottom:18px;border:1px solid #DCE7E0;border-radius:14px;overflow:hidden;background:#fff"><div style="padding:13px 15px;background:#F0FDF4;border-bottom:1px solid #D1FAE5;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><div style="font-size:14px;font-weight:900;color:#166534">${activityText(lead.nombre_usuario || 'Colaborador')}</div><div style="font-size:12px;color:#4B6B57;margin-top:2px">${activityText(lead.rol || 'Sin rol')} · ${activityText(lead.plaza || 'Sin plaza')} · ${dayLabel}</div></div><span style="background:#DCFCE7;color:#166534;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900">${group.records.length} actividad(es)</span></div><div class="record-list">${group.records.map(renderActivityCard).join('')}</div></section>`;
     }).join('');
-    container.innerHTML = `<div style="padding:0 0 2px"><div style="font-size:13px;color:#475569;margin:0 0 12px">Vista agrupada por colaborador y día para facilitar la revisión de tu equipo.</div>${groupHtml}</div>`;
+    container.innerHTML = `<div style="padding:0 0 2px"><div style="font-size:13px;color:#475569;margin:0 0 12px">Vista agrupada por colaborador y día para facilitar la revisión de tu equipo.</div>${groupHtml}${loadMore}</div>`;
+  };
+
+  window.loadMoreActivities = async function() {
+    if (_activityPageSession?.hasMore) {
+      const container = document.getElementById('activitiesTableContainer');
+      const previous = container?.innerHTML;
+      if (container) container.style.opacity = '0.65';
+      try {
+        const nextPage = await loadActivityTextPage(_activityPageSession);
+        const recordsByPath = new Map(_activitiesData.map(record => [activityRecordPath(record), record]));
+        nextPage.page.forEach(record => recordsByPath.set(activityRecordPath(record), record));
+        const allLoaded = Array.from(recordsByPath.values()).filter(record => isInManagerActivityScope(record));
+        _activitiesData = consolidateProspectFiles(allLoaded).filter(record => {
+          const timestamp = Number(record._expediente_ultimo_movimiento || activityCreatedTimestamp(record) || 0);
+          return timestamp >= _activityPageSession.start && timestamp <= _activityPageSession.end;
+        });
+        const sources = window.__activitySearchSources || {};
+        window.__activitySearchSources = { ...sources, direct: Number(sources.direct || 0) + nextPage.page.length, paginated: true };
+        recordPanelDataUsage('PANEL_ACTIVITY_SEARCH_PAGE', {
+          records: nextPage.page.length,
+          payload: nextPage.payload,
+          scope: `Página adicional · ${nextPage.page.length} actividades`,
+        });
+      } catch (error) {
+        if (container) { container.style.opacity = ''; if (previous) container.innerHTML = previous; }
+        alert(`No se pudieron cargar más actividades: ${error.message || 'error desconocido'}`);
+        return;
+      }
+      if (container) container.style.opacity = '';
+    }
+    _activitiesVisibleCount += ACTIVITY_RESULTS_PAGE_SIZE;
+    window.renderActivities();
   };
 
   function activityExportValue(value) {
@@ -3447,13 +3513,21 @@
     return String(value);
   }
 
-  window.exportActivitiesCsv = function(type) {
-    const selected = _activitiesFiltered.filter(record => activityCategory(record) === type);
+  window.exportActivitiesCsv = async function(type) {
+    const selectedPreviews = _activitiesFiltered.filter(record => activityCategory(record) === type);
     const typeName = activityCategoryLabel(type);
-    if (!selected.length) {
+    if (!selectedPreviews.length) {
       alert(`No hay registros de ${typeName} en el resultado actual. Ajusta los filtros y presiona Buscar.`);
       return;
     }
+    let selected;
+    try {
+      selected = await loadFullActivityRecords(selectedPreviews, 'PANEL_ACTIVITY_EXPORT');
+    } catch (error) {
+      alert(`No se pudieron cargar los datos completos para exportar: ${error.message || 'error desconocido'}`);
+      return;
+    }
+    if (!selected.length) { alert('No fue posible recuperar registros para exportar.'); return; }
     const commonFields = [
       ['id', 'ID de actividad'], ['uid', 'UID'], ['user_uid', 'UID de usuario'], ['nombre_usuario', 'Nombre de usuario'], ['correo_usuario', 'Correo de usuario'], ['rol', 'Rol'], ['plaza', 'Plaza'],
       ['tipo', 'Tipo de actividad'], ['fecha_hora_registro', 'Fecha y hora de registro'], ['created_at', 'Marca de tiempo de creación'], ['timestamp', 'Marca de tiempo'],
@@ -3572,9 +3646,22 @@
     document.getElementById('photoModal').classList.add('active');
   }
 
-  window.viewActivityDetail = function(id) {
-    const record = activityRecordById(id); if (!record) return;
-    renderFullActivityDetail(record);
+  window.viewActivityDetail = async function(id) {
+    const preview = activityRecordById(id); if (!preview) return;
+    const modal = document.getElementById('photoModal');
+    const image = document.getElementById('modalImg');
+    const info = document.getElementById('modalInfo');
+    document.getElementById('modalTitle').textContent = 'Detalle completo';
+    image.removeAttribute('src'); image.style.display = 'none';
+    info.innerHTML = '<div style="padding:28px;text-align:center;color:#667085">⏳ Cargando información completa del registro...</div>';
+    modal.classList.add('active');
+    try {
+      const record = await loadFullActivityRecord(preview, 'PANEL_ACTIVITY_DETAIL_VIEW');
+      if (!record) { info.innerHTML = '<div style="color:#B91C1C;padding:18px">No se encontró el registro solicitado.</div>'; return; }
+      renderFullActivityDetail(record);
+    } catch (error) {
+      info.innerHTML = `<div style="color:#B91C1C;padding:18px">❌ ${activityText(error.message || 'No se pudo cargar el detalle.')}</div>`;
+    }
   };
 
   function panelMediaLabel(key) {
@@ -3658,9 +3745,13 @@
     return window.viewActivityAttachments(id);
   };
 
-  window.openActivityMap = function(id) {
-    const record = _activitiesFiltered.find(x => x.id === id); if (!record || record.latitud == null || record.longitud == null) return;
-    window.open(`https://www.google.com/maps?q=${record.latitud},${record.longitud}`, '_blank', 'noopener');
+  window.openActivityMap = async function(id) {
+    const preview = activityRecordById(id); if (!preview) return;
+    try {
+      const record = await loadFullActivityRecord(preview, 'PANEL_ACTIVITY_LOCATION_VIEW');
+      if (record?.latitud == null || record?.longitud == null) { alert('Este registro no contiene una ubicación GPS.'); return; }
+      window.open(`https://www.google.com/maps?q=${record.latitud},${record.longitud}`, '_blank', 'noopener');
+    } catch (error) { alert(`No se pudo cargar la ubicación: ${error.message || 'error desconocido'}`); }
   };
 
   window.deleteActivity = async function(id) {
@@ -3842,15 +3933,12 @@
 
   function renderActivityRoutesReport(records) {
     const report = document.getElementById('activityRoutesReport');
-    const groups = buildActivityRouteGroups(records);
-    const pointCount = groups.reduce((total, group) => total + group.records.length, 0);
-    window.__activityRouteGroups = groups;
-    if (!groups.length) {
+    if (!records.length) {
       report.style.display = 'none';
       return;
     }
     report.style.display = '';
-    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px"><b>${pointCount}</b> actividad(es) con ubicación forman <b>${groups.length}</b> ruta(s), agrupadas por usuario y día.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Ver rutas en mapa</button></div>`;
+    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px">Hay <b>${records.length}</b> actividad(es) en el resultado. Las ubicaciones GPS se consultarán únicamente al abrir el mapa.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Cargar rutas en mapa</button></div>`;
   }
 
   window.closeActivityRoutesMap = function() {
@@ -3890,12 +3978,21 @@
     }
   };
 
-  window.openActivityRoutesMap = function() {
+  window.openActivityRoutesMap = async function() {
     const modal = document.getElementById('activityRoutesMapModal');
     const mapElement = document.getElementById('activityRoutesMap');
-    const groups = window.__activityRouteGroups || [];
-    if (!groups.length) { alert('No hay actividades con ubicación para mapear en el resultado actual.'); return; }
     modal.classList.add('active');
+    mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#4F46E5;font-weight:800">⏳ Consultando ubicaciones GPS del resultado...</div>';
+    let hydrated;
+    try {
+      hydrated = await loadFullActivityRecords(_activitiesFiltered, 'PANEL_ACTIVITY_ROUTE_LOCATIONS');
+    } catch (error) {
+      mapElement.innerHTML = `<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#B91C1C">❌ No se pudieron cargar las ubicaciones: ${activityText(error.message || 'error desconocido')}</div>`;
+      return;
+    }
+    const groups = buildActivityRouteGroups(hydrated);
+    window.__activityRouteGroups = groups;
+    if (!groups.length) { mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#64748B">No hay actividades con ubicación GPS para mostrar con los filtros actuales.</div>'; return; }
     if (activityRoutesMapInstance) { activityRoutesMapInstance.remove(); activityRoutesMapInstance = null; }
     if (!window.L) {
       mapElement.innerHTML = '<div style="padding:24px;color:#B91C1C">❌ No se pudo cargar el componente del mapa. Revisa tu conexión e inténtalo de nuevo.</div>';
