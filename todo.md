@@ -30,3 +30,4 @@
 - [x] Optimizar búsquedas del panel y añadir diagnóstico de descargas visible solo para soporte.
 - [x] Mostrar en el diagnóstico de descargas el desglose por usuario y acción para Soporte.
 - [x] Mostrar última conexión y versión instalada de la app en Aviso de privacidad para Soporte.
+- [x] Generalizar la etiqueta de conexión en Privacidad para reflejar futuras versiones de la app.

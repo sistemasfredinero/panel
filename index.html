@@ -1291,7 +1291,7 @@
         const email = profile.correo || profile.email || consent?.user_email || '—';
         const connection = profile.app_connection || {};
         const installedVersion = connection.version ? `v${connection.version}${connection.version_code ? ` (${connection.version_code})` : ''}` : 'Sin registro aún';
-        const connectionLabel = connection.last_connected_at ? privacyFormatDate(connection.last_connected_at) : 'Aún no se conecta con v21';
+        const connectionLabel = connection.last_connected_at ? privacyFormatDate(connection.last_connected_at) : 'Aún no reporta versión desde la app';
         const acceptedNow = consent?.accepted === true;
         const status = acceptedNow ? '<span style="background:#DCFCE7;color:#166534;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px">Aceptado</span>' : consent ? '<span style="background:#FEE2E2;color:#B91C1C;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px">Revocado</span>' : '<span style="background:#FFF3E0;color:#B45309;padding:3px 7px;border-radius:999px;font-weight:800;font-size:10px">Pendiente</span>';
         const action = acceptedNow ? `<button onclick="window.revokePrivacyConsent('${privacyEscape(row.uid)}')" style="padding:4px 8px;background:#B91C1C;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700">Revocar</button>` : '—';
