@@ -2586,6 +2586,14 @@
     const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
     document.getElementById('activityStartDate').value = activityDateInput(weekAgo.getTime());
     document.getElementById('activityEndDate').value = activityDateInput(today.getTime());
+    // Al volver al módulo no deben sobrevivir filtros invisibles de una consulta
+    // anterior. Por defecto, el resultado siempre considera General, Cobranza y
+    // Prospección dentro del rango indicado.
+    ['activityType', 'activityProspectStage', 'activityAction', 'activityRole', 'activityPlaza', 'activityUser'].forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.value = '';
+    });
+    _activitySearchCache.clear();
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div>';
     document.getElementById('activityRoutesReport').style.display = 'none';
     try {
@@ -3021,19 +3029,24 @@
     if (start > end) { alert('La fecha inicial no puede ser posterior a la fecha final.'); return; }
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">⏳ Cargando actividades...</div>';
     try {
-      const forceRefresh = options === true || options?.force === true;
+      const manualRefresh = options === true || options?.force === true;
+      // El resultado completo se conserva sólo dos minutos para evitar descargas
+      // duplicadas si se pulsa Buscar varias veces. El mapa usa force:true y el
+      // reingreso al módulo limpia este caché antes de consultar de nuevo.
+      const forceRefresh = manualRefresh;
       const scopeKey = `${auth.currentUser?.uid || 'ANON'}|${panelRole()}|${normaliseActivityText(_activityProfile?.plaza || '')}`;
-      const cacheKey = `${scopeKey}|${start}|${end}`;
+      const cacheKey = `${scopeKey}|timestamp-v2|${start}|${end}`;
       const cached = _activitySearchCache.get(cacheKey);
       const cacheIsFresh = cached && (Date.now() - cached.cachedAt) < ACTIVITY_SEARCH_CACHE_MS;
       let rawRecords;
       if (!forceRefresh && cacheIsFresh) {
         rawRecords = cached.records;
       } else {
-        // Todas las actividades actuales escriben created_at y el nodo tiene índice.
-        // Nunca se vuelve a descargar gestor_activities completo como respaldo: eso fue
-        // la principal causa de consumo excesivo al buscar repetidamente desde el panel.
-        const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('created_at'), startAt(start), endAt(end)));
+        // timestamp existe tanto en los registros históricos como en General,
+        // Cobranza y Prospección actuales. created_at se agregó después y por eso
+        // omitía actividades válidas cuando se buscaba sólo por ese campo.
+        // La consulta sigue acotada estrictamente al rango seleccionado.
+        const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('timestamp'), startAt(start), endAt(end)));
         rawRecords = [];
         if (snap.exists()) snap.forEach(child => rawRecords.push({ id: child.key, ...(child.val() || {}) }));
         _activitySearchCache.set(cacheKey, { cachedAt: Date.now(), records: rawRecords });
@@ -3041,7 +3054,7 @@
         recordPanelDataUsage('PANEL_ACTIVITY_SEARCH', {
           records: rawRecords.length,
           payload: snap.val(),
-          scope: `${startValue} a ${endValue}${forceRefresh ? ' · actualización manual' : ''}`,
+          scope: `${startValue} a ${endValue}${manualRefresh ? ' · actualización manual' : ''}`,
         });
       }
       const scopedRecords = [];

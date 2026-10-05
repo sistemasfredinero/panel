@@ -31,3 +31,4 @@
 - [x] Mostrar en el diagnóstico de descargas el desglose por usuario y acción para Soporte.
 - [x] Mostrar última conexión y versión instalada de la app en Aviso de privacidad para Soporte.
 - [x] Generalizar la etiqueta de conexión en Privacidad para reflejar futuras versiones de la app.
+- [x] Forzar búsqueda fresca de todos los registros del rango y reiniciar filtros ocultos de Actividades.
