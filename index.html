@@ -3043,17 +3043,28 @@
         rawRecords = cached.records;
       } else {
         // timestamp existe tanto en los registros históricos como en General,
-        // Cobranza y Prospección actuales. created_at se agregó después y por eso
-        // omitía actividades válidas cuando se buscaba sólo por ese campo.
-        // La consulta sigue acotada estrictamente al rango seleccionado.
-        const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('timestamp'), startAt(start), endAt(end)));
-        rawRecords = [];
-        if (snap.exists()) snap.forEach(child => rawRecords.push({ id: child.key, ...(child.val() || {}) }));
+        // Cobranza y Prospección actuales. Firebase ordena números y textos por
+        // separado; por eso se consultan ambos formatos y se consolidan por ID.
+        // Ninguna consulta abandona el rango seleccionado.
+        const activityRef = ref(database, 'gestor_activities');
+        const isoStart = `${startValue}T00:00:00.000Z`;
+        const isoEnd = `${endValue}T23:59:59.999Z`;
+        const [numericTimestampSnap, textTimestampSnap, isoTimestampSnap] = await Promise.all([
+          get(query(activityRef, orderByChild('timestamp'), startAt(start), endAt(end))),
+          get(query(activityRef, orderByChild('timestamp'), startAt(String(start)), endAt(String(end)))),
+          get(query(activityRef, orderByChild('timestamp'), startAt(isoStart), endAt(isoEnd))),
+        ]);
+        const recordsById = new Map();
+        [numericTimestampSnap, textTimestampSnap, isoTimestampSnap].forEach(snap => {
+          if (!snap.exists()) return;
+          snap.forEach(child => recordsById.set(String(child.key), { id: child.key, ...(child.val() || {}) }));
+        });
+        rawRecords = Array.from(recordsById.values());
         _activitySearchCache.set(cacheKey, { cachedAt: Date.now(), records: rawRecords });
         while (_activitySearchCache.size > 8) _activitySearchCache.delete(_activitySearchCache.keys().next().value);
         recordPanelDataUsage('PANEL_ACTIVITY_SEARCH', {
           records: rawRecords.length,
-          payload: snap.val(),
+          payload: [numericTimestampSnap.val(), textTimestampSnap.val(), isoTimestampSnap.val()],
           scope: `${startValue} a ${endValue}${manualRefresh ? ' · actualización manual' : ''}`,
         });
       }
