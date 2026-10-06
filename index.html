@@ -497,6 +497,7 @@
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="dataUsageDays" style="padding:8px 10px;border:1px solid #FCD34D;border-radius:8px;background:#fff;font-size:12px"><option value="1">Hoy</option><option value="7" selected>Últimos 7 días</option><option value="30">Últimos 30 días</option></select>
           <button onclick="window.loadDataUsageDiagnostics()" style="padding:9px 13px;background:#D97706;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">↻ Actualizar</button>
+          <button onclick="window.rebuildActivitySummaries()" style="padding:9px 13px;background:#0369A1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">♻ Reconstruir fichas</button>
           <button onclick="window.rebuildActiveProspectCounters()" style="padding:9px 13px;background:#0F766E;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">♻ Reconstruir activas</button>
           <button onclick="window.showPanelHome()" style="padding:9px 13px;background:#64748B;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700">← Volver</button>
         </div>
@@ -1164,6 +1165,7 @@
         APP_ACTIVITIES_SUMMARY: 'App · Resumen de Actividades',
         APP_ACTIVITIES_OWN_SCOPE: 'App · Actividades propias',
         APP_ACTIVITIES_PROSPECT_SCOPE: 'App · Actividades y Prospección',
+        APP_ACTIVITIES_PROSPECT_INDEX: 'App · Índice ligero de Prospección',
         APP_ACTIVITIES_MANAGER_SCOPE: 'App · Actividades de la sucursal',
         APP_HOME_REQUEST_COUNTERS: 'App · Contadores de Solicitudes',
         APP_VACATION_LIST: 'App · Lista de Vacaciones',
@@ -1260,6 +1262,106 @@
   function prospectCounterKey(value) {
     return String(value || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
   }
+
+  const ACTIVITY_SUMMARY_FIELDS = [
+    'id', 'uid', 'user_uid', 'nombre_usuario', 'correo_usuario', 'rol', 'plaza', 'tipo', 'categoria_actividad',
+    'gestion_realizada', 'created_at', 'timestamp', 'actualizado_en', 'se_visita_a', 'numero_cliente', 'nombre_contacto',
+    'monto', 'estado_expediente', 'es_expediente_prospeccion', 'seguimiento_de', 'hilo_prospecto', 'numero_seguimiento',
+    'nombre_prospecto', 'direccion_prospecto', 'direccion', 'telefono_prospecto', 'telefono', 'tipo_prospeccion',
+    'origen_prospeccion', 'tipo_accion', 'modalidad_prospeccion', 'accion_prospeccion', 'se_agenda_cita', 'fecha_cita',
+    'hora_cita', 'cita_timestamp', 'consulta_rafik_completada', 'lider_asignado_uid', 'lider_asignado_nombre',
+    'lider_asignado_correo', 'responsable_promesa_uid', 'responsable_promesa_nombre', 'promesa_timestamp', 'fecha_promesa',
+    'hora_promesa', 'fecha_promesa_no_confirmada', 'modalidad_promesa', 'recepcion_pago_id', 'comprobacion_id',
+    'comprobacion_digital_id', 'renuencia_pago_id', 'monto_recibido', 'monto_depositado', 'folio_recibo', 'folio_comprobante',
+    'tiene_evidencia', 'tiene_firma_promesa', 'verificacion_domiciliaria', 'verificacion_comercial', 'cerrado_en',
+  ];
+
+  function cleanActivitySummaryValue(value) {
+    if (value === undefined || value === null) return value;
+    if (typeof value === 'string') return value.slice(0, 1200);
+    if (typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.slice(0, 20).map(cleanActivitySummaryValue);
+    const output = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const normalized = key.toLowerCase();
+      if (normalized.includes('base64') || normalized.includes('historial') || normalized.includes('foto') || normalized.includes('firma')) return;
+      output[key] = cleanActivitySummaryValue(item);
+    });
+    return output;
+  }
+
+  function buildActivitySummary(record) {
+    const output = { id: String(record?.id || ''), indice_ligero: true, indice_actualizado_en: Date.now() };
+    ACTIVITY_SUMMARY_FIELDS.forEach(field => {
+      if (record?.[field] !== undefined) output[field] = cleanActivitySummaryValue(record[field]);
+    });
+    return output;
+  }
+
+  function isActiveProspectRecord(record) {
+    return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
+      && !PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record))
+      && prospectWorkflowStage(record) !== 'RECHAZADA_POR_PROSPECTO';
+  }
+
+  async function flushActivitySummaryBatch(records) {
+    const changes = {};
+    records.forEach(record => {
+      const id = String(record?.id || '').trim();
+      const uid = String(record?.user_uid || record?.uid || '').trim();
+      const plaza = String(record?.plaza || '').trim().toUpperCase();
+      if (!id || !uid) return;
+      const summary = buildActivitySummary(record);
+      changes[`activity_summaries/users/${uid}/${id}`] = summary;
+      if (plaza) changes[`activity_summaries/plazas/${plaza}/${id}`] = summary;
+      if (String(record?.tipo || '').toUpperCase() === 'PROSPECCION') {
+        changes[`activity_summaries/active_prospects/${id}`] = isActiveProspectRecord(record) ? summary : null;
+      }
+    });
+    if (Object.keys(changes).length) await update(ref(database), changes);
+  }
+
+  window.rebuildActivitySummaries = async function() {
+    if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
+    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. Después la app dejará de descargar expedientes completos al abrir Actividades. Puede tardar si existe mucho historial. ¿Continuar?')) return;
+    const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir fichas'));
+    if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo…'; }
+    let cursor = null;
+    let scanned = 0;
+    let indexed = 0;
+    const seen = new Set();
+    try {
+      while (true) {
+        const pageQuery = cursor
+          ? query(ref(database, 'gestor_activities'), orderByKey(), endAt(cursor), limitToLast(51))
+          : query(ref(database, 'gestor_activities'), orderByKey(), limitToLast(50));
+        const snap = await get(pageQuery);
+        if (!snap.exists()) break;
+        let page = [];
+        snap.forEach(child => {
+          if (cursor && child.key === cursor) return;
+          if (seen.has(child.key)) return;
+          seen.add(child.key);
+          page.push({ id: child.key, ...(child.val() || {}) });
+        });
+        if (!page.length) break;
+        const valid = page.filter(isStoredActivityRecord);
+        scanned += page.length;
+        indexed += valid.length;
+        await flushActivitySummaryBatch(valid);
+        const oldestKey = page[0]?.id;
+        if (!oldestKey || page.length < 50) break;
+        cursor = oldestKey;
+        if (button) button.textContent = `⏳ ${indexed} fichas…`;
+      }
+      recordPanelDataUsage('PANEL_REBUILD_ACTIVITY_SUMMARIES', { records: scanned, payload: { scanned, indexed }, scope: 'Reconstrucción manual de fichas ligeras' });
+      alert(`✅ Fichas ligeras reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nLa app descargará ahora sólo estas fichas al abrir Actividades. El expediente, foto, firma y ubicación se pedirán al tocar cada botón.`);
+    } catch (error) {
+      alert(`❌ No se pudieron reconstruir las fichas: ${error?.message || 'Error desconocido'}`);
+    } finally {
+      if (button) { button.disabled = false; button.textContent = '♻ Reconstruir fichas'; }
+    }
+  };
 
   window.rebuildActiveProspectCounters = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
