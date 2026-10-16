@@ -1274,6 +1274,7 @@
     'hora_promesa', 'fecha_promesa_no_confirmada', 'modalidad_promesa', 'recepcion_pago_id', 'comprobacion_id',
     'comprobacion_digital_id', 'renuencia_pago_id', 'monto_recibido', 'monto_depositado', 'folio_recibo', 'folio_comprobante',
     'tiene_evidencia', 'tiene_firma_promesa', 'verificacion_domiciliaria', 'verificacion_comercial', 'cerrado_en',
+    'motivo_rechazo_prospecto', 'motivo_rechazo_credito', 'motivo_cierre', 'tipo_cierre',
   ];
 
   function cleanActivitySummaryValue(value) {
@@ -1304,6 +1305,11 @@
       && prospectWorkflowStage(record) !== 'RECHAZADA_POR_PROSPECTO';
   }
 
+  function isRejectedProspectRecord(record) {
+    return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
+      && ['RECHAZADA_POR_PROSPECTO', 'RECHAZADA_CREDITO_RIESGO'].includes(prospectWorkflowStage(record));
+  }
+
   async function flushActivitySummaryBatch(records) {
     const changes = {};
     records.forEach(record => {
@@ -1316,8 +1322,10 @@
       if (plaza) changes[`activity_summaries/plazas/${plaza}/${id}`] = summary;
       if (String(record?.tipo || '').toUpperCase() === 'PROSPECCION') {
         const active = isActiveProspectRecord(record);
+        const rejected = isRejectedProspectRecord(record);
         changes[`activity_summaries/active_prospects/${id}`] = active ? summary : null;
         if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
+        changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
       }
     });
     if (Object.keys(changes).length) await update(ref(database), changes);
@@ -1325,7 +1333,7 @@
 
   window.rebuildActivitySummaries = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirá el índice de Prospección activa por plaza para que la Gerencia vea Asignación. Puede tardar si existe mucho historial. ¿Continuar?')) return;
+    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirán los índices de Prospección activa por plaza y de rechazados por usuario. Puede tardar si existe mucho historial. ¿Continuar?')) return;
     const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir fichas'));
     if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo…'; }
     let cursor = null;

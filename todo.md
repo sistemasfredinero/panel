@@ -40,3 +40,4 @@
 - [x] Añadir para Soporte una reconstrucción manual de contadores ligeros de Prospección activa.
 - [x] Añadir reconstrucción única y controlada de fichas ligeras de Actividades existentes para la app.
 - [x] Incluir el índice activo de Prospección por plaza en la reconstrucción controlada para restaurar Asignación gerencial.
+- [x] Reconstruir el índice ligero individual de expedientes rechazados desde el panel.
