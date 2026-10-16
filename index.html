@@ -1315,7 +1315,9 @@
       changes[`activity_summaries/users/${uid}/${id}`] = summary;
       if (plaza) changes[`activity_summaries/plazas/${plaza}/${id}`] = summary;
       if (String(record?.tipo || '').toUpperCase() === 'PROSPECCION') {
-        changes[`activity_summaries/active_prospects/${id}`] = isActiveProspectRecord(record) ? summary : null;
+        const active = isActiveProspectRecord(record);
+        changes[`activity_summaries/active_prospects/${id}`] = active ? summary : null;
+        if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
       }
     });
     if (Object.keys(changes).length) await update(ref(database), changes);
@@ -1323,7 +1325,7 @@
 
   window.rebuildActivitySummaries = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. Después la app dejará de descargar expedientes completos al abrir Actividades. Puede tardar si existe mucho historial. ¿Continuar?')) return;
+    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirá el índice de Prospección activa por plaza para que la Gerencia vea Asignación. Puede tardar si existe mucho historial. ¿Continuar?')) return;
     const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir fichas'));
     if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo…'; }
     let cursor = null;
