@@ -64,6 +64,18 @@
       min-width: 0;
     }
     .filter-group input:focus, .filter-group select:focus { border-color: #1A7A3C; }
+    .activity-filter-multiselect { position:relative; min-width:250px; }
+    .activity-filter-trigger { width:100%; min-height:40px; display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px solid #DDE3ED; border-radius:8px; padding:8px 10px; background:#fff; color:#344054; font-size:13px; text-align:left; cursor:pointer; }
+    .activity-filter-trigger:hover, .activity-filter-trigger:focus { border-color:#6D28D9; outline:none; }
+    .activity-filter-menu { display:none; position:absolute; z-index:1200; top:calc(100% + 6px); left:0; width:min(390px, calc(100vw - 48px)); max-height:330px; overflow:auto; padding:10px; border:1px solid #D8B4FE; border-radius:12px; background:#fff; box-shadow:0 14px 32px rgba(67, 24, 129, .18); }
+    .activity-filter-menu.active { display:block; }
+    .activity-filter-menu-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 2px 8px; border-bottom:1px solid #F3E8FF; }
+    .activity-filter-menu-head strong { font-size:12px; color:#5B21B6; }
+    .activity-filter-clear { border:0; background:transparent; color:#6D28D9; font-size:12px; font-weight:800; cursor:pointer; padding:4px; }
+    .activity-filter-group-title { margin:11px 2px 5px; color:#475569; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.04em; }
+    .activity-filter-option { display:flex; align-items:center; gap:8px; padding:7px 6px; border-radius:7px; color:#344054; font-size:12px; cursor:pointer; }
+    .activity-filter-option:hover { background:#F8FAFC; }
+    .activity-filter-option input { width:15px; height:15px; accent-color:#6D28D9; flex:0 0 auto; }
     .btn-search {
       background: #1A7A3C; color: #fff; border: none; border-radius: 8px;
       padding: 10px 24px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.2s;
@@ -663,8 +675,7 @@
       <div class="filter-group"><label>Fecha inicial</label><input type="date" id="activityStartDate" /></div>
       <div class="filter-group"><label>Fecha final</label><input type="date" id="activityEndDate" /></div>
       <div class="filter-group"><label>Tipo</label><select id="activityType"><option value="">Todos</option><option value="GENERAL">General</option><option value="COBRANZA">Cobranza</option><option value="PROSPECCION">Prospección</option></select></div>
-      <div class="filter-group"><label>Etapa de expediente</label><select id="activityProspectStage"><option value="">Todas</option><option value="CITA_PROGRAMADA">Cita agendada / Documentación</option><option value="PENDIENTE_RAFIK">Cita agendada sin Rafik / Documentación</option><option value="PENDIENTE_DOCUMENTACION">Cita agendada / Documentación</option><option value="PENDIENTE_ONBOARDING">Onboarding</option><option value="PENDIENTE_ASIGNACION_GERENTE">Asignación</option><option value="PENDIENTE_VERIFICACION">Verificación</option><option value="PENDIENTE_VOBO_GERENTE">Pendiente VoBo Gerente</option><option value="PENDIENTE_REVISION_CREDITO_RIESGO">Pendiente VoBo Crédito y Riesgo</option><option value="DEVUELTA_A_GERENTE">Devolución de Prospecto</option><option value="AUTORIZADA">En espera de activación</option><option value="PENDIENTE_ACTIVACION">En espera de activación</option><option value="ALTA">Alta</option><option value="NO_ASISTIO">No asistió</option><option value="RECHAZADA_POR_PROSPECTO">Rechazada por prospecto</option><option value="RECHAZADA_CREDITO_RIESGO">Rechazada por Crédito y Riesgo</option></select></div>
-      <div class="filter-group"><label>Gestión / resultado</label><input id="activityAction" placeholder="Ej. Promesa de pago" style="min-width:180px" /></div>
+      <div class="filter-group activity-filter-multiselect"><label>Actividades</label><button type="button" id="activityActionTrigger" class="activity-filter-trigger" aria-haspopup="true" aria-expanded="false" onclick="window.toggleActivityActionMenu(event)"><span id="activityActionSelectionLabel">Todas las actividades</span><span aria-hidden="true">▾</span></button><div id="activityActionMenu" class="activity-filter-menu" onclick="event.stopPropagation()"><div class="activity-filter-menu-head"><strong>Selecciona una o varias</strong><button type="button" class="activity-filter-clear" onclick="window.clearActivityActionFilters()">Limpiar</button></div><div id="activityActionOptions"></div></div></div>
       <div class="filter-group"><label>Rol</label><select id="activityRole"><option value="">Todos</option><option value="GERENTE">Gerente</option><option value="LIDER A">Líder A</option><option value="LIDER B">Líder B</option><option value="LIDER C">Líder C</option><option value="CANJES">Canjes</option><option value="GESTOR">Gestor</option><option value="GESTOR DE COBRANZA">Gestor de cobranza</option></select></div>
       <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
       <div class="filter-group"><label>Buscar usuario</label><input id="activityUser" placeholder="Nombre o correo..." style="min-width:210px" /></div>
@@ -2591,9 +2602,89 @@
   function activityCategory(record = {}) {
     const category = normaliseActivityText(record.categoria_actividad || record.activity_category || record.categoria || '');
     if (category === 'GENERAL') return 'GENERAL';
-    const type = normaliseActivityText(record.tipo || record.activity_type || '');
-    return ['GENERAL', 'COBRANZA', 'PROSPECCION'].includes(type) ? type : 'COBRANZA';
+    const type = normaliseActivityText(record.tipo || record.activity_type || record.tipo_actividad || '');
+    if (['PROSPECCION', 'PROSPECCION DE CLIENTES', 'PROSPECTO'].includes(type) || record.es_expediente_prospeccion === true || record.nombre_prospecto || record.estado_expediente) return 'PROSPECCION';
+    if (type === 'GENERAL') return 'GENERAL';
+    return 'COBRANZA';
   }
+
+  const ACTIVITY_ACTION_FILTER_OPTIONS = [
+    { group: 'General', type: 'GENERAL', action: 'ATENCION EN SUCURSAL', label: 'Atención en sucursal' },
+    { group: 'General', type: 'GENERAL', action: 'COMPARTIR CAMPANA O PROMOCION', label: 'Compartir campaña o promoción' },
+    { group: 'General', type: 'GENERAL', action: 'ENVIAR DISPONIBLE E INVITAR A COLOCAR', label: 'Enviar disponible e invitar a colocar' },
+    { group: 'General', type: 'GENERAL', action: 'ENVIAR RELACION O SALDO DE COBRO', label: 'Enviar relación o saldo de cobro' },
+    { group: 'General', type: 'GENERAL', action: 'LLAMADA', label: 'Llamada' },
+    { group: 'General', type: 'GENERAL', action: 'VALE DENEGADO', label: 'Vale denegado' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'ATIENDE DEUDOR', label: 'Atiende deudor' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'AVISO EN PUERTA', label: 'Aviso en puerta' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'COMPROBACION DE PAGO', label: 'Comprobación de pago' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'GESTION TELEFONICA', label: 'Gestión telefónica' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'LLAMADA DE CONTROL', label: 'Llamada de control' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'PROMESA DE PAGO', label: 'Promesa de pago' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'RECEPCION DE PAGO', label: 'Recepción de pago' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'RECADO CON TERCERO', label: 'Recado con tercero' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'RENUENCIA DE PAGO', label: 'Renuencia de pago' },
+    { group: 'Cobranza', type: 'COBRANZA', action: 'VISITA DE CORTESIA', label: 'Visita de cortesía' },
+    { group: 'Prospección', type: 'PROSPECCION', action: '*', label: 'Prospección (todas)' },
+    { group: 'Prospección', type: 'PROSPECCION', action: 'VISITA EN DOMICILIO', label: 'Visita en domicilio' },
+    { group: 'Prospección', type: 'PROSPECCION', action: 'LLAMADA TELEFONICA', label: 'Llamada telefónica' },
+  ];
+  let _selectedActivityActionFilters = new Set();
+  function activityActionFilterKey(option) { return `${option.type}|${option.action}`; }
+  function activityFilterRecordAction(record) {
+    return normaliseActivityText(record.gestion_realizada || record.tipo_accion || record.accion_prospeccion || '');
+  }
+  function activityMatchesSelectedActions(record) {
+    if (!_selectedActivityActionFilters.size) return true;
+    const type = activityCategory(record);
+    const action = activityFilterRecordAction(record);
+    return Array.from(_selectedActivityActionFilters).some(key => {
+      const [selectedType, selectedAction] = String(key).split('|');
+      return selectedType === type && (selectedAction === '*' || selectedAction === action);
+    });
+  }
+  function renderActivityActionFilterOptions() {
+    const target = document.getElementById('activityActionOptions');
+    if (!target) return;
+    const groups = Array.from(new Set(ACTIVITY_ACTION_FILTER_OPTIONS.map(option => option.group)));
+    target.innerHTML = groups.map(group => {
+      const options = ACTIVITY_ACTION_FILTER_OPTIONS.filter(option => option.group === group);
+      return `<div class="activity-filter-group-title">${activityText(group)}</div>${options.map(option => {
+        const key = activityActionFilterKey(option);
+        const checked = _selectedActivityActionFilters.has(key) ? ' checked' : '';
+        return `<label class="activity-filter-option"><input type="checkbox" value="${activityText(key)}"${checked} onchange="window.setActivityActionFilter(this.value, this.checked)"><span>${activityText(option.label)}</span></label>`;
+      }).join('')}`;
+    }).join('');
+  }
+  function updateActivityActionFilterLabel() {
+    const label = document.getElementById('activityActionSelectionLabel');
+    const trigger = document.getElementById('activityActionTrigger');
+    if (label) label.textContent = _selectedActivityActionFilters.size ? `${_selectedActivityActionFilters.size} actividad${_selectedActivityActionFilters.size === 1 ? '' : 'es'} seleccionada${_selectedActivityActionFilters.size === 1 ? '' : 's'}` : 'Todas las actividades';
+    if (trigger) trigger.setAttribute('aria-expanded', document.getElementById('activityActionMenu')?.classList.contains('active') ? 'true' : 'false');
+  }
+  window.toggleActivityActionMenu = function(event) {
+    event?.stopPropagation();
+    const menu = document.getElementById('activityActionMenu');
+    if (!menu) return;
+    menu.classList.toggle('active');
+    renderActivityActionFilterOptions();
+    updateActivityActionFilterLabel();
+  };
+  window.setActivityActionFilter = function(key, checked) {
+    if (checked) _selectedActivityActionFilters.add(String(key));
+    else _selectedActivityActionFilters.delete(String(key));
+    updateActivityActionFilterLabel();
+  };
+  window.clearActivityActionFilters = function() {
+    _selectedActivityActionFilters.clear();
+    renderActivityActionFilterOptions();
+    updateActivityActionFilterLabel();
+  };
+  window.addEventListener('click', () => {
+    const menu = document.getElementById('activityActionMenu');
+    if (menu) menu.classList.remove('active');
+    updateActivityActionFilterLabel();
+  });
 
   function activityCategoryLabel(recordOrType) {
     const type = typeof recordOrType === 'string' ? normaliseActivityText(recordOrType) : activityCategory(recordOrType);
@@ -2890,10 +2981,13 @@
     // Al volver al módulo no deben sobrevivir filtros invisibles de una consulta
     // anterior. Por defecto, el resultado siempre considera General, Cobranza y
     // Prospección dentro del rango indicado.
-    ['activityType', 'activityProspectStage', 'activityAction', 'activityRole', 'activityPlaza', 'activityUser'].forEach(id => {
+    ['activityType', 'activityRole', 'activityPlaza', 'activityUser'].forEach(id => {
       const element = document.getElementById(id);
       if (element) element.value = '';
     });
+    _selectedActivityActionFilters.clear();
+    renderActivityActionFilterOptions();
+    updateActivityActionFilterLabel();
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div>';
     document.getElementById('activityRoutesReport').style.display = 'none';
     try {
@@ -3549,21 +3643,15 @@
 
   window.renderActivities = function() {
     const type = document.getElementById('activityType').value;
-    const prospectStage = document.getElementById('activityProspectStage').value;
     const role = normaliseActivityText(document.getElementById('activityRole').value);
     const plaza = normaliseActivityText(document.getElementById('activityPlaza').value);
-    const action = normaliseActivityText(document.getElementById('activityAction').value);
     const userSearch = document.getElementById('activityUser').value;
     _activitiesFiltered = _activitiesData.filter(record => {
       const recordType = activityCategory(record);
       const recordRole = normaliseActivityText(record.rol);
       const recordPlaza = normaliseActivityText(record.plaza);
-      const searchable = normaliseActivityText([
-        record.gestion_realizada, record.tipo_accion, record.nombre_contacto, record.nombre_prospecto,
-        record.motivos_no_cita && record.motivos_no_cita.join(' '), record.comentarios, record.observaciones,
-      ].filter(Boolean).join(' '));
-      return (!type || recordType === type) && (!prospectStage || (recordType === 'PROSPECCION' && prospectWorkflowStage(record) === prospectStage)) && (!role || recordRole === role) && (!plaza || recordPlaza === plaza)
-        && (!action || searchable.includes(action)) && matchesActivityUser(record, userSearch);
+      return (!type || recordType === type) && (!role || recordRole === role) && (!plaza || recordPlaza === plaza)
+        && activityMatchesSelectedActions(record) && matchesActivityUser(record, userSearch);
     });
     const visibleRecords = _activitiesFiltered.slice(0, _activitiesVisibleCount);
     const remainingRecords = Math.max(0, _activitiesFiltered.length - visibleRecords.length);
@@ -3594,7 +3682,8 @@
 
     const container = document.getElementById('activitiesTableContainer');
     if (!_activitiesFiltered.length) {
-      container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No hay actividades con esos filtros.</div></div>';
+      const nextPage = serverHasMore ? `<div style="margin-top:13px"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Buscar en las siguientes ${ACTIVITY_RESULTS_PAGE_SIZE} actividades</button><div style="font-size:12px;color:#667085;margin-top:8px">La búsqueda se realiza por páginas para no descargar el periodo completo.</div></div>` : '';
+      container.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No hay actividades coincidentes en las cargadas hasta ahora.</div>${nextPage}</div>`;
       return;
     }
     const renderActivityCard = (record) => {
