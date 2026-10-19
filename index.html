@@ -1310,6 +1310,18 @@
       && ['RECHAZADA_POR_PROSPECTO', 'RECHAZADA_CREDITO_RIESGO'].includes(prospectWorkflowStage(record));
   }
 
+  function isOpenPaymentFollowUpRecord(record) {
+    if (String(record?.tipo || '').toUpperCase() !== 'COBRANZA') return false;
+    if (record?.gestion_realizada === 'Recepción de pago') return !record?.comprobacion_id;
+    if (record?.gestion_realizada === 'Promesa de pago') {
+      return !record?.recepcion_pago_id
+        && !record?.comprobacion_id
+        && !record?.comprobacion_digital_id
+        && !record?.renuencia_pago_id;
+    }
+    return false;
+  }
+
   async function flushActivitySummaryBatch(records) {
     const changes = {};
     records.forEach(record => {
@@ -1327,13 +1339,18 @@
         if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
         changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
       }
+      if (String(record?.tipo || '').toUpperCase() === 'COBRANZA') {
+        const openPaymentFollowUp = isOpenPaymentFollowUpRecord(record);
+        changes[`activity_summaries/open_payment_followups/users/${uid}/${id}`] = openPaymentFollowUp ? summary : null;
+        if (plaza) changes[`activity_summaries/open_payment_followups/plazas/${plaza}/${id}`] = openPaymentFollowUp ? summary : null;
+      }
     });
     if (Object.keys(changes).length) await update(ref(database), changes);
   }
 
   window.rebuildActivitySummaries = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirán los índices de Prospección activa por plaza y de rechazados por usuario. Puede tardar si existe mucho historial. ¿Continuar?')) return;
+    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirán los índices de Prospección activa por plaza, rechazados por usuario y seguimientos abiertos de Cobranza por usuario y plaza. Puede tardar si existe mucho historial. ¿Continuar?')) return;
     const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir fichas'));
     if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo…'; }
     let cursor = null;
@@ -1365,7 +1382,7 @@
         if (button) button.textContent = `⏳ ${indexed} fichas…`;
       }
       recordPanelDataUsage('PANEL_REBUILD_ACTIVITY_SUMMARIES', { records: scanned, payload: { scanned, indexed }, scope: 'Reconstrucción manual de fichas ligeras' });
-      alert(`✅ Fichas ligeras reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nLa app descargará ahora sólo estas fichas al abrir Actividades. El expediente, foto, firma y ubicación se pedirán al tocar cada botón.`);
+      alert(`✅ Fichas ligeras reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nLa app descargará ahora sólo estas fichas al abrir Actividades. Los seguimientos abiertos de Cobranza se consultarán completos desde su índice ligero; el expediente, foto, firma y ubicación se pedirán al tocar cada botón.`);
     } catch (error) {
       alert(`❌ No se pudieron reconstruir las fichas: ${error?.message || 'Error desconocido'}`);
     } finally {
