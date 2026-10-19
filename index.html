@@ -1275,6 +1275,7 @@
     'comprobacion_digital_id', 'renuencia_pago_id', 'monto_recibido', 'monto_depositado', 'folio_recibo', 'folio_comprobante',
     'tiene_evidencia', 'tiene_firma_promesa', 'verificacion_domiciliaria', 'verificacion_comercial', 'cerrado_en',
     'motivo_rechazo_prospecto', 'motivo_rechazo_credito', 'motivo_cierre', 'tipo_cierre',
+    'cierre_negativo_en', 'cierre_negativo_por_uid', 'cierre_negativo_por_nombre', 'cancelado_en', 'cancelado_por',
   ];
 
   function cleanActivitySummaryValue(value) {
@@ -1307,7 +1308,12 @@
 
   function isRejectedProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
-      && ['RECHAZADA_POR_PROSPECTO', 'RECHAZADA_CREDITO_RIESGO'].includes(prospectWorkflowStage(record));
+      && prospectWorkflowStage(record) === 'RECHAZADA_CREDITO_RIESGO';
+  }
+
+  function isCancelledProspectRecord(record) {
+    return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
+      && ['RECHAZADA_POR_PROSPECTO', 'CANCELADA'].includes(prospectWorkflowStage(record));
   }
 
   function isOpenPaymentFollowUpRecord(record) {
@@ -1328,6 +1334,7 @@
       const id = String(record?.id || '').trim();
       const uid = String(record?.user_uid || record?.uid || '').trim();
       const plaza = String(record?.plaza || '').trim().toUpperCase();
+      const cancelledByUid = String(record?.cierre_negativo_por_uid || '').trim();
       if (!id || !uid) return;
       const summary = buildActivitySummary(record);
       changes[`activity_summaries/users/${uid}/${id}`] = summary;
@@ -1335,9 +1342,12 @@
       if (String(record?.tipo || '').toUpperCase() === 'PROSPECCION') {
         const active = isActiveProspectRecord(record);
         const rejected = isRejectedProspectRecord(record);
+        const cancelled = isCancelledProspectRecord(record);
         changes[`activity_summaries/active_prospects/${id}`] = active ? summary : null;
         if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
         changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
+        changes[`activity_summaries/cancelled_prospects/users/${uid}/${id}`] = cancelled ? summary : null;
+        if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/cancelled_prospects/users/${cancelledByUid}/${id}`] = cancelled ? summary : null;
       }
       if (String(record?.tipo || '').toUpperCase() === 'COBRANZA') {
         const openPaymentFollowUp = isOpenPaymentFollowUpRecord(record);
@@ -1350,7 +1360,7 @@
 
   window.rebuildActivitySummaries = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirán los índices de Prospección activa por plaza, rechazados por usuario y seguimientos abiertos de Cobranza por usuario y plaza. Puede tardar si existe mucho historial. ¿Continuar?')) return;
+    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirán los índices de Prospección activa por plaza, rechazados y cancelados por usuario, y seguimientos abiertos de Cobranza por usuario y plaza. Puede tardar si existe mucho historial. ¿Continuar?')) return;
     const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir fichas'));
     if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo…'; }
     let cursor = null;
@@ -1382,7 +1392,7 @@
         if (button) button.textContent = `⏳ ${indexed} fichas…`;
       }
       recordPanelDataUsage('PANEL_REBUILD_ACTIVITY_SUMMARIES', { records: scanned, payload: { scanned, indexed }, scope: 'Reconstrucción manual de fichas ligeras' });
-      alert(`✅ Fichas ligeras reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nLa app descargará ahora sólo estas fichas al abrir Actividades. Los seguimientos abiertos de Cobranza se consultarán completos desde su índice ligero; el expediente, foto, firma y ubicación se pedirán al tocar cada botón.`);
+      alert(`✅ Fichas ligeras reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nLa app descargará ahora sólo estas fichas al abrir Actividades. También quedan separados los expedientes rechazados por Crédito y Riesgo de los cancelados o sin cita inicial. El expediente, foto, firma y ubicación se pedirán al tocar cada botón.`);
     } catch (error) {
       alert(`❌ No se pudieron reconstruir las fichas: ${error?.message || 'Error desconocido'}`);
     } finally {

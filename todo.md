@@ -42,3 +42,4 @@
 - [x] Incluir el índice activo de Prospección por plaza en la reconstrucción controlada para restaurar Asignación gerencial.
 - [x] Reconstruir el índice ligero individual de expedientes rechazados desde el panel.
 - [x] Incluir seguimientos abiertos de Cobranza en la reconstrucción ligera controlada de Soporte.
+- [x] Reconstruir el índice ligero individual de expedientes cancelados de Prospección.
