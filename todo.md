@@ -44,3 +44,4 @@
 - [x] Incluir seguimientos abiertos de Cobranza en la reconstrucción ligera controlada de Soporte.
 - [x] Reconstruir el índice ligero individual de expedientes cancelados de Prospección.
 - [x] Corregir normalización de tipo Prospección, sustituir etapa por selección múltiple de actividades y validar todos los filtros del panel.
+- [x] Cargar para Gráficos todos los registros de texto del rango y filtros actuales, por páginas y sin evidencias, independiente de las 50 tarjetas visibles.

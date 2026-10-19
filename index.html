@@ -703,7 +703,7 @@
   </div>
 
   <details id="activityGraphicsSection" style="margin-bottom:18px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;overflow:hidden" ontoggle="window.initializeActivityGraphics(this)">
-    <summary style="cursor:pointer;padding:15px 17px;color:#5B21B6;font-weight:900;font-size:15px">📊 Gráficos y análisis del resultado filtrado</summary>
+    <summary style="cursor:pointer;padding:15px 17px;color:#5B21B6;font-weight:900;font-size:15px">📊 Gráficos y análisis del rango filtrado</summary>
     <div style="padding:0 17px 17px">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 13px"><p style="margin:0;color:#5B21B6;font-size:13px;line-height:1.45">El análisis general se muestra aquí. Los reportes detallados se abren en una ventana para mantener la pantalla principal limpia.</p><div style="display:flex;gap:7px;flex-wrap:wrap"><button class="btn-export" style="background:#6D28D9;padding:8px 10px;font-size:12px" onclick="window.openAnnualFeedbackModal()">📈 Retroalimentación anual</button><button class="btn-export" style="background:#7C3AED;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('GENERAL')">🥧 Respuestas General</button><button class="btn-export" style="background:#15803D;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('COBRANZA')">🥧 Respuestas Cobranza</button><button class="btn-export" style="background:#2563EB;padding:8px 10px;font-size:12px" onclick="window.openResponseChartsModal('PROSPECCION')">🥧 Respuestas Prospección</button></div></div>
       <div id="activityPerformanceContainer" style="color:#166534;font-size:13px">Realiza una búsqueda y abre este bloque para cargar el análisis general.</div>
@@ -2513,6 +2513,9 @@
   const ACTIVITY_RESULTS_PAGE_SIZE = 50;
   const _activityDetailCache = new Map();
   let _activityPageSession = null;
+  let _activityAnalysisData = null;
+  let _activityAnalysisSignature = '';
+  let _activityAnalysisLoading = null;
   let _activityResponseChartType = null;
   let _prospectAdminData = [];
   let _activityProfile = null;
@@ -2634,14 +2637,45 @@
   function activityFilterRecordAction(record) {
     return normaliseActivityText(record.gestion_realizada || record.tipo_accion || record.accion_prospeccion || '');
   }
-  function activityMatchesSelectedActions(record) {
-    if (!_selectedActivityActionFilters.size) return true;
+  function activityMatchesSelectedActions(record, selectedActions = _selectedActivityActionFilters) {
+    if (!selectedActions?.size) return true;
     const type = activityCategory(record);
     const action = activityFilterRecordAction(record);
-    return Array.from(_selectedActivityActionFilters).some(key => {
+    return Array.from(selectedActions).some(key => {
       const [selectedType, selectedAction] = String(key).split('|');
       return selectedType === type && (selectedAction === '*' || selectedAction === action);
     });
+  }
+  function currentActivityFilterCriteria() {
+    const startValue = document.getElementById('activityStartDate')?.value || '';
+    const endValue = document.getElementById('activityEndDate')?.value || '';
+    const start = startValue ? new Date(startValue + 'T00:00:00').getTime() : 0;
+    const end = endValue ? new Date(endValue + 'T23:59:59.999').getTime() : 0;
+    return {
+      startValue, endValue, start, end,
+      type: normaliseActivityText(document.getElementById('activityType')?.value || ''),
+      role: normaliseActivityText(document.getElementById('activityRole')?.value || ''),
+      plaza: normaliseActivityText(document.getElementById('activityPlaza')?.value || ''),
+      userSearch: document.getElementById('activityUser')?.value || '',
+      actions: new Set(_selectedActivityActionFilters),
+    };
+  }
+  function activityFilterSignature(criteria) {
+    return JSON.stringify({ ...criteria, actions: Array.from(criteria.actions || []).sort() });
+  }
+  function activityMatchesCriteria(record, criteria) {
+    const recordType = activityCategory(record);
+    const recordRole = normaliseActivityText(record.rol);
+    const recordPlaza = normaliseActivityText(record.plaza);
+    const movementAt = recordType === 'PROSPECCION'
+      ? Number(record._expediente_ultimo_movimiento || record.actualizado_en || activityCreatedTimestamp(record) || 0)
+      : Number(activityCreatedTimestamp(record) || 0);
+    return movementAt >= criteria.start && movementAt <= criteria.end
+      && (!criteria.type || recordType === criteria.type)
+      && (!criteria.role || recordRole === criteria.role)
+      && (!criteria.plaza || recordPlaza === criteria.plaza)
+      && activityMatchesSelectedActions(record, criteria.actions)
+      && matchesActivityUser(record, criteria.userSearch);
   }
   function renderActivityActionFilterOptions() {
     const target = document.getElementById('activityActionOptions');
@@ -2796,6 +2830,31 @@
     };
   }
 
+  function activityAnalysisPreview(record) {
+    const source = record || {};
+    return {
+      ...activityPreview(source),
+      accion_prospeccion: source.accion_prospeccion,
+      modalidad_prospeccion: source.modalidad_prospeccion,
+      tipo_prospeccion: source.tipo_prospeccion,
+      tipo_prospeccion_otro: source.tipo_prospeccion_otro,
+      referido_interno: source.referido_interno,
+      motivo_no_cita: source.motivo_no_cita,
+      motivo_no_agenda: source.motivo_no_agenda,
+      motivo: source.motivo,
+      comentarios: source.comentarios,
+      observaciones: source.observaciones,
+      has_evidence: Boolean(source.has_evidence || source.tiene_evidencia),
+      estatus_alta: source.estatus_alta,
+      estado_alta: source.estado_alta,
+      status_alta: source.status_alta,
+      expediente_prospeccion_id: source.expediente_prospeccion_id,
+      prospecto_raiz_id: source.prospecto_raiz_id,
+      seguimiento_de: source.seguimiento_de,
+      es_expediente_prospeccion: source.es_expediente_prospeccion,
+    };
+  }
+
   async function loadFullActivityRecord(record, action = 'PANEL_ACTIVITY_DETAIL_VIEW') {
     if (!record?.id) return null;
     const path = activityRecordPath(record);
@@ -2824,7 +2883,7 @@
     return results;
   }
 
-  async function loadActivityTextPage(session) {
+  async function loadActivityTextPage(session, previewBuilder = activityPreview) {
     const snap = await get(query(
       ref(database, 'gestor_activities'),
       orderByKey(),
@@ -2838,7 +2897,7 @@
       const value = child.val() || {};
       scannedKeys.push(String(child.key));
       if (!isStoredActivityRecord(value) || session.seen.has(String(child.key))) return;
-      rows.push(activityPreview({ id: child.key, ...value, _activity_path: `gestor_activities/${child.key}` }));
+      rows.push(previewBuilder({ id: child.key, ...value, _activity_path: `gestor_activities/${child.key}` }));
     });
     rows.sort((a, b) => Number(activityCreatedTimestamp(b) || 0) - Number(activityCreatedTimestamp(a) || 0));
     const page = rows.slice(0, ACTIVITY_RESULTS_PAGE_SIZE);
@@ -2848,6 +2907,47 @@
     if (nextCursor) session.cursorKey = String(nextCursor);
     session.hasMore = scannedKeys.length > ACTIVITY_RESULTS_PAGE_SIZE && Boolean(nextCursor);
     return { page, payload: snap.val() };
+  }
+
+  async function loadActivityAnalysisData() {
+    const criteria = currentActivityFilterCriteria();
+    if (!criteria.startValue || !criteria.endValue || criteria.start > criteria.end) {
+      throw new Error('Selecciona un rango válido de fechas antes de abrir los gráficos.');
+    }
+    const signature = activityFilterSignature(criteria);
+    if (_activityAnalysisData && _activityAnalysisSignature === signature) return _activityAnalysisData;
+    if (_activityAnalysisLoading?.signature === signature) return _activityAnalysisLoading.promise;
+    const promise = (async () => {
+      const session = {
+        start: criteria.start,
+        end: criteria.end,
+        cursorKey: firebasePushIdBoundary(criteria.end, 'z'),
+        seen: new Set(),
+        hasMore: false,
+      };
+      const raw = [];
+      const payloads = [];
+      do {
+        const next = await loadActivityTextPage(session, activityAnalysisPreview);
+        raw.push(...next.page);
+        payloads.push(next.payload);
+      } while (session.hasMore);
+      const scoped = raw.filter(record => isInManagerActivityScope(record));
+      const consolidated = consolidateProspectFiles(scoped).filter(record => activityMatchesCriteria(record, criteria));
+      _activityAnalysisData = consolidated;
+      _activityAnalysisSignature = signature;
+      recordPanelDataUsage('PANEL_ACTIVITY_GRAPHICS_RANGE', {
+        records: consolidated.length,
+        payload: payloads,
+        scope: `${criteria.startValue} a ${criteria.endValue} · análisis del rango · sin fotos`,
+      });
+      return consolidated;
+    })();
+    _activityAnalysisLoading = { signature, promise };
+    try { return await promise; }
+    finally {
+      if (_activityAnalysisLoading?.signature === signature) _activityAnalysisLoading = null;
+    }
   }
 
   /** Consolida los seguimientos técnicos de Prospección en una sola tarjeta por expediente raíz. */
@@ -3012,23 +3112,36 @@
     if (modal) modal.style.display = visible ? 'block' : 'none';
   }
 
-  window.initializeActivityGraphics = function(details) {
+  window.initializeActivityGraphics = async function(details) {
     if (!details?.open) return;
-    window.renderActivityPerformanceDashboard();
-    window.tidyActivityDataReading();
+    const container = document.getElementById('activityPerformanceContainer');
+    if (container) container.innerHTML = '<div style="background:#fff;border:1px solid #DDD6FE;border-radius:10px;padding:14px;color:#5B21B6">⏳ Cargando análisis del rango y filtros seleccionados, sin evidencias...</div>';
+    try {
+      const records = await loadActivityAnalysisData();
+      window.renderActivityPerformanceDashboard(records);
+      window.tidyActivityDataReading();
+    } catch (error) {
+      if (container) container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;color:#B91C1C">❌ No se pudo cargar el análisis: ${activityText(error.message)}</div>`;
+    }
   };
   window.openPendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', true); };
   window.closePendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', false); };
   window.openAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', true); };
   window.closeAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', false); };
-  window.openResponseChartsModal = function(type) {
+  window.openResponseChartsModal = async function(type) {
     const requested = normaliseActivityText(type);
     const normalisedType = ['GENERAL', 'COBRANZA', 'PROSPECCION'].includes(requested) ? requested : 'PROSPECCION';
     _activityResponseChartType = normalisedType;
     const title = document.getElementById('activityResponseChartsTitle');
+    const container = document.getElementById('activityResponseChartsContainer');
     if (title) title.textContent = `🥧 Respuestas de ${activityCategoryLabel(normalisedType)}`;
     setActivityModalVisibility('activityResponseChartsModal', true);
-    window.renderActivityResponseCharts(normalisedType);
+    if (container) container.innerHTML = '<div style="background:#fff;border:1px solid #BFDBFE;border-radius:10px;padding:14px;color:#1D4ED8">⏳ Cargando respuestas del rango y filtros seleccionados, sin evidencias...</div>';
+    try {
+      window.renderActivityResponseCharts(normalisedType, await loadActivityAnalysisData());
+    } catch (error) {
+      if (container) container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;color:#B91C1C">❌ No se pudieron cargar las respuestas: ${activityText(error.message)}</div>`;
+    }
   };
   window.closeResponseChartsModal = function() {
     _activityResponseChartType = null;
@@ -3301,9 +3414,9 @@
     }
   };
 
-  window.renderActivityResponseCharts = function(type) {
+  window.renderActivityResponseCharts = function(type, sourceRecords = _activityAnalysisData || _activitiesFiltered) {
     const container = document.getElementById('activityResponseChartsContainer');
-    const records = (_activitiesFiltered || []).filter(record => activityCategory(record) === type);
+    const records = (sourceRecords || []).filter(record => activityCategory(record) === type);
     if (!records.length) {
       container.innerHTML = `<div style="background:#fff;border:1px solid #BFDBFE;border-radius:10px;padding:14px;color:#1D4ED8">No hay registros de ${activityCategoryLabel(type)} dentro de la búsqueda actual.</div>`;
       return;
@@ -3364,9 +3477,9 @@
     container.innerHTML = `<div style="font-weight:900;color:#1D4ED8;margin-bottom:4px">Respuestas de ${activityCategoryLabel(type)} · ${records.length} registro(s)</div><div style="font-size:12px;color:#475569;margin-bottom:13px">Los porcentajes corresponden únicamente al resultado que cargaste con los filtros actuales.</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">${fields.map(([title, subtitle, entries]) => pie(title, subtitle, entries)).join('')}</div>`;
   };
 
-  window.renderActivityPerformanceDashboard = function() {
+  window.renderActivityPerformanceDashboard = function(sourceRecords = _activityAnalysisData || _activitiesFiltered) {
     const container = document.getElementById('activityPerformanceContainer');
-    const records = _activitiesFiltered || [];
+    const records = sourceRecords || [];
     if (!records.length) {
       container.innerHTML = '<div style="background:#fff;border:1px solid #BBF7D0;border-radius:10px;padding:14px;color:#166534">No hay actividades en la búsqueda actual. Ajusta filtros y presiona Buscar antes de generar el análisis.</div>';
       return;
@@ -3421,6 +3534,8 @@
     const start = new Date(startValue + 'T00:00:00').getTime();
     const end = new Date(endValue + 'T23:59:59.999').getTime();
     if (start > end) { alert('La fecha inicial no puede ser posterior a la fecha final.'); return; }
+    _activityAnalysisData = null;
+    _activityAnalysisSignature = '';
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">⏳ Cargando actividades...</div>';
     try {
       const manualRefresh = options === true || options?.force === true;
@@ -3642,17 +3757,8 @@
   window.viewProspectCalendarAppointment = function(id) { return window.viewActivityCalendarRecord(id, 'CITA'); };
 
   window.renderActivities = function() {
-    const type = document.getElementById('activityType').value;
-    const role = normaliseActivityText(document.getElementById('activityRole').value);
-    const plaza = normaliseActivityText(document.getElementById('activityPlaza').value);
-    const userSearch = document.getElementById('activityUser').value;
-    _activitiesFiltered = _activitiesData.filter(record => {
-      const recordType = activityCategory(record);
-      const recordRole = normaliseActivityText(record.rol);
-      const recordPlaza = normaliseActivityText(record.plaza);
-      return (!type || recordType === type) && (!role || recordRole === role) && (!plaza || recordPlaza === plaza)
-        && activityMatchesSelectedActions(record) && matchesActivityUser(record, userSearch);
-    });
+    const criteria = currentActivityFilterCriteria();
+    _activitiesFiltered = _activitiesData.filter(record => activityMatchesCriteria(record, criteria));
     const visibleRecords = _activitiesFiltered.slice(0, _activitiesVisibleCount);
     const remainingRecords = Math.max(0, _activitiesFiltered.length - visibleRecords.length);
     const serverHasMore = Boolean(_activityPageSession?.hasMore);
@@ -3672,12 +3778,11 @@
     const graphics = document.getElementById('activityGraphicsSection');
     const graphicsContainer = document.getElementById('activityPerformanceContainer');
     if (graphics?.open) {
-      window.renderActivityPerformanceDashboard();
-      window.tidyActivityDataReading();
+      void window.initializeActivityGraphics(graphics);
     }
-    else if (graphicsContainer) graphicsContainer.textContent = 'La búsqueda cambió. Abre este bloque para cargar el análisis general actualizado.';
+    else if (graphicsContainer) graphicsContainer.textContent = 'La búsqueda cambió. Abre este bloque para cargar el análisis completo del rango y filtros actuales.';
     if (_activityResponseChartType && document.getElementById('activityResponseChartsModal')?.style.display === 'block') {
-      window.renderActivityResponseCharts(_activityResponseChartType);
+      void window.openResponseChartsModal(_activityResponseChartType);
     }
 
     const container = document.getElementById('activitiesTableContainer');
