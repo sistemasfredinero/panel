@@ -45,3 +45,4 @@
 - [x] Reconstruir el índice ligero individual de expedientes cancelados de Prospección.
 - [x] Corregir normalización de tipo Prospección, sustituir etapa por selección múltiple de actividades y validar todos los filtros del panel.
 - [x] Cargar para Gráficos todos los registros de texto del rango y filtros actuales, por páginas y sin evidencias, independiente de las 50 tarjetas visibles.
+- [x] Reconstruir índices históricos de rechazos iniciales y seguimientos de pago abiertos sin modificar registros canónicos.

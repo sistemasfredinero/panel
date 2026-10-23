@@ -1283,7 +1283,8 @@
     'hora_cita', 'cita_timestamp', 'consulta_rafik_completada', 'lider_asignado_uid', 'lider_asignado_nombre',
     'lider_asignado_correo', 'responsable_promesa_uid', 'responsable_promesa_nombre', 'promesa_timestamp', 'fecha_promesa',
     'hora_promesa', 'fecha_promesa_no_confirmada', 'modalidad_promesa', 'recepcion_pago_id', 'comprobacion_id',
-    'comprobacion_digital_id', 'renuencia_pago_id', 'monto_recibido', 'monto_depositado', 'folio_recibo', 'folio_comprobante',
+    'comprobacion_digital_id', 'renuencia_pago_id', 'promesa_pago_id', 'modalidad_recepcion',
+    'estado_seguimiento_pago', 'estado_conciliacion', 'monto_recibido', 'monto_depositado', 'monto_comprobacion', 'folio_recibo', 'folio_comprobante',
     'tiene_evidencia', 'tiene_firma_promesa', 'verificacion_domiciliaria', 'verificacion_comercial', 'cerrado_en',
     'motivo_rechazo_prospecto', 'motivo_rechazo_credito', 'motivo_cierre', 'tipo_cierre',
     'cierre_negativo_en', 'cierre_negativo_por_uid', 'cierre_negativo_por_nombre', 'cancelado_en', 'cancelado_por',
@@ -1313,18 +1314,21 @@
 
   function isActiveProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
+      && record?.es_expediente_prospeccion !== false
       && !PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record))
       && prospectWorkflowStage(record) !== 'RECHAZADA_POR_PROSPECTO';
   }
 
   function isRejectedProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
-      && prospectWorkflowStage(record) === 'RECHAZADA_CREDITO_RIESGO';
+      && record?.es_expediente_prospeccion !== false
+      && ['RECHAZADA_POR_PROSPECTO', 'RECHAZADA_CREDITO_RIESGO'].includes(prospectWorkflowStage(record));
   }
 
   function isCancelledProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
-      && ['RECHAZADA_POR_PROSPECTO', 'CANCELADA'].includes(prospectWorkflowStage(record));
+      && record?.es_expediente_prospeccion !== false
+      && prospectWorkflowStage(record) === 'CANCELADA';
   }
 
   function isOpenPaymentFollowUpRecord(record) {
@@ -1357,6 +1361,7 @@
         changes[`activity_summaries/active_prospects/${id}`] = active ? summary : null;
         if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
         changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
+        if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/rejected_prospects/users/${cancelledByUid}/${id}`] = rejected ? summary : null;
         changes[`activity_summaries/cancelled_prospects/users/${uid}/${id}`] = cancelled ? summary : null;
         if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/cancelled_prospects/users/${cancelledByUid}/${id}`] = cancelled ? summary : null;
       }
