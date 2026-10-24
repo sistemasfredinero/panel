@@ -1322,13 +1322,13 @@
   function isRejectedProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
       && record?.es_expediente_prospeccion !== false
-      && ['RECHAZADA_POR_PROSPECTO', 'RECHAZADA_CREDITO_RIESGO'].includes(prospectWorkflowStage(record));
+      && prospectWorkflowStage(record) === 'RECHAZADA_CREDITO_RIESGO';
   }
 
   function isCancelledProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
       && record?.es_expediente_prospeccion !== false
-      && prospectWorkflowStage(record) === 'CANCELADA';
+      && ['CANCELADA', 'RECHAZADA_POR_PROSPECTO'].includes(prospectWorkflowStage(record));
   }
 
   function isOpenPaymentFollowUpRecord(record) {
@@ -1341,6 +1341,15 @@
         && !record?.renuencia_pago_id;
     }
     return false;
+  }
+
+  function prospectIndexOwnerIds(record) {
+    return Array.from(new Set([
+      record?.lider_asignado_uid,
+      record?.user_uid,
+      record?.uid,
+      record?.cierre_negativo_por_uid,
+    ].map(value => String(value || '').trim()).filter(Boolean)));
   }
 
   async function flushActivitySummaryBatch(records) {
@@ -1358,12 +1367,21 @@
         const active = isActiveProspectRecord(record);
         const rejected = isRejectedProspectRecord(record);
         const cancelled = isCancelledProspectRecord(record);
+        const prospectBucket = active ? 'ACTIVAS' : rejected ? 'RECHAZADAS' : cancelled ? 'CANCELADAS' : null;
         changes[`activity_summaries/active_prospects/${id}`] = active ? summary : null;
         if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
         changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
         if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/rejected_prospects/users/${cancelledByUid}/${id}`] = rejected ? summary : null;
         changes[`activity_summaries/cancelled_prospects/users/${uid}/${id}`] = cancelled ? summary : null;
         if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/cancelled_prospects/users/${cancelledByUid}/${id}`] = cancelled ? summary : null;
+        const buckets = ['ACTIVAS', 'RECHAZADAS', 'CANCELADAS'];
+        if (plaza) {
+          buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_plaza/${plaza}/${bucket}/${id}`] = bucket === prospectBucket ? summary : null; });
+          changes[`activity_summaries/prospect_pages/plazas_index/${plaza}`] = { plaza, actualizado_en: Date.now() };
+        }
+        prospectIndexOwnerIds(record).forEach(ownerUid => {
+          buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_leader/${ownerUid}/${bucket}/${id}`] = bucket === prospectBucket ? summary : null; });
+        });
       }
       if (String(record?.tipo || '').toUpperCase() === 'COBRANZA') {
         const openPaymentFollowUp = isOpenPaymentFollowUpRecord(record);
@@ -1376,7 +1394,7 @@
 
   window.rebuildActivitySummaries = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirán los índices de Prospección activa por plaza, rechazados y cancelados por usuario, y seguimientos abiertos de Cobranza por usuario y plaza. Puede tardar si existe mucho historial. ¿Continuar?')) return;
+    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirán las páginas de Prospección por plaza y responsable, los rechazos/cancelaciones y seguimientos abiertos de Cobranza. Puede tardar si existe mucho historial. ¿Continuar?')) return;
     const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir fichas'));
     if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo…'; }
     let cursor = null;
