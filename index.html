@@ -2960,30 +2960,85 @@
     return results;
   }
 
-  async function loadActivityTextPage(session, previewBuilder = activityPreview) {
-    const snap = await get(query(
-      ref(database, 'gestor_activities'),
-      orderByKey(),
-      startAt(firebasePushIdBoundary(session.start, '-')),
-      endAt(session.cursorKey),
-      limitToLast(ACTIVITY_RESULTS_PAGE_SIZE + 1),
-    ));
-    const rows = [];
-    const scannedKeys = [];
+  let _activityUserDirectory = null;
+
+  async function loadActivityUserDirectory() {
+    if (_activityUserDirectory) return _activityUserDirectory;
+    const snap = await get(ref(database, 'users'));
+    const users = [];
     if (snap.exists()) snap.forEach(child => {
       const value = child.val() || {};
-      scannedKeys.push(String(child.key));
-      if (!isStoredActivityRecord(value) || session.seen.has(String(child.key))) return;
-      rows.push(previewBuilder({ id: child.key, ...value, _activity_path: `gestor_activities/${child.key}` }));
+      users.push({ uid: String(child.key), nombre: value.nombre_completo || value.nombre || '', correo: value.correo || value.email || '' });
     });
+    _activityUserDirectory = users;
+    return users;
+  }
+
+  async function resolveActivitySearchSource(criteria) {
+    const plaza = normaliseActivityText(criteria?.plaza);
+    const rawUser = String(criteria?.userSearch || '').trim();
+    if (rawUser) {
+      const users = await loadActivityUserDirectory();
+      const matches = users.filter(user => matchesActivityUser({ nombre_usuario: user.nombre, correo_usuario: user.correo }, rawUser));
+      if (matches.length === 1 && matches[0]?.uid) {
+        return { path: `activity_summaries/users/${matches[0].uid}`, label: `índice de ${matches[0].nombre || matches[0].correo || 'usuario'}`, indexed: true };
+      }
+    }
+    if (plaza) return { path: `activity_summaries/plazas/${plaza}`, label: `índice de sucursal ${plaza}`, indexed: true };
+    return { path: 'gestor_activities', label: 'índice cronológico general', indexed: false };
+  }
+
+  function activityPageRecordMatches(record, criteria) {
+    if (!criteria) return true;
+    return isInManagerActivityScope(record) && activityMatchesCriteria(record, criteria);
+  }
+
+  async function loadActivityTextPage(session, previewBuilder = activityPreview, criteria = null) {
+    const rows = [...(session.pendingMatches || [])];
+    session.pendingMatches = [];
+    const payloads = [];
+    const targetMatches = ACTIVITY_RESULTS_PAGE_SIZE;
+    let canRead = true;
+    let guard = 0;
+    while (canRead && rows.length < targetMatches && guard < 200) {
+      guard += 1;
+      const previousCursor = session.cursorKey;
+      const snap = await get(query(
+        ref(database, session.sourcePath || 'gestor_activities'),
+        orderByKey(),
+        startAt(firebasePushIdBoundary(session.start, '-')),
+        endAt(session.cursorKey),
+        limitToLast(ACTIVITY_RESULTS_PAGE_SIZE + 1),
+      ));
+      payloads.push(snap.val());
+      const scannedKeys = [];
+      let newKeys = 0;
+      if (snap.exists()) snap.forEach(child => {
+        const key = String(child.key);
+        scannedKeys.push(key);
+        if (session.seen.has(key)) return;
+        session.seen.add(key);
+        newKeys += 1;
+        const value = child.val() || {};
+        if (!isStoredActivityRecord(value)) return;
+        const preview = previewBuilder({ id: child.key, ...value, _activity_path: `gestor_activities/${child.key}` });
+        if (activityPageRecordMatches(preview, criteria)) rows.push(preview);
+      });
+      const nextCursor = scannedKeys[0];
+      const cursorAdvanced = Boolean(nextCursor && nextCursor !== previousCursor);
+      if (cursorAdvanced) session.cursorKey = nextCursor;
+      // Cuando una página no alcanza 50 coincidencias, se avanza internamente
+      // hasta completar 50 o llegar al límite del rango. El usuario nunca debe
+      // recorrer manualmente filas que no cumplen sus filtros.
+      canRead = cursorAdvanced && newKeys >= ACTIVITY_RESULTS_PAGE_SIZE;
+      session.hasMore = canRead;
+      if (!canRead || !newKeys) break;
+    }
     rows.sort((a, b) => Number(activityCreatedTimestamp(b) || 0) - Number(activityCreatedTimestamp(a) || 0));
-    const page = rows.slice(0, ACTIVITY_RESULTS_PAGE_SIZE);
-    page.forEach(record => session.seen.add(String(record.id)));
-    const oldest = page[page.length - 1];
-    const nextCursor = oldest?.id || scannedKeys[0];
-    if (nextCursor) session.cursorKey = String(nextCursor);
-    session.hasMore = scannedKeys.length > ACTIVITY_RESULTS_PAGE_SIZE && Boolean(nextCursor);
-    return { page, payload: snap.val() };
+    const page = rows.slice(0, targetMatches);
+    session.pendingMatches = rows.slice(targetMatches);
+    session.hasMore = Boolean(session.hasMore || session.pendingMatches.length);
+    return { page, payload: payloads.length === 1 ? payloads[0] : payloads, scannedBatches: guard };
   }
 
   async function loadActivityAnalysisData() {
@@ -2995,17 +3050,21 @@
     if (_activityAnalysisData && _activityAnalysisSignature === signature) return _activityAnalysisData;
     if (_activityAnalysisLoading?.signature === signature) return _activityAnalysisLoading.promise;
     const promise = (async () => {
+      const source = await resolveActivitySearchSource(criteria);
       const session = {
         start: criteria.start,
         end: criteria.end,
         cursorKey: firebasePushIdBoundary(criteria.end, 'z'),
+        sourcePath: source.path,
+        sourceLabel: source.label,
         seen: new Set(),
+        pendingMatches: [],
         hasMore: false,
       };
       const raw = [];
       const payloads = [];
       do {
-        const next = await loadActivityTextPage(session, activityAnalysisPreview);
+        const next = await loadActivityTextPage(session, activityAnalysisPreview, criteria);
         raw.push(...next.page);
         payloads.push(next.payload);
       } while (session.hasMore);
@@ -3718,20 +3777,26 @@
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">⏳ Cargando actividades...</div>';
     try {
       const manualRefresh = options === true || options?.force === true;
+      const criteria = currentActivityFilterCriteria();
+      const source = await resolveActivitySearchSource(criteria);
       _activityPageSession = {
         start,
         end,
         cursorKey: firebasePushIdBoundary(end, 'z'),
+        sourcePath: source.path,
+        sourceLabel: source.label,
+        indexed: source.indexed,
         seen: new Set(),
+        pendingMatches: [],
         hasMore: false,
       };
-      const firstPage = await loadActivityTextPage(_activityPageSession);
+      const firstPage = await loadActivityTextPage(_activityPageSession, activityPreview, criteria);
       const rawRecords = firstPage.page;
-      window.__activitySearchSources = { direct: rawRecords.length, historical: 0, paginated: true };
+      window.__activitySearchSources = { direct: rawRecords.length, historical: 0, paginated: true, indexed: source.indexed, label: source.label, scannedBatches: firstPage.scannedBatches };
       recordPanelDataUsage('PANEL_ACTIVITY_SEARCH_PAGE', {
         records: rawRecords.length,
         payload: firstPage.payload,
-        scope: `${startValue} a ${endValue} · página 1${_activityPageSession.hasMore ? ' · hay más resultados' : ''}${manualRefresh ? ' · actualización manual' : ''}`,
+        scope: `${startValue} a ${endValue} · página 1 · ${source.label}${_activityPageSession.hasMore ? ' · hay más coincidencias' : ''}${manualRefresh ? ' · actualización manual' : ''}`,
       });
       const scopedRecords = [];
       rawRecords.forEach(record => { if (isInManagerActivityScope(record)) scopedRecords.push(record); });
@@ -3981,7 +4046,7 @@
     document.getElementById('activityEvidence').textContent = _activitiesFiltered.filter(x => x.tiene_evidencia).length;
     const sources = window.__activitySearchSources || {};
     const sourceLabel = sources.paginated
-      ? ` · ${Number(sources.direct || 0)} cargadas por páginas${serverHasMore ? ' · hay más disponibles' : ''}`
+      ? ` · ${Number(sources.direct || 0)} coincidencia(s) cargada(s)${sources.label ? ` · ${activityText(sources.label)}` : ''}${serverHasMore ? ' · hay más coincidencias' : ''}`
       : Number.isFinite(sources.direct) || Number.isFinite(sources.historical)
       ? ` · directas: ${Number(sources.direct || 0)} · históricas: ${Number(sources.historical || 0)}`
       : '';
@@ -3999,8 +4064,8 @@
 
     const container = document.getElementById('activitiesTableContainer');
     if (!_activitiesFiltered.length) {
-      const nextPage = serverHasMore ? `<div style="margin-top:13px"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Buscar en las siguientes ${ACTIVITY_RESULTS_PAGE_SIZE} actividades</button><div style="font-size:12px;color:#667085;margin-top:8px">La búsqueda se realiza por páginas para no descargar el periodo completo.</div></div>` : '';
-      container.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No hay actividades coincidentes en las cargadas hasta ahora.</div>${nextPage}</div>`;
+      const nextPage = serverHasMore ? `<div style="margin-top:13px"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Buscar las siguientes ${ACTIVITY_RESULTS_PAGE_SIZE} coincidencias</button><div style="font-size:12px;color:#667085;margin-top:8px">La búsqueda salta internamente los registros que no cumplen los filtros.</div></div>` : '';
+      container.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No hay actividades que cumplan los filtros actuales.</div>${nextPage}</div>`;
       return;
     }
     const renderActivityCard = (record) => {
@@ -4028,7 +4093,7 @@
       </div>`;
     };
     const loadMore = (remainingRecords || serverHasMore)
-      ? `<div style="padding:16px 0;text-align:center"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Cargar ${Math.min(ACTIVITY_RESULTS_PAGE_SIZE, remainingRecords || ACTIVITY_RESULTS_PAGE_SIZE)} más${remainingRecords ? ` · quedan ${remainingRecords}` : ''}</button></div>`
+      ? `<div style="padding:16px 0;text-align:center"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Cargar ${Math.min(ACTIVITY_RESULTS_PAGE_SIZE, remainingRecords || ACTIVITY_RESULTS_PAGE_SIZE)} coincidencias más${remainingRecords ? ` · quedan ${remainingRecords}` : ''}</button></div>`
       : '';
     if (!activityIsManagerScope()) {
       container.innerHTML = `<div class="record-list">${visibleRecords.map(renderActivityCard).join('')}</div>${loadMore}`;
@@ -4061,7 +4126,7 @@
       const previous = container?.innerHTML;
       if (container) container.style.opacity = '0.65';
       try {
-        const nextPage = await loadActivityTextPage(_activityPageSession);
+        const nextPage = await loadActivityTextPage(_activityPageSession, activityPreview, currentActivityFilterCriteria());
         const recordsByPath = new Map(_activitiesData.map(record => [activityRecordPath(record), record]));
         nextPage.page.forEach(record => recordsByPath.set(activityRecordPath(record), record));
         const allLoaded = Array.from(recordsByPath.values()).filter(record => isInManagerActivityScope(record));
@@ -4070,11 +4135,11 @@
           return timestamp >= _activityPageSession.start && timestamp <= _activityPageSession.end;
         });
         const sources = window.__activitySearchSources || {};
-        window.__activitySearchSources = { ...sources, direct: Number(sources.direct || 0) + nextPage.page.length, paginated: true };
+        window.__activitySearchSources = { ...sources, direct: Number(sources.direct || 0) + nextPage.page.length, paginated: true, scannedBatches: Number(sources.scannedBatches || 0) + Number(nextPage.scannedBatches || 0) };
         recordPanelDataUsage('PANEL_ACTIVITY_SEARCH_PAGE', {
           records: nextPage.page.length,
           payload: nextPage.payload,
-          scope: `Página adicional · ${nextPage.page.length} actividades`,
+          scope: `Página adicional · ${nextPage.page.length} coincidencias · ${_activityPageSession.sourceLabel || 'índice de actividades'}`,
         });
       } catch (error) {
         if (container) { container.style.opacity = ''; if (previous) container.innerHTML = previous; }
@@ -4515,12 +4580,10 @@
 
   function renderActivityRoutesReport(records) {
     const report = document.getElementById('activityRoutesReport');
-    if (!records.length) {
-      report.style.display = 'none';
-      return;
-    }
+    if (!report) return;
     report.style.display = '';
-    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px">Hay <b>${records.length}</b> actividad(es) en el resultado. Las ubicaciones GPS se consultarán únicamente al abrir el mapa.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Cargar rutas en mapa</button></div>`;
+    const pageCount = Number(records?.length || 0);
+    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px">${pageCount ? `Hay <b>${pageCount}</b> actividad(es) en esta página.` : 'Aún no hay coincidencias en esta página.'} El mapa consulta <b>todas las actividades que cumplen los filtros actuales</b> y carga GPS únicamente al abrirse.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Cargar rutas en mapa</button></div>`;
   }
 
   window.closeActivityRoutesMap = function() {
@@ -4540,14 +4603,7 @@
     }
     try {
       const loaded = await window.searchActivities({ force: true });
-      if (!loaded) return;
-      if (!(window.__activityRouteGroups || []).length) {
-        if (activityRoutesMapInstance) { activityRoutesMapInstance.remove(); activityRoutesMapInstance = null; }
-        const mapElement = document.getElementById('activityRoutesMap');
-        if (mapElement) mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#64748B">No hay actividades con ubicación GPS para mostrar con los filtros actuales.</div>';
-        return;
-      }
-      window.openActivityRoutesMap();
+      if (loaded) await window.openActivityRoutesMap();
     } finally {
       const refreshedButton = document.getElementById('refreshActivityRoutesMapBtn');
       if (refreshedButton) {
@@ -4560,31 +4616,55 @@
     }
   };
 
+  function createEmptyActivityRoutesMap(mapElement) {
+    if (activityRoutesMapInstance) { activityRoutesMapInstance.remove(); activityRoutesMapInstance = null; }
+    if (!window.L) {
+      mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#B91C1C">❌ No se pudo cargar el componente del mapa. Revisa tu conexión e inténtalo de nuevo.</div>';
+      return null;
+    }
+    mapElement.innerHTML = '';
+    const map = L.map('activityRoutesMap', { zoomControl: true, maxZoom: 22 }).setView([22.4, -98.2], 5);
+    activityRoutesMapInstance = map;
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+    setTimeout(() => map.invalidateSize(), 60);
+    return map;
+  }
+
+  function renderEmptyActivityRoutesMap(mapElement) {
+    const map = createEmptyActivityRoutesMap(mapElement);
+    if (!map) return;
+    const message = L.control({ position: 'topright' });
+    message.onAdd = function() {
+      const node = L.DomUtil.create('div');
+      node.style.cssText = 'background:#fff;padding:10px 12px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);max-width:280px;font:12px Segoe UI,Arial,sans-serif;color:#475569';
+      node.innerHTML = '<b style="color:#312E81">Mapa de rutas</b><br><span style="display:block;margin-top:4px">No hay actividades con ubicación GPS para los filtros actuales. Puedes mover y acercar el mapa normalmente.</span>';
+      L.DomEvent.disableClickPropagation(node);
+      L.DomEvent.disableScrollPropagation(node);
+      return node;
+    };
+    message.addTo(map);
+  }
+
   window.openActivityRoutesMap = async function() {
     const modal = document.getElementById('activityRoutesMapModal');
     const mapElement = document.getElementById('activityRoutesMap');
     modal.classList.add('active');
-    mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#4F46E5;font-weight:800">⏳ Consultando ubicaciones GPS del resultado...</div>';
+    mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#4F46E5;font-weight:800">⏳ Consultando todas las actividades que cumplen los filtros y sus ubicaciones GPS...</div>';
+    let records;
     let hydrated;
     try {
-      hydrated = await loadFullActivityRecords(_activitiesFiltered, 'PANEL_ACTIVITY_ROUTE_LOCATIONS');
+      records = await loadActivityAnalysisData();
+      hydrated = await loadFullActivityRecords(records, 'PANEL_ACTIVITY_ROUTE_LOCATIONS');
     } catch (error) {
       mapElement.innerHTML = `<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#B91C1C">❌ No se pudieron cargar las ubicaciones: ${activityText(error.message || 'error desconocido')}</div>`;
       return;
     }
     const groups = buildActivityRouteGroups(hydrated);
     window.__activityRouteGroups = groups;
-    if (!groups.length) { mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#64748B">No hay actividades con ubicación GPS para mostrar con los filtros actuales.</div>'; return; }
-    if (activityRoutesMapInstance) { activityRoutesMapInstance.remove(); activityRoutesMapInstance = null; }
-    if (!window.L) {
-      mapElement.innerHTML = '<div style="padding:24px;color:#B91C1C">❌ No se pudo cargar el componente del mapa. Revisa tu conexión e inténtalo de nuevo.</div>';
-      return;
-    }
-    const map = L.map('activityRoutesMap', { zoomControl: true, maxZoom: 22 }).setView([22.4, -98.2], 5);
-    activityRoutesMapInstance = map;
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
-    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
-
+    if (!groups.length) { renderEmptyActivityRoutesMap(mapElement); return; }
+    const map = createEmptyActivityRoutesMap(mapElement);
+    if (!map) return;
     const managementFilters = buildActivityRouteManagementFilters(groups);
     const userFilters = buildActivityRouteUserFilters(groups);
     const visibleManagements = new Set(managementFilters.map(filter => filter.key));

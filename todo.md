@@ -49,3 +49,4 @@
 - [x] Reconstruir los índices ligeros paginables de Prospección por plaza, líder y estado para la app móvil.
 - [x] Clasificar prospectos históricos sin cita inicial como Cancelados al reconstruir índices ligeros.
 - [x] Reorganizar Expedientes por estatus y plaza bajo demanda, ordenar Ritmo de operación descendente, acotar Calendario por mes/plaza y calcular días en la etapa actual.
+- [x] Cargar rutas con todos los resultados filtrados y completar páginas de 50 coincidencias sin obligar a recorrer actividades no coincidentes.
