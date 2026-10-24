@@ -50,3 +50,4 @@
 - [x] Clasificar prospectos históricos sin cita inicial como Cancelados al reconstruir índices ligeros.
 - [x] Reorganizar Expedientes por estatus y plaza bajo demanda, ordenar Ritmo de operación descendente, acotar Calendario por mes/plaza y calcular días en la etapa actual.
 - [x] Cargar rutas con todos los resultados filtrados y completar páginas de 50 coincidencias sin obligar a recorrer actividades no coincidentes.
+- [x] Eliminar también las fichas ligeras e índices derivados al borrar una actividad desde el panel.

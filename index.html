@@ -2902,6 +2902,9 @@
       hora_cita: source.hora_cita,
       cita_timestamp: source.cita_timestamp,
       estado_expediente: source.estado_expediente,
+      lider_asignado_uid: source.lider_asignado_uid,
+      cierre_negativo_por_uid: source.cierre_negativo_por_uid,
+      promesa_timestamp: source.promesa_timestamp,
       tiene_evidencia: source.tiene_evidencia === true,
       tiene_firma_promesa: source.tiene_firma_promesa === true,
     };
@@ -4401,6 +4404,58 @@
     } catch (error) { alert(`No se pudo cargar la ubicación: ${error.message || 'error desconocido'}`); }
   };
 
+  function activitySummaryDeletionChanges(record) {
+    const id = String(record?.id || '').trim();
+    const uid = String(record?.user_uid || record?.uid || '').trim();
+    const plaza = normaliseActivityText(record?.plaza);
+    const changes = {};
+    if (!id) return changes;
+    if (uid) changes[`activity_summaries/users/${uid}/${id}`] = null;
+    if (plaza) changes[`activity_summaries/plazas/${plaza}/${id}`] = null;
+
+    if (normaliseActivityText(record?.tipo) === 'PROSPECCION') {
+      changes[`activity_summaries/active_prospects/${id}`] = null;
+      if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = null;
+      const buckets = ['ACTIVAS', 'RECHAZADAS', 'CANCELADAS', 'ALTAS', 'RECHAZADAS_PROSPECTO', 'RECHAZADAS_CREDITO', 'PENDIENTES'];
+      const ownerIds = prospectIndexOwnerIds(record);
+      if (uid && !ownerIds.includes(uid)) ownerIds.push(uid);
+      const closingUid = String(record?.cierre_negativo_por_uid || '').trim();
+      if (closingUid && !ownerIds.includes(closingUid)) ownerIds.push(closingUid);
+      ownerIds.forEach(ownerUid => {
+        changes[`activity_summaries/rejected_prospects/users/${ownerUid}/${id}`] = null;
+        changes[`activity_summaries/cancelled_prospects/users/${ownerUid}/${id}`] = null;
+        buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_leader/${ownerUid}/${bucket}/${id}`] = null; });
+      });
+      if (plaza) {
+        buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_plaza/${plaza}/${bucket}/${id}`] = null; });
+        const appointmentMonth = activitySummaryMonth(record?.cita_timestamp);
+        if (appointmentMonth) changes[`activity_summaries/calendar/by_plaza/${plaza}/${appointmentMonth}/citas/${id}`] = null;
+      }
+    }
+
+    if (normaliseActivityText(record?.tipo) === 'COBRANZA') {
+      if (uid) changes[`activity_summaries/open_payment_followups/users/${uid}/${id}`] = null;
+      if (plaza) changes[`activity_summaries/open_payment_followups/plazas/${plaza}/${id}`] = null;
+      const promiseMonth = activitySummaryMonth(record?.promesa_timestamp);
+      if (plaza && promiseMonth) changes[`activity_summaries/calendar/by_plaza/${plaza}/${promiseMonth}/promesas/${id}`] = null;
+    }
+    return changes;
+  }
+
+  async function deleteActivityRecordAndIndexes(record) {
+    const id = String(record?.id || '').trim();
+    if (!id) throw new Error('No se recibió un identificador de actividad válido.');
+    let canonical = record;
+    try { canonical = await loadFullActivityRecord(record, 'PANEL_ACTIVITY_DELETE'); }
+    catch { /* La ficha ligera conserva los campos de índice necesarios como respaldo. */ }
+    const changes = {
+      [`gestor_activities/${id}`]: null,
+      [`gestor_photos/${id}`]: null,
+      ...activitySummaryDeletionChanges(canonical || record),
+    };
+    await update(ref(database), changes);
+  }
+
   window.deleteActivity = async function(id) {
     if (!activityCanManageAll()) { alert('No tienes permiso para eliminar actividades.'); return; }
     const record = _activitiesFiltered.find(x => x.id === id);
@@ -4408,7 +4463,7 @@
     const counterpart = record.nombre_contacto || record.nombre_prospecto || 'Sin nombre';
     if (!confirm(`Eliminar la actividad de ${counterpart} y toda su evidencia asociada. Esta acción no se puede deshacer.`)) return;
     try {
-      await update(ref(database), { [`gestor_activities/${id}`]: null, [`gestor_photos/${id}`]: null });
+      await deleteActivityRecordAndIndexes(record);
       alert('✅ Actividad y evidencia asociada eliminadas por completo.');
       await window.searchActivities();
     } catch (error) { alert(`❌ No se pudo eliminar la actividad: ${error.message}`); }
@@ -4422,8 +4477,19 @@
     if (!_activitiesFiltered.length) { alert('No hay actividades en el resultado actual para eliminar.'); return; }
     if (!confirm(`Eliminar ${_activitiesFiltered.length} actividad(es) del resultado actual y toda su evidencia asociada. Esta acción no se puede deshacer.`)) return;
     try {
+      const records = [..._activitiesFiltered];
+      // Se resuelve la ficha completa de cada registro sólo al confirmar el
+      // borrado, para limpiar sus rutas ligeras y evitar resultados fantasma.
+      const fullById = new Map((await loadFullActivityRecords(records, 'PANEL_ACTIVITY_DELETE_RANGE')).map(record => [record.id, record]));
       const updates = {};
-      _activitiesFiltered.forEach(record => { updates[`gestor_activities/${record.id}`] = null; updates[`gestor_photos/${record.id}`] = null; });
+      records.forEach(preview => {
+        const record = fullById.get(preview.id) || preview;
+        const id = String(record?.id || preview?.id || '').trim();
+        if (!id) return;
+        updates[`gestor_activities/${id}`] = null;
+        updates[`gestor_photos/${id}`] = null;
+        Object.assign(updates, activitySummaryDeletionChanges(record));
+      });
       await update(ref(database), updates);
       alert(`✅ Se eliminaron ${_activitiesFiltered.length} actividad(es) y sus evidencias asociadas.`);
       await window.searchActivities();
