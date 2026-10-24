@@ -725,6 +725,7 @@
       <button class="btn-export" style="background:#64748B" onclick="window.closeProspectAppointmentsCalendar()">✕ Cerrar calendario</button>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:#fff;border:1px solid #DCE7E2;border-radius:14px;padding:12px 14px"><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(-1)">← Mes anterior</button><div id="prospectCalendarTitle" style="font-size:19px;font-weight:900;color:#0F172A;text-transform:capitalize"></div><button class="btn-export" style="background:#0F766E" onclick="window.moveProspectCalendar(1)">Mes siguiente →</button></div>
+    <div id="prospectCalendarPlazaControls" style="display:none;gap:8px;flex-wrap:wrap;margin:-3px 0 14px"></div>
     <div id="prospectCalendarLegend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
     <div id="activityCalendarTodaySummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:14px"></div>
     <div id="prospectCalendarGrid" style="min-width:920px;display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:8px"></div>
@@ -734,8 +735,9 @@
 
 <div id="pendingProspectsModal" style="display:none;position:fixed;inset:0;z-index:1260;background:rgba(15,23,42,.55);overflow:auto;padding:28px">
   <div style="max-width:1050px;margin:0 auto;background:#FFF7ED;border:1px solid #FED7AA;border-radius:18px;padding:20px;box-shadow:0 24px 60px rgba(15,23,42,.25)">
-    <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:900;color:#9A3412">📌 Expedientes de Prospección</div><div style="font-size:12px;color:#9A3412;margin-top:3px">Consulta administrativa manual: pendientes, rechazos iniciales e historial completo de cierres.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closePendingProspectsModal()">✕ Cerrar</button></div>
-    <div style="margin-top:15px"><button class="btn-export" style="background:#EA580C" onclick="window.loadPendingProspects()">🔄 Cargar expedientes</button><div id="pendingProspectsContainer" style="margin-top:14px;color:#7C2D12;font-size:13px">Presiona el botón para consultar los expedientes.</div></div>
+    <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:900;color:#9A3412">📌 Expedientes de Prospección</div><div style="font-size:12px;color:#9A3412;margin-top:3px">Cada sección consulta sólo 10 fichas ligeras de la sucursal elegida. El detalle, fotos y bitácora se cargan al abrir un expediente.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closePendingProspectsModal()">✕ Cerrar</button></div>
+    <div id="pendingProspectsPlazaControls" style="display:none;gap:8px;flex-wrap:wrap;margin-top:15px"></div>
+    <div id="pendingProspectsContainer" style="margin-top:14px;color:#7C2D12;font-size:13px">Abre una sección para cargar sus expedientes.</div>
   </div>
 </div>
 
@@ -1277,9 +1279,9 @@
   const ACTIVITY_SUMMARY_FIELDS = [
     'id', 'uid', 'user_uid', 'nombre_usuario', 'correo_usuario', 'rol', 'plaza', 'tipo', 'categoria_actividad',
     'gestion_realizada', 'created_at', 'timestamp', 'actualizado_en', 'se_visita_a', 'numero_cliente', 'nombre_contacto',
-    'monto', 'estado_expediente', 'es_expediente_prospeccion', 'seguimiento_de', 'hilo_prospecto', 'numero_seguimiento',
+    'monto', 'estado_expediente', 'etapa_actual_desde', 'es_expediente_prospeccion', 'seguimiento_de', 'hilo_prospecto', 'numero_seguimiento',
     'nombre_prospecto', 'direccion_prospecto', 'direccion', 'telefono_prospecto', 'telefono', 'tipo_prospeccion',
-    'origen_prospeccion', 'tipo_accion', 'modalidad_prospeccion', 'accion_prospeccion', 'se_agenda_cita', 'fecha_cita',
+    'origen_prospeccion', 'tipo_accion', 'modalidad_prospeccion', 'accion_prospeccion', 'se_agenda_cita', 'estado_cita', 'fecha_cita',
     'hora_cita', 'cita_timestamp', 'consulta_rafik_completada', 'lider_asignado_uid', 'lider_asignado_nombre',
     'lider_asignado_correo', 'responsable_promesa_uid', 'responsable_promesa_nombre', 'promesa_timestamp', 'fecha_promesa',
     'hora_promesa', 'fecha_promesa_no_confirmada', 'modalidad_promesa', 'recepcion_pago_id', 'comprobacion_id',
@@ -1304,11 +1306,32 @@
     return output;
   }
 
+  function prospectStageTiming(record) {
+    const direct = Number(record?.etapa_actual_desde || 0);
+    if (direct > 0) return { timestamp: direct, source: 'REGISTRO' };
+    const currentStage = prospectWorkflowStage(record);
+    const history = Object.values(record?.historial_expediente || {})
+      .map(entry => ({ entry, timestamp: Number(entry?.fecha || 0) }))
+      .filter(item => item.timestamp > 0)
+      .sort((a, b) => a.timestamp - b.timestamp);
+    const matched = history.filter(item => String(item.entry?.etapa || '') === currentStage).pop();
+    if (matched) return { timestamp: matched.timestamp, source: 'HISTORIAL' };
+    const fallback = Number(record?.actualizado_en || activityCreatedTimestamp(record) || 0);
+    return { timestamp: fallback, source: 'APROXIMADO' };
+  }
+
   function buildActivitySummary(record) {
     const output = { id: String(record?.id || ''), indice_ligero: true, indice_actualizado_en: Date.now() };
     ACTIVITY_SUMMARY_FIELDS.forEach(field => {
       if (record?.[field] !== undefined) output[field] = cleanActivitySummaryValue(record[field]);
     });
+    if (normaliseActivityText(record?.tipo) === 'PROSPECCION') {
+      const timing = prospectStageTiming(record);
+      if (timing.timestamp > 0) {
+        output.etapa_actual_desde = timing.timestamp;
+        output.etapa_actual_desde_fuente = timing.source;
+      }
+    }
     return output;
   }
 
@@ -1352,6 +1375,28 @@
     ].map(value => String(value || '').trim()).filter(Boolean)));
   }
 
+  function prospectSectionBuckets(record) {
+    if (record?.es_expediente_prospeccion === false || normaliseActivityText(record?.tipo) !== 'PROSPECCION') return [];
+    const stage = prospectWorkflowStage(record);
+    const active = isActiveProspectRecord(record);
+    const rejected = isRejectedProspectRecord(record);
+    const cancelled = isCancelledProspectRecord(record);
+    const buckets = [];
+    if (active) buckets.push('ACTIVAS', 'PENDIENTES');
+    if (rejected) buckets.push('RECHAZADAS', 'RECHAZADAS_CREDITO');
+    if (cancelled) buckets.push('CANCELADAS');
+    if (stage === 'ALTA') buckets.push('ALTAS');
+    if (stage === 'RECHAZADA_POR_PROSPECTO') buckets.push('RECHAZADAS_PROSPECTO');
+    return buckets;
+  }
+
+  function activitySummaryMonth(timestamp) {
+    const value = Number(timestamp || 0);
+    if (!Number.isFinite(value) || value <= 0) return '';
+    const date = new Date(value);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }
+
   async function flushActivitySummaryBatch(records) {
     const changes = {};
     records.forEach(record => {
@@ -1367,26 +1412,34 @@
         const active = isActiveProspectRecord(record);
         const rejected = isRejectedProspectRecord(record);
         const cancelled = isCancelledProspectRecord(record);
-        const prospectBucket = active ? 'ACTIVAS' : rejected ? 'RECHAZADAS' : cancelled ? 'CANCELADAS' : null;
+        const sectionBuckets = prospectSectionBuckets(record);
         changes[`activity_summaries/active_prospects/${id}`] = active ? summary : null;
         if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
         changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
         if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/rejected_prospects/users/${cancelledByUid}/${id}`] = rejected ? summary : null;
         changes[`activity_summaries/cancelled_prospects/users/${uid}/${id}`] = cancelled ? summary : null;
         if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/cancelled_prospects/users/${cancelledByUid}/${id}`] = cancelled ? summary : null;
-        const buckets = ['ACTIVAS', 'RECHAZADAS', 'CANCELADAS'];
+        const buckets = ['ACTIVAS', 'RECHAZADAS', 'CANCELADAS', 'ALTAS', 'RECHAZADAS_PROSPECTO', 'RECHAZADAS_CREDITO', 'PENDIENTES'];
         if (plaza) {
-          buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_plaza/${plaza}/${bucket}/${id}`] = bucket === prospectBucket ? summary : null; });
+          buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_plaza/${plaza}/${bucket}/${id}`] = sectionBuckets.includes(bucket) ? summary : null; });
           changes[`activity_summaries/prospect_pages/plazas_index/${plaza}`] = { plaza, actualizado_en: Date.now() };
         }
         prospectIndexOwnerIds(record).forEach(ownerUid => {
-          buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_leader/${ownerUid}/${bucket}/${id}`] = bucket === prospectBucket ? summary : null; });
+          buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_leader/${ownerUid}/${bucket}/${id}`] = sectionBuckets.includes(bucket) ? summary : null; });
         });
+      }
+      if (plaza && normaliseActivityText(record?.tipo) === 'PROSPECCION') {
+        const month = activitySummaryMonth(record?.cita_timestamp);
+        const scheduled = record?.se_agenda_cita === true || record?.se_agenda_cita === 'SI';
+        if (month && scheduled && normaliseActivityText(record?.estado_cita) !== 'CANCELADA') changes[`activity_summaries/calendar/by_plaza/${plaza}/${month}/citas/${id}`] = summary;
       }
       if (String(record?.tipo || '').toUpperCase() === 'COBRANZA') {
         const openPaymentFollowUp = isOpenPaymentFollowUpRecord(record);
         changes[`activity_summaries/open_payment_followups/users/${uid}/${id}`] = openPaymentFollowUp ? summary : null;
         if (plaza) changes[`activity_summaries/open_payment_followups/plazas/${plaza}/${id}`] = openPaymentFollowUp ? summary : null;
+        const month = activitySummaryMonth(record?.promesa_timestamp);
+        const isPromise = normaliseActivityText(record?.gestion_realizada) === 'PROMESA DE PAGO';
+        if (plaza && month && isPromise && normaliseActivityText(record?.estado_seguimiento_pago) !== 'COMPROBADO') changes[`activity_summaries/calendar/by_plaza/${plaza}/${month}/promesas/${id}`] = summary;
       }
     });
     if (Object.keys(changes).length) await update(ref(database), changes);
@@ -2550,6 +2603,7 @@
   let _activityCalendarPromises = [];
   const _calendarDetailRecords = new Map();
   let _prospectCalendarSelectedDate = '';
+  let _prospectCalendarPlaza = '';
   const PROSPECT_CALENDAR_COLORS = {
     TAMPICO: '#2563EB', MADERO: '#7C3AED', MANTE: '#059669', POZA: '#EA580C', TUXPAN: '#DC2626',
     XALAPA: '#0891B2', PAPANTLA: '#BE123C', VALLES: '#4F46E5', SALTILLO: '#65A30D', ADMINISTRATIVO: '#A16207',
@@ -3126,7 +3180,7 @@
       scopeNote.textContent = PANEL_HEADER_CONTENT.activities.copy;
     }
     document.getElementById('deleteActivitiesBtn').style.display = activityCanManageAll() ? '' : 'none';
-    document.getElementById('prospectCalendarBtn').style.display = activityIsAdministrative() ? '' : 'none';
+    document.getElementById('prospectCalendarBtn').style.display = activityCanUseProspectCalendar() ? '' : 'none';
     await window.loadTodayProspectAppointments();
   };
 
@@ -3147,8 +3201,6 @@
       if (container) container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;color:#B91C1C">❌ No se pudo cargar el análisis: ${activityText(error.message)}</div>`;
     }
   };
-  window.openPendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', true); };
-  window.closePendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', false); };
   window.openAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', true); };
   window.closeAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', false); };
   window.openResponseChartsModal = async function(type) {
@@ -3191,38 +3243,45 @@
   window.loadTodayProspectAppointments = async function() {
     const container = document.getElementById('activityTodayAppointments');
     if (!container) return;
+    if (activityCanManageAll() || activityIsAdministrative()) {
+      container.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap"><div><strong style="font-size:16px">🗓️ Calendario de Actividades</strong><div style="font-size:13px;margin-top:4px;color:#047857">Selecciona una sucursal en el calendario para consultar únicamente su mes.</div></div><button type="button" class="btn-export" style="background:#0F766E;padding:8px 11px;font-size:12px" onclick="window.openProspectAppointmentsCalendar()">Abrir calendario</button></div>';
+      return;
+    }
+    const plaza = normaliseActivityText(_activityProfile?.plaza);
+    if (!plaza) {
+      container.innerHTML = '<strong>🗓️ Calendario de Actividades</strong><div style="font-size:13px;margin-top:4px;color:#B91C1C">No se pudo identificar la sucursal del usuario.</div>';
+      return;
+    }
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const end = new Date(); end.setHours(23, 59, 59, 999);
-    const from = start.getTime(); const to = end.getTime();
+    const monthKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
     try {
+      const base = `activity_summaries/calendar/by_plaza/${plaza}/${monthKey}`;
       const [appointmentSnap, promiseSnap] = await Promise.all([
-        get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(from), endAt(to))),
-        get(query(ref(database, 'gestor_activities'), orderByChild('promesa_timestamp'), startAt(from), endAt(to))),
+        get(ref(database, `${base}/citas`)),
+        get(ref(database, `${base}/promesas`)),
       ]);
+      const from = start.getTime(); const to = end.getTime();
       const citas = [];
       const promesas = [];
       if (appointmentSnap?.exists()) appointmentSnap.forEach(child => {
         const item = { id: child.key, ...(child.val() || {}) };
         const citaTimestamp = Number(item.cita_timestamp || 0);
         const scheduled = item.se_agenda_cita === true || item.se_agenda_cita === 'SI';
-        if (citaTimestamp >= from && citaTimestamp <= to && normaliseActivityText(item.activity_type || item.tipo) === 'PROSPECCION' && scheduled && normaliseActivityText(item.estado_cita) !== 'CANCELADA' && isInManagerActivityScope(item)) citas.push(item);
+        if (citaTimestamp >= from && citaTimestamp <= to && normaliseActivityText(item.tipo) === 'PROSPECCION' && scheduled && normaliseActivityText(item.estado_cita) !== 'CANCELADA') citas.push(item);
       });
       if (promiseSnap?.exists()) promiseSnap.forEach(child => {
         const item = { id: child.key, ...(child.val() || {}) };
         const promiseTimestamp = Number(item.promesa_timestamp || 0);
-        const isPromise = normaliseActivityText(item.activity_type || item.tipo) === 'COBRANZA' && normaliseActivityText(item.gestion_realizada) === 'PROMESA DE PAGO';
-        if (promiseTimestamp >= from && promiseTimestamp <= to && isPromise && normaliseActivityText(item.estado_seguimiento_pago) !== 'COMPROBADO' && isInManagerActivityScope(item)) promesas.push(item);
+        const isPromise = normaliseActivityText(item.tipo) === 'COBRANZA' && normaliseActivityText(item.gestion_realizada) === 'PROMESA DE PAGO';
+        if (promiseTimestamp >= from && promiseTimestamp <= to && isPromise && normaliseActivityText(item.estado_seguimiento_pago) !== 'COMPROBADO') promesas.push(item);
       });
       citas.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
       promesas.sort((a, b) => Number(a.promesa_timestamp) - Number(b.promesa_timestamp));
-      recordPanelDataUsage('PANEL_TODAY_ACTIVITY_CALENDAR', {
-        records: citas.length + promesas.length,
-        payload: [appointmentSnap.val(), promiseSnap.val()],
-        scope: activityDateInput(from),
-      });
+      recordPanelDataUsage('PANEL_TODAY_ACTIVITY_CALENDAR', { records: citas.length + promesas.length, payload: [appointmentSnap.val(), promiseSnap.val()], scope: `${plaza} · ${activityDateInput(from)} · índice mensual ligero` });
       const citaPreview = citas.slice(0, 2).map(item => `<span style="display:inline-block;background:#fff;border:1px solid #A7F3D0;border-radius:999px;padding:5px 9px;margin:8px 6px 0 0;font-size:12px;font-weight:700">${activityText(item.hora_cita || prospectTime(item.cita_timestamp))} · ${activityText(item.nombre_prospecto || 'Prospecto')}</span>`).join('');
       const promisePreview = promesas.slice(0, 2).map(item => `<span style="display:inline-block;background:#fff;border:1px solid #FED7AA;border-radius:999px;padding:5px 9px;margin:8px 6px 0 0;font-size:12px;font-weight:700;color:#9A3412">${activityText(item.hora_promesa || prospectTime(item.promesa_timestamp))} · ${activityText(item.nombre_contacto || 'Cliente')} · ${activityText(item.plaza || 'Sin plaza')}</span>`).join('');
-      container.innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap"><div><strong style="font-size:16px">🗓️ Calendario de Actividades · hoy</strong><div style="font-size:13px;margin-top:4px;color:#047857">${start.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}.</div></div><button type="button" class="btn-export" style="background:#0F766E;padding:8px 11px;font-size:12px" onclick="window.openProspectAppointmentsCalendar()">Abrir calendario</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:8px"><span style="background:#D1FAE5;color:#065F46;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900">Citas: ${citas.length}</span><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900">Promesas de pago: ${promesas.length}</span></div>${citaPreview || promisePreview ? `<div>${citaPreview}${promisePreview}</div>` : '<div style="font-size:13px;margin-top:9px;color:#047857">No hay citas ni promesas de pago programadas para hoy.</div>'}`;
+      container.innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;align-items:start;flex-wrap:wrap"><div><strong style="font-size:16px">🗓️ Calendario de Actividades · hoy</strong><div style="font-size:13px;margin-top:4px;color:#047857">${start.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })} · ${activityText(plaza)}.</div></div><button type="button" class="btn-export" style="background:#0F766E;padding:8px 11px;font-size:12px" onclick="window.openProspectAppointmentsCalendar()">Abrir calendario</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:8px"><span style="background:#D1FAE5;color:#065F46;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900">Citas: ${citas.length}</span><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900">Promesas de pago: ${promesas.length}</span></div>${citaPreview || promisePreview ? `<div>${citaPreview}${promisePreview}</div>` : '<div style="font-size:13px;margin-top:9px;color:#047857">No hay citas ni promesas de pago programadas para hoy.</div>'}`;
     } catch (error) {
       container.innerHTML = '<strong>🗓️ Calendario de Actividades</strong><div style="font-size:13px;margin-top:4px;color:#B91C1C">No se pudieron consultar las citas y promesas de hoy. Intenta recargar el módulo.</div>';
       console.error('Error cargando actividades de hoy:', error);
@@ -3234,51 +3293,148 @@
     window.showPanelHome();
   };
 
-  window.loadPendingProspects = async function() {
+  const PROSPECT_SECTION_PAGE_SIZE = 10;
+  const PROSPECT_SECTION_DEFINITIONS = [
+    { key: 'ALTAS', title: 'ALTAS', bucket: 'ALTAS', tone: '#15803D', empty: 'No hay altas en esta sucursal.' },
+    { key: 'RECHAZADAS_PROSPECTO', title: 'Rechazadas por prospecto', bucket: 'RECHAZADAS_PROSPECTO', tone: '#B45309', empty: 'No hay rechazos por prospecto.' },
+    { key: 'RECHAZADAS_CREDITO', title: 'Rechazadas por Crédito y Riesgo (VoBo)', bucket: 'RECHAZADAS_CREDITO', tone: '#B91C1C', empty: 'No hay rechazos por Crédito y Riesgo.' },
+    { key: 'PENDIENTES', title: 'Pendientes', bucket: 'PENDIENTES', tone: '#EA580C', empty: 'No hay expedientes pendientes.' },
+  ];
+  const PANEL_PLAZAS = ['TAMPICO', 'MADERO', 'MANTE', 'POZA', 'TUXPAN', 'PAPANTLA', 'VALLES', 'XALAPA', 'SALTILLO', 'ADMINISTRATIVO'];
+  let _prospectSectionsPlaza = '';
+  const _prospectSectionState = new Map();
+
+  function prospectSectionPlazas() {
+    if (activityCanManageAll() || activityIsAdministrative()) return PANEL_PLAZAS;
+    const ownPlaza = normaliseActivityText(_activityProfile?.plaza);
+    const covered = Array.isArray(_activityProfile?.plazas_cobertura)
+      ? _activityProfile.plazas_cobertura.map(normaliseActivityText)
+      : [];
+    // La gerente configurada para Tampico conserva la cobertura operativa de Madero.
+    if (String(auth.currentUser?.email || '').toLowerCase() === 'gerente.tampico@fredinero.com') covered.push('MADERO');
+    return Array.from(new Set([ownPlaza, ...covered].filter(Boolean)));
+  }
+
+  function prospectSectionIsPlazaSelector() {
+    return activityCanManageAll() || activityIsAdministrative();
+  }
+
+  function prospectStageAge(record) {
+    const direct = Number(record?.etapa_actual_desde || 0);
+    const fallback = Number(record?.actualizado_en || activityCreatedTimestamp(record) || 0);
+    const startedAt = direct || fallback;
+    const approximate = record?.etapa_actual_desde_fuente === 'APROXIMADO' || !direct;
+    if (!startedAt) return { label: 'Inicio de etapa no disponible', tone: 'background:#E2E8F0;color:#475569' };
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const started = new Date(startedAt); started.setHours(0, 0, 0, 0);
+    const days = Math.max(0, Math.floor((today.getTime() - started.getTime()) / 86400000));
+    const ageTone = days > 7 ? 'background:#FEE2E2;color:#B91C1C' : days > 3 ? 'background:#FEF3C7;color:#92400E' : 'background:#DCFCE7;color:#166534';
+    return { label: `${days} día${days === 1 ? '' : 's'} en esta etapa${approximate ? ' · aprox.' : ''}`, tone: ageTone };
+  }
+
+  function renderProspectSectionCard(record, tone) {
+    const source = activityText(record.tipo_prospeccion === 'Otra' ? (record.tipo_prospeccion_otro || 'Otra') : (record.tipo_prospeccion || 'Sin especificar'));
+    const status = activityText(prospectWorkflowLabel(record));
+    const appointment = record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : 'Sin cita programada';
+    const stageAge = prospectStageAge(record);
+    const verification = `Domiciliaria: ${activityText(prospectVerificationLabel(record.verificacion_domiciliaria?.estado))} · Comercial: ${activityText(record.verificacion_comercial?.requerida ? prospectVerificationLabel(record.verificacion_comercial?.estado) : 'No requerida')}`;
+    return `<button type="button" onclick="window.viewActivityDetail('${record.id}')" style="width:100%;text-align:left;background:#FFF;border:1px solid #FED7AA;border-left:4px solid ${tone};border-radius:10px;padding:12px;margin-top:9px;cursor:pointer"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><div style="font-weight:900;color:#7C2D12">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto sin nombre')}</div><div style="font-size:12px;color:#9A3412;margin-top:3px">${activityText(record.plaza || 'Sin plaza')} · ${activityText(record.nombre_usuario || record.lider_asignado_nombre || 'Sin responsable')}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${status}</span><span style="${stageAge.tone};border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${stageAge.label}</span></div></div><div style="font-size:12px;color:#7C2D12;margin-top:8px">${source} · ${activityText(record.tipo_accion || 'Sin acción')} · ${appointment}</div>${prospectVerificationVisible(record) ? `<div style="font-size:12px;color:#9A3412;margin-top:4px">${verification}</div>` : ''}<div style="font-size:12px;color:#9A3412;margin-top:4px">Teléfono: ${activityText(record.telefono || '—')} · Referido: ${activityText(record.referido_interno || '—')}</div></button>`;
+  }
+
+  function renderProspectSection(sectionKey) {
+    const section = PROSPECT_SECTION_DEFINITIONS.find(item => item.key === sectionKey);
+    const target = document.getElementById(`prospectSection_${sectionKey}`);
+    if (!section || !target) return;
+    const state = _prospectSectionState.get(sectionKey) || { records: [], cursor: '', hasMore: false, loading: false };
+    const records = state.records || [];
+    const cards = records.length ? records.map(record => renderProspectSectionCard(record, section.tone)).join('') : `<div style="background:#FFF;border:1px dashed #FED7AA;border-radius:10px;padding:12px;color:#9A3412;font-size:12px">${section.empty}</div>`;
+    const more = state.hasMore ? `<button type="button" class="btn-export" style="background:${section.tone};margin-top:12px" onclick="window.loadProspectSection('${sectionKey}')">Cargar 10 más</button>` : '';
+    target.innerHTML = cards + more;
+  }
+
+  function renderProspectSections() {
     const container = document.getElementById('pendingProspectsContainer');
-    container.innerHTML = '<div style="padding:8px 0;color:#9A3412">⏳ Cargando expedientes de Prospección...</div>';
+    if (!container) return;
+    const plaza = _prospectSectionsPlaza || 'SIN PLAZA';
+    container.innerHTML = `<div style="font-size:12px;color:#9A3412;margin-bottom:9px">Sucursal seleccionada: <b>${activityText(plaza)}</b>. Abre sólo la sección que quieras consultar.</div>${PROSPECT_SECTION_DEFINITIONS.map(section => `<details id="prospectSectionDetails_${section.key}" style="margin-top:10px;background:#FFF;border:1px solid #FED7AA;border-radius:12px;overflow:hidden"><summary style="cursor:pointer;padding:13px 14px;font-weight:900;color:#7C2D12">${section.title} <span style="font-size:11px;color:#9A3412;font-weight:700">· cargar 10 fichas</span></summary><div id="prospectSection_${section.key}" style="padding:0 12px 12px"></div></details>`).join('')}`;
+    PROSPECT_SECTION_DEFINITIONS.forEach(section => {
+      const details = document.getElementById(`prospectSectionDetails_${section.key}`);
+      if (details) details.addEventListener('toggle', () => { if (details.open && !_prospectSectionState.get(section.key)?.loaded) window.loadProspectSection(section.key, true); });
+    });
+  }
+
+  function renderProspectPlazaControls() {
+    const controls = document.getElementById('pendingProspectsPlazaControls');
+    if (!controls) return;
+    const plazas = prospectSectionPlazas();
+    if (!_prospectSectionsPlaza || !plazas.includes(_prospectSectionsPlaza)) _prospectSectionsPlaza = plazas[0] || '';
+    if (!prospectSectionIsPlazaSelector()) {
+      controls.style.display = 'flex';
+      controls.innerHTML = `<span style="font-size:12px;font-weight:800;color:#9A3412">Sucursal: ${activityText(_prospectSectionsPlaza || 'Sin plaza')}</span>`;
+      return;
+    }
+    controls.style.display = 'flex';
+    controls.innerHTML = `<span style="align-self:center;font-size:12px;font-weight:900;color:#9A3412">Sucursal:</span>${plazas.map(plaza => `<button type="button" class="btn-export" style="padding:7px 10px;background:${plaza === _prospectSectionsPlaza ? '#9A3412' : '#F59E0B'}" onclick="window.selectProspectSectionsPlaza('${plaza}')">${activityText(plaza)}</button>`).join('')}`;
+  }
+
+  window.selectProspectSectionsPlaza = function(plaza) {
+    const allowed = prospectSectionPlazas();
+    const selected = normaliseActivityText(plaza);
+    if (!allowed.includes(selected)) return;
+    _prospectSectionsPlaza = selected;
+    _prospectSectionState.clear();
+    renderProspectPlazaControls();
+    renderProspectSections();
+  };
+
+  window.openPendingProspectsModal = async function() {
+    if (!_activityProfile) {
+      try { _activityProfile = (await get(ref(database, `users/${auth.currentUser.uid}`))).val() || {}; } catch { _activityProfile = {}; }
+    }
+    _prospectSectionState.clear();
+    renderProspectPlazaControls();
+    renderProspectSections();
+    setActivityModalVisibility('pendingProspectsModal', true);
+  };
+  window.closePendingProspectsModal = function() { setActivityModalVisibility('pendingProspectsModal', false); };
+
+  window.loadProspectSection = async function(sectionKey, reset = false) {
+    const section = PROSPECT_SECTION_DEFINITIONS.find(item => item.key === sectionKey);
+    const plaza = _prospectSectionsPlaza;
+    if (!section || !plaza) return;
+    const current = _prospectSectionState.get(sectionKey) || { records: [], cursor: '', hasMore: true, loading: false, loaded: false };
+    if (current.loading) return;
+    const state = reset ? { records: [], cursor: '', hasMore: true, loading: false, loaded: false } : current;
+    if (!state.hasMore && state.loaded) return;
+    state.loading = true;
+    _prospectSectionState.set(sectionKey, state);
+    const target = document.getElementById(`prospectSection_${sectionKey}`);
+    if (target) target.innerHTML = '<div style="padding:10px 0;color:#9A3412">⏳ Cargando fichas ligeras...</div>';
     try {
-      const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION')));
-      const files = [];
+      const base = ref(database, `activity_summaries/prospect_pages/by_plaza/${plaza}/${section.bucket}`);
+      const pageSize = PROSPECT_SECTION_PAGE_SIZE + 1;
+      const pageQuery = state.cursor
+        ? query(base, orderByKey(), endAt(state.cursor), limitToLast(pageSize))
+        : query(base, orderByKey(), limitToLast(pageSize));
+      const snap = await get(pageQuery);
+      const page = [];
       if (snap.exists()) snap.forEach(child => {
-        const record = { id: child.key, ...(child.val() || {}) };
-        const isProspection = normaliseActivityText(record.tipo || record.activity_type) === 'PROSPECCION';
-        const isRootFile = record.es_expediente_prospeccion === true || !record.seguimiento_de;
-        if (isProspection && isRootFile) files.push(record);
+        if (child.key !== state.cursor) page.push({ id: child.key, ...(child.val() || {}) });
       });
-      recordPanelDataUsage('PANEL_PENDING_PROSPECTS', {
-        records: files.length,
-        payload: snap.val(),
-        scope: 'Expedientes de Prospección',
-      });
-      files.sort((a, b) => Number(b.actualizado_en || activityCreatedTimestamp(b) || 0) - Number(a.actualizado_en || activityCreatedTimestamp(a) || 0));
-      _prospectAdminData = files;
-      if (!files.length) {
-        container.innerHTML = '<div style="background:#FFF;border:1px solid #FED7AA;border-radius:10px;padding:13px;color:#9A3412">No hay expedientes de Prospección registrados.</div>';
-        return;
-      }
-      const renderFile = (record, tone = '#EA580C') => {
-        const source = activityText(record.tipo_prospeccion === 'Otra' ? (record.tipo_prospeccion_otro || 'Otra') : (record.tipo_prospeccion || 'Sin especificar'));
-        const status = activityText(prospectWorkflowLabel(record));
-        const appointment = record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : 'Sin cita programada';
-        const createdTimestamp = activityCreatedTimestamp(record);
-        const created = createdTimestamp ? new Date(createdTimestamp) : null;
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const createdDay = created ? new Date(created) : null;
-        if (createdDay) createdDay.setHours(0, 0, 0, 0);
-        const ageDays = createdDay ? Math.max(0, Math.floor((today.getTime() - createdDay.getTime()) / 86400000)) : null;
-        const ageLabel = ageDays === null ? 'Antigüedad no disponible' : ageDays === 0 ? 'Creada hoy' : `${ageDays} día${ageDays === 1 ? '' : 's'} pendiente`;
-        const ageStyle = ageDays !== null && ageDays > 7 ? 'background:#FEE2E2;color:#B91C1C' : ageDays !== null && ageDays > 3 ? 'background:#FEF3C7;color:#92400E' : 'background:#DCFCE7;color:#166534';
-        const verification = `Domiciliaria: ${activityText(prospectVerificationLabel(record.verificacion_domiciliaria?.estado))} · Comercial: ${activityText(record.verificacion_comercial?.requerida ? prospectVerificationLabel(record.verificacion_comercial?.estado) : 'No requerida')}`;
-        return `<button type="button" onclick="window.viewActivityDetail('${record.id}')" style="width:100%;text-align:left;background:#FFF;border:1px solid #FED7AA;border-left:4px solid ${tone};border-radius:10px;padding:12px;margin-top:9px;cursor:pointer"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><div style="font-weight:900;color:#7C2D12">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto sin nombre')}</div><div style="font-size:12px;color:#9A3412;margin-top:3px">${activityText(record.plaza || 'Sin plaza')} · ${activityText(record.nombre_usuario || 'Sin responsable')} · ${activityText(activityCreatedLabel(record))}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><span style="background:#FFEDD5;color:#9A3412;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${status}</span><span style="${ageStyle};border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900">${ageLabel}</span></div></div><div style="font-size:12px;color:#7C2D12;margin-top:8px">${source} · ${activityText(record.tipo_accion || 'Sin acción')} · ${appointment}</div>${prospectVerificationVisible(record) ? `<div style="font-size:12px;color:#9A3412;margin-top:4px">${verification}</div>` : ''}<div style="font-size:12px;color:#9A3412;margin-top:4px">Teléfono: ${activityText(record.telefono || '—')} · Referido: ${activityText(record.referido_interno || '—')}</div></button>`;
-      };
-      const pending = files.filter(record => !PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record)) && prospectWorkflowStage(record) !== 'RECHAZADA_POR_PROSPECTO');
-      const rejected = files.filter(record => prospectWorkflowStage(record) === 'RECHAZADA_POR_PROSPECTO');
-      const history = files.filter(record => PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record)));
-      const section = (title, items, tone, empty) => `<section style="margin-top:17px"><div style="font-weight:900;color:#7C2D12;margin-bottom:7px">${title} <span style="font-size:12px;font-weight:800;color:#9A3412">(${items.length})</span></div>${items.length ? items.map(record => renderFile(record, tone)).join('') : `<div style="background:#FFF;border:1px dashed #FED7AA;border-radius:10px;padding:12px;color:#9A3412;font-size:12px">${empty}</div>`}</section>`;
-      container.innerHTML = section('Pendientes', pending, '#EA580C', 'No hay expedientes pendientes.') + section('Rechazadas por prospecto', rejected, '#B45309', 'No hay rechazos iniciales.') + section('Historial administrativo completo', history, '#64748B', 'No hay expedientes finalizados.');
+      page.sort((a, b) => String(b.id).localeCompare(String(a.id)));
+      const nextRecords = page.slice(0, PROSPECT_SECTION_PAGE_SIZE);
+      state.records = [...state.records, ...nextRecords];
+      state.cursor = nextRecords.length ? nextRecords[nextRecords.length - 1].id : state.cursor;
+      state.hasMore = page.length > PROSPECT_SECTION_PAGE_SIZE;
+      state.loaded = true;
+      state.loading = false;
+      _prospectSectionState.set(sectionKey, state);
+      recordPanelDataUsage('PANEL_PROSPECT_SECTION', { records: nextRecords.length, payload: snap.val(), scope: `${plaza} · ${section.title}` });
+      renderProspectSection(sectionKey);
     } catch (error) {
-      container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:13px;color:#B91C1C">❌ No se pudieron cargar las prospecciones: ${activityText(error.message)}</div>`;
+      state.loading = false;
+      _prospectSectionState.set(sectionKey, state);
+      if (target) target.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:13px;color:#B91C1C">❌ No se pudo cargar esta sección: ${activityText(error.message)}</div>`;
     }
   };
 
@@ -3535,7 +3691,7 @@
     });
     const users = Array.from(userStats.values()).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
     const plazas = Array.from(plazaStats.values()).sort((a, b) => b.total - a.total || a.plaza.localeCompare(b.plaza));
-    const days = Array.from(dayStats.values()).sort((a, b) => a.day.localeCompare(b.day));
+    const days = Array.from(dayStats.values()).sort((a, b) => b.day.localeCompare(a.day));
     const maxPlaza = Math.max(1, ...plazas.map(item => Math.max(item.general, item.cobranza, item.prospeccion)));
     const maxDay = Math.max(1, ...days.map(item => item.total));
     const doubleBars = (items, max, label) => items.map(item => `<div style="padding:10px 0;border-bottom:1px solid #DCFCE7"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><div style="font-size:13px;font-weight:900;color:#14532D;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${activityText(item.name || item.plaza)}">${activityText(item.name || item.plaza)}</div><div style="font-size:11px;color:#64748B">${activityText(item.role || label || '')}</div></div>${[['general','General','#7C3AED','#F3E8FF'],['cobranza','Cobranza','#16A34A','#DCFCE7'],['prospeccion','Prospección','#2563EB','#DBEAFE']].map(([key,name,color,bg]) => `<div style="display:grid;grid-template-columns:92px 1fr 32px;gap:7px;align-items:center;margin-top:5px;font-size:11px"><span style="font-weight:800;color:${color}">${name}</span><span style="height:9px;background:${bg};border-radius:99px;overflow:hidden"><span style="display:block;height:100%;width:${(item[key] / max) * 100}%;background:${color};border-radius:99px"></span></span><b style="text-align:right;color:${color}">${item[key]}</b></div>`).join('')}<div style="font-size:11px;color:#64748B;margin-top:6px">Total: <b>${item.total}</b>${item.citas !== undefined ? ` · Citas: <b>${item.citas}</b>` : ''}${item.altas !== undefined ? ` · Altas: <b>${item.altas}</b>` : ''}</div></div>`).join('');
@@ -3620,37 +3776,69 @@
     target.innerHTML = `<article style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;padding:12px 14px"><div style="font-size:11px;font-weight:900;color:#047857;text-transform:uppercase;letter-spacing:.04em">Citas de hoy</div><div style="display:flex;align-items:baseline;gap:7px;margin-top:4px"><b style="font-size:26px;color:#065F46">${citas.length}</b><span style="font-size:12px;color:#047857">${activityCalendarTypeLabel('CITA', citas.length)}</span></div></article><article style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:12px 14px"><div style="font-size:11px;font-weight:900;color:#C2410C;text-transform:uppercase;letter-spacing:.04em">Promesas de pago de hoy</div><div style="display:flex;align-items:baseline;gap:7px;margin-top:4px"><b style="font-size:26px;color:#9A3412">${promesas.length}</b><span style="font-size:12px;color:#C2410C">${activityCalendarTypeLabel('PROMESA', promesas.length)}</span></div></article>`;
   }
 
+  function activityCanUseProspectCalendar() {
+    return activityCanManageAll() || activityIsAdministrative() || activityIsManagerScope();
+  }
+
+  function calendarAllowedPlazas() {
+    return prospectSectionPlazas();
+  }
+
+  function renderProspectCalendarPlazaControls() {
+    const controls = document.getElementById('prospectCalendarPlazaControls');
+    if (!controls) return;
+    const plazas = calendarAllowedPlazas();
+    if (!_prospectCalendarPlaza || !plazas.includes(_prospectCalendarPlaza)) _prospectCalendarPlaza = plazas[0] || '';
+    const canSwitch = activityCanManageAll() || activityIsAdministrative() || plazas.length > 1;
+    controls.style.display = 'flex';
+    if (!canSwitch) {
+      controls.innerHTML = `<span style="font-size:12px;font-weight:800;color:#0F766E">Sucursal: ${activityText(_prospectCalendarPlaza || 'Sin plaza')}</span>`;
+      return;
+    }
+    controls.innerHTML = `<span style="align-self:center;font-size:12px;font-weight:900;color:#0F766E">Sucursal:</span>${plazas.map(plaza => `<button type="button" class="btn-export" style="padding:7px 10px;background:${plaza === _prospectCalendarPlaza ? '#0F766E' : '#64748B'}" onclick="window.selectProspectCalendarPlaza('${plaza}')">${activityText(plaza)}</button>`).join('')}`;
+  }
+
+  window.selectProspectCalendarPlaza = async function(plaza) {
+    const selected = normaliseActivityText(plaza);
+    if (!calendarAllowedPlazas().includes(selected)) return;
+    _prospectCalendarPlaza = selected;
+    _prospectCalendarSelectedDate = '';
+    renderProspectCalendarPlazaControls();
+    await loadProspectCalendar();
+  };
+
   async function loadProspectCalendar() {
     const month = _prospectCalendarMonth;
-    const start = new Date(month.getFullYear(), month.getMonth(), 1).getTime();
-    const end = new Date(month.getFullYear(), month.getMonth() + 1, 1).getTime() - 1;
+    const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+    const plaza = _prospectCalendarPlaza;
     const grid = document.getElementById('prospectCalendarGrid');
-    grid.innerHTML = '<div style="grid-column:1/-1;background:#fff;padding:24px;border-radius:12px;color:#64748B">⏳ Cargando citas y promesas de pago...</div>';
+    if (!plaza) {
+      grid.innerHTML = '<div style="grid-column:1/-1;background:#fff;padding:24px;border-radius:12px;color:#B91C1C">No se pudo determinar la sucursal del calendario.</div>';
+      return;
+    }
+    grid.innerHTML = '<div style="grid-column:1/-1;background:#fff;padding:24px;border-radius:12px;color:#64748B">⏳ Cargando fichas ligeras del mes y sucursal seleccionados...</div>';
     try {
+      const base = `activity_summaries/calendar/by_plaza/${plaza}/${monthKey}`;
       const [appointmentSnap, promiseSnap] = await Promise.all([
-        get(query(ref(database, 'gestor_activities'), orderByChild('cita_timestamp'), startAt(start), endAt(end))),
-        get(query(ref(database, 'gestor_activities'), orderByChild('promesa_timestamp'), startAt(start), endAt(end))),
+        get(ref(database, `${base}/citas`)),
+        get(ref(database, `${base}/promesas`)),
       ]);
       _prospectCalendarAppointments = [];
       _activityCalendarPromises = [];
       if (appointmentSnap?.exists()) appointmentSnap.forEach(child => {
-        const record = child.val() || {};
-        const appointmentAt = Number(record.cita_timestamp || 0);
-        const isScheduled = record.se_agenda_cita === true || record.se_agenda_cita === 'SI';
-        if (normaliseActivityText(record.tipo) === 'PROSPECCION' && isScheduled && appointmentAt >= start && appointmentAt <= end && normaliseActivityText(record.estado_cita) !== 'CANCELADA') _prospectCalendarAppointments.push({ id: child.key, ...record });
+        const record = { id: child.key, ...(child.val() || {}) };
+        if (normaliseActivityText(record.tipo) === 'PROSPECCION' && (record.se_agenda_cita === true || record.se_agenda_cita === 'SI') && normaliseActivityText(record.estado_cita) !== 'CANCELADA') _prospectCalendarAppointments.push(record);
       });
       if (promiseSnap?.exists()) promiseSnap.forEach(child => {
-        const record = child.val() || {};
-        const promiseAt = Number(record.promesa_timestamp || 0);
-        const isPromise = normaliseActivityText(record.tipo) === 'COBRANZA' && normaliseActivityText(record.gestion_realizada) === 'PROMESA DE PAGO';
-        if (isPromise && promiseAt >= start && promiseAt <= end && normaliseActivityText(record.estado_seguimiento_pago) !== 'COMPROBADO') _activityCalendarPromises.push({ id: child.key, ...record });
+        const record = { id: child.key, ...(child.val() || {}) };
+        if (normaliseActivityText(record.tipo) === 'COBRANZA' && normaliseActivityText(record.gestion_realizada) === 'PROMESA DE PAGO' && normaliseActivityText(record.estado_seguimiento_pago) !== 'COMPROBADO') _activityCalendarPromises.push(record);
       });
       _prospectCalendarAppointments.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
       _activityCalendarPromises.sort((a, b) => Number(a.promesa_timestamp) - Number(b.promesa_timestamp));
-      recordPanelDataUsage('PANEL_TODAY_ACTIVITY_CALENDAR', {
+      recordPanelDataUsage('PANEL_MONTHLY_ACTIVITY_CALENDAR', {
         records: _prospectCalendarAppointments.length + _activityCalendarPromises.length,
         payload: [appointmentSnap.val(), promiseSnap.val()],
-        scope: `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')} · calendario mensual`,
+        scope: `${plaza} · ${monthKey} · calendario mensual ligero`,
       });
       renderProspectCalendar();
     } catch (error) {
@@ -3665,7 +3853,7 @@
     const citations = events.filter(item => item.calendarType === 'CITA');
     const promises = events.filter(item => item.calendarType === 'PROMESA');
     document.getElementById('prospectCalendarTitle').textContent = title;
-    document.getElementById('prospectCalendarSub').textContent = `${citations.length} cita(s) y ${promises.length} promesa(s) de pago programada(s) en ${title}.`;
+    document.getElementById('prospectCalendarSub').textContent = `${citations.length} cita(s) y ${promises.length} promesa(s) de pago en ${activityText(_prospectCalendarPlaza || 'la sucursal seleccionada')} · ${title}.`;
     const plazas = Array.from(new Set(citations.map(item => normaliseActivityText(item.plaza) || 'SIN PLAZA'))).sort();
     const plazaLegend = plazas.map(plaza => `<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #E2E8F0;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;color:#334155"><span style="width:10px;height:10px;border-radius:50%;background:${prospectColor(plaza)}"></span>${activityText(plaza)}</span>`).join('');
     document.getElementById('prospectCalendarLegend').innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;color:#9A3412"><span style="width:10px;height:10px;border-radius:50%;background:#EA580C"></span>Promesa de pago</span>${plazaLegend || '<span style="color:#64748B;font-size:13px">No hay citas de Prospección para este mes.</span>'}`;
@@ -3694,7 +3882,8 @@
   }
 
   window.openProspectAppointmentsCalendar = async function() {
-    if (!activityIsAdministrative()) { alert('El Calendario de Actividades es exclusivo para usuarios ADMINISTRATIVO.'); return; }
+    if (!activityCanUseProspectCalendar()) { alert('El Calendario de Actividades está disponible para Gerencia y Administrativo.'); return; }
+    renderProspectCalendarPlazaControls();
     document.getElementById('prospectCalendarModal').style.display = 'block';
     await loadProspectCalendar();
   };
