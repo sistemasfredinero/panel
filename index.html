@@ -1390,11 +1390,53 @@
     return buckets;
   }
 
-  function activitySummaryMonth(timestamp) {
-    const value = Number(timestamp || 0);
-    if (!Number.isFinite(value) || value <= 0) return '';
-    const date = new Date(value);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  function activitySummaryTimestamp(value) {
+    let numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      if (numeric >= 1_000_000_000 && numeric < 100_000_000_000) numeric *= 1000;
+      if (numeric >= new Date(2020, 0, 1).getTime()) return numeric;
+    }
+    if (typeof value !== 'string') return null;
+    const mexicanDate = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.\s*m\.|p\.\s*m\.|AM|PM)?)?$/i);
+    if (mexicanDate) {
+      const [, day, month, year, hours = '0', minutes = '0', seconds = '0', meridiem = ''] = mexicanDate;
+      let hour = Number(hours);
+      const normalizedMeridiem = meridiem.replace(/\s|\./g, '').toUpperCase();
+      if (normalizedMeridiem === 'PM' && hour < 12) hour += 12;
+      if (normalizedMeridiem === 'AM' && hour === 12) hour = 0;
+      const parsed = new Date(Number(year), Number(month) - 1, Number(day), hour, Number(minutes), Number(seconds)).getTime();
+      if (parsed >= new Date(2020, 0, 1).getTime()) return parsed;
+    }
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) && parsed >= new Date(2020, 0, 1).getTime() ? parsed : null;
+  }
+
+  function activitySummaryMonth(...timestamps) {
+    for (const timestamp of timestamps) {
+      const value = activitySummaryTimestamp(timestamp);
+      if (!value) continue;
+      const date = new Date(value);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return '';
+  }
+
+  function historicalAltaData(record) {
+    const history = Object.values(record?.historial_expediente || {})
+      .map(entry => ({ entry: entry || {}, timestamp: activitySummaryTimestamp(entry?.fecha) || 0 }))
+      .sort((a, b) => b.timestamp - a.timestamp);
+    const historicalAlta = history.find(({ entry }) => {
+      const stage = normaliseActivityText(entry?.etapa);
+      const result = normaliseActivityText(entry?.detalle?.Resultado);
+      const comment = normaliseActivityText(entry?.comentario);
+      return stage === 'ALTA' || result.includes('ALTA CONFIRMADA') || (comment.includes('CONFIRMO') && comment.includes('ALTA'));
+    });
+    const currentStage = prospectWorkflowStage(record);
+    const isAlta = currentStage === 'ALTA' || !!historicalAlta;
+    const timestamp = activitySummaryTimestamp(record?.cerrado_en)
+      || historicalAlta?.timestamp
+      || (currentStage === 'ALTA' ? activitySummaryTimestamp(record?.actualizado_en) || activitySummaryTimestamp(record?.timestamp) || activitySummaryTimestamp(record?.created_at) : null);
+    return { isAlta, timestamp: timestamp || 0 };
   }
 
   async function flushActivitySummaryBatch(records) {
@@ -1491,9 +1533,12 @@
 
   window.rebuildActiveProspectCounters = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se hará una lectura única de los expedientes de Prospección para reconstruir sus contadores activos y Altas del mes actual por sucursal. No descarga fotos, no modifica expedientes y no se ejecuta automáticamente. ¿Continuar?')) return;
+    if (!confirm('Se reconstruirán los contadores desde las mismas fichas ligeras que usa Seguimiento de Prospección, y las Altas del mes actual se verificarán contra los expedientes históricos. No descarga fotos, no modifica expedientes y no se ejecuta automáticamente. ¿Continuar?')) return;
     try {
-      const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION')));
+      const [snap, plazasSnap] = await Promise.all([
+        get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION'))),
+        get(ref(database, 'activity_summaries/prospect_pages/plazas_index')),
+      ]);
       const counters = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', total: 0, por_plaza: {}, por_lider: {}, por_etapa: {} };
       const monthlyAltas = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', mes_actual: activitySummaryMonth(Date.now()), por_plaza: {} };
       const monthlyAltaDetails = {};
@@ -1501,34 +1546,55 @@
         if (!key) return;
         bucket[key] = Math.max(0, Number(bucket[key] || 0)) + 1;
       };
+      const activeFiles = new Map();
+      const plazas = plazasSnap.exists()
+        ? Object.keys(plazasSnap.val() || {}).map(plaza => String(plaza || '').trim().toUpperCase()).filter(Boolean)
+        : [];
+      if (plazas.length) {
+        const activeSnapshots = await Promise.all(plazas.map(plaza => get(ref(database, `activity_summaries/active_prospects_by_plaza/${plaza}`))));
+        activeSnapshots.forEach(activeSnap => {
+          if (!activeSnap.exists()) return;
+          activeSnap.forEach(child => activeFiles.set(String(child.key), { id: child.key, ...(child.val() || {}) }));
+        });
+      }
       let scanned = 0;
+      const countActive = record => {
+        const stage = prospectWorkflowStage(record);
+        if (!isActiveProspectRecord(record)) return;
+        counters.total += 1;
+        add(counters.por_plaza, prospectCounterKey(record.plaza));
+        add(counters.por_lider, String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim());
+        add(counters.por_etapa, prospectCounterKey(stage));
+      };
+      activeFiles.forEach(record => {
+        scanned += 1;
+        countActive(record);
+      });
       if (snap.exists()) snap.forEach(child => {
         const record = { id: child.key, ...(child.val() || {}) };
         if (!isStoredActivityRecord(record)) return;
         const isRoot = record.es_expediente_prospeccion === true || !record.seguimiento_de;
         if (!isRoot) return;
-        scanned += 1;
-        const stage = prospectWorkflowStage(record);
-        const closedMonth = activitySummaryMonth(record.cerrado_en || record.actualizado_en || record.timestamp || record.created_at);
-        if (stage === 'ALTA' && closedMonth === monthlyAltas.mes_actual) {
+        const alta = historicalAltaData(record);
+        const closedMonth = activitySummaryMonth(alta.timestamp);
+        if (alta.isAlta && closedMonth === monthlyAltas.mes_actual) {
           const plaza = String(record.plaza || '').trim().toUpperCase();
           add(monthlyAltas.por_plaza, prospectCounterKey(plaza));
           if (plaza) monthlyAltaDetails[`activity_summaries/prospect_monthly_altas/by_plaza/${plaza}/${closedMonth}/${record.id}`] = buildActivitySummary(record);
         }
-        if (PROSPECT_FINAL_STAGES.has(stage) || stage === 'RECHAZADA_POR_PROSPECTO') return;
-        counters.total += 1;
-        add(counters.por_plaza, prospectCounterKey(record.plaza));
-        add(counters.por_lider, String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim());
-        add(counters.por_etapa, prospectCounterKey(stage));
+        if (!activeFiles.size) {
+          scanned += 1;
+          countActive(record);
+        }
       });
       await update(ref(database), {
         'app_config/prospect_active_counters': counters,
         [`app_config/prospect_monthly_alta_counters/${monthlyAltas.mes_actual}`]: monthlyAltas,
         ...monthlyAltaDetails,
       });
-      recordPanelDataUsage('PANEL_REBUILD_ACTIVE_PROSPECT_COUNTERS', { records: scanned, payload: { scanned, active: counters.total }, scope: 'Reconstrucción manual de soporte' });
+      recordPanelDataUsage('PANEL_REBUILD_ACTIVE_PROSPECT_COUNTERS', { records: scanned, payload: { scanned, active: counters.total }, scope: 'Reconstrucción manual de soporte desde fichas activas' });
       const altas = Object.values(monthlyAltas.por_plaza).reduce((total, value) => total + Number(value || 0), 0);
-      alert(`✅ Contadores reconstruidos.\n\nExpedientes de Prospección revisados: ${scanned}\nExpedientes activos: ${counters.total}\nAltas de ${monthlyAltas.mes_actual}: ${altas}\n\nTambién se prepararon sus fichas ligeras por sucursal para abrir el contador sin descargar historial, fotos ni bitácoras.`);
+      alert(`✅ Contadores reconstruidos.\n\nFichas activas revisadas: ${scanned}\nExpedientes activos: ${counters.total}\nAltas de ${monthlyAltas.mes_actual}: ${altas}\n\nLa app leerá las mismas cifras que sus listas de Seguimiento. También se prepararon fichas ligeras de Altas por sucursal, sin fotos ni bitácoras.`);
     } catch (error) {
       alert(`❌ No se pudo reconstruir el contador: ${error?.message || 'Error desconocido'}`);
     }
@@ -2633,9 +2699,10 @@
   const PROSPECT_FINAL_STAGES = new Set(['ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO', 'CANCELADA']);
   const PROSPECT_VERIFICATION_STAGES = new Set(['PENDIENTE_VERIFICACION', 'PENDIENTE_VOBO_GERENTE', 'PENDIENTE_REVISION_CREDITO_RIESGO', 'DEVUELTA_A_GERENTE', 'AUTORIZADA', 'PENDIENTE_ACTIVACION', 'ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO']);
   function prospectWorkflowStage(record) {
-    if (record?.estado_expediente === 'CITA_PROGRAMADA' && record?.consulta_rafik_completada && !record?.comentarios_documentacion) return 'PENDIENTE_DOCUMENTACION';
-    if (record?.estado_expediente === 'AUTORIZADA') return 'PENDIENTE_ACTIVACION';
-    if (record?.estado_expediente) return String(record.estado_expediente);
+    const stage = normaliseActivityText(record?.estado_expediente);
+    if (stage === 'CITA_PROGRAMADA' && record?.consulta_rafik_completada && !record?.comentarios_documentacion) return 'PENDIENTE_DOCUMENTACION';
+    if (stage === 'AUTORIZADA') return 'PENDIENTE_ACTIVACION';
+    if (stage) return stage;
     return record?.se_agenda_cita ? 'CITA_PROGRAMADA' : 'RECHAZADA_POR_PROSPECTO';
   }
   function prospectWorkflowLabel(record) { const stage = prospectWorkflowStage(record); return PROSPECT_WORKFLOW_LABELS[stage] || stage; }
