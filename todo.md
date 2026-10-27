@@ -52,3 +52,4 @@
 - [x] Cargar rutas con todos los resultados filtrados y completar páginas de 50 coincidencias sin obligar a recorrer actividades no coincidentes.
 - [x] Eliminar también las fichas ligeras e índices derivados al borrar una actividad desde el panel.
 - [x] Reconstruir junto con los contadores activos el contador mensual de Altas por sucursal para la app móvil.
+- [x] Reconstruir fichas ligeras mensuales de Altas por sucursal para el desglose móvil.

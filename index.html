@@ -1423,6 +1423,8 @@
         if (plaza) {
           buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_plaza/${plaza}/${bucket}/${id}`] = sectionBuckets.includes(bucket) ? summary : null; });
           changes[`activity_summaries/prospect_pages/plazas_index/${plaza}`] = { plaza, actualizado_en: Date.now() };
+          const altaMonth = activitySummaryMonth(record.cerrado_en || record.actualizado_en || record.timestamp || record.created_at);
+          if (prospectWorkflowStage(record) === 'ALTA' && altaMonth) changes[`activity_summaries/prospect_monthly_altas/by_plaza/${plaza}/${altaMonth}/${id}`] = summary;
         }
         prospectIndexOwnerIds(record).forEach(ownerUid => {
           buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_leader/${ownerUid}/${bucket}/${id}`] = sectionBuckets.includes(bucket) ? summary : null; });
@@ -1479,7 +1481,7 @@
         if (button) button.textContent = `⏳ ${indexed} fichas…`;
       }
       recordPanelDataUsage('PANEL_REBUILD_ACTIVITY_SUMMARIES', { records: scanned, payload: { scanned, indexed }, scope: 'Reconstrucción manual de fichas ligeras' });
-      alert(`✅ Fichas ligeras reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nLa app descargará ahora sólo estas fichas al abrir Actividades. También quedan separados los expedientes rechazados por Crédito y Riesgo de los cancelados o sin cita inicial. El expediente, foto, firma y ubicación se pedirán al tocar cada botón.`);
+      alert(`✅ Fichas ligeras reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nLa app descargará ahora sólo estas fichas al abrir Actividades. También quedan disponibles las Altas mensuales por sucursal, y separados los expedientes rechazados por Crédito y Riesgo de los cancelados o sin cita inicial. El expediente, foto, firma y ubicación se pedirán al tocar cada botón.`);
     } catch (error) {
       alert(`❌ No se pudieron reconstruir las fichas: ${error?.message || 'Error desconocido'}`);
     } finally {
@@ -1494,6 +1496,7 @@
       const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION')));
       const counters = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', total: 0, por_plaza: {}, por_lider: {}, por_etapa: {} };
       const monthlyAltas = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', mes_actual: activitySummaryMonth(Date.now()), por_plaza: {} };
+      const monthlyAltaDetails = {};
       const add = (bucket, key) => {
         if (!key) return;
         bucket[key] = Math.max(0, Number(bucket[key] || 0)) + 1;
@@ -1507,7 +1510,11 @@
         scanned += 1;
         const stage = prospectWorkflowStage(record);
         const closedMonth = activitySummaryMonth(record.cerrado_en || record.actualizado_en || record.timestamp || record.created_at);
-        if (stage === 'ALTA' && closedMonth === monthlyAltas.mes_actual) add(monthlyAltas.por_plaza, prospectCounterKey(record.plaza));
+        if (stage === 'ALTA' && closedMonth === monthlyAltas.mes_actual) {
+          const plaza = String(record.plaza || '').trim().toUpperCase();
+          add(monthlyAltas.por_plaza, prospectCounterKey(plaza));
+          if (plaza) monthlyAltaDetails[`activity_summaries/prospect_monthly_altas/by_plaza/${plaza}/${closedMonth}/${record.id}`] = buildActivitySummary(record);
+        }
         if (PROSPECT_FINAL_STAGES.has(stage) || stage === 'RECHAZADA_POR_PROSPECTO') return;
         counters.total += 1;
         add(counters.por_plaza, prospectCounterKey(record.plaza));
@@ -1517,10 +1524,11 @@
       await update(ref(database), {
         'app_config/prospect_active_counters': counters,
         [`app_config/prospect_monthly_alta_counters/${monthlyAltas.mes_actual}`]: monthlyAltas,
+        ...monthlyAltaDetails,
       });
       recordPanelDataUsage('PANEL_REBUILD_ACTIVE_PROSPECT_COUNTERS', { records: scanned, payload: { scanned, active: counters.total }, scope: 'Reconstrucción manual de soporte' });
       const altas = Object.values(monthlyAltas.por_plaza).reduce((total, value) => total + Number(value || 0), 0);
-      alert(`✅ Contadores reconstruidos.\n\nExpedientes de Prospección revisados: ${scanned}\nExpedientes activos: ${counters.total}\nAltas de ${monthlyAltas.mes_actual}: ${altas}\n\nLa app solo leerá cifras pequeñas desde ahora; no volverá a descargar estos expedientes para los contadores.`);
+      alert(`✅ Contadores reconstruidos.\n\nExpedientes de Prospección revisados: ${scanned}\nExpedientes activos: ${counters.total}\nAltas de ${monthlyAltas.mes_actual}: ${altas}\n\nTambién se prepararon sus fichas ligeras por sucursal para abrir el contador sin descargar historial, fotos ni bitácoras.`);
     } catch (error) {
       alert(`❌ No se pudo reconstruir el contador: ${error?.message || 'Error desconocido'}`);
     }
