@@ -510,7 +510,7 @@
           <select id="dataUsageDays" style="padding:8px 10px;border:1px solid #FCD34D;border-radius:8px;background:#fff;font-size:12px"><option value="1">Hoy</option><option value="7" selected>Últimos 7 días</option><option value="30">Últimos 30 días</option></select>
           <button onclick="window.loadDataUsageDiagnostics()" style="padding:9px 13px;background:#D97706;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">↻ Actualizar</button>
           <button onclick="window.rebuildActivitySummaries()" style="padding:9px 13px;background:#0369A1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">♻ Reconstruir fichas</button>
-          <button onclick="window.rebuildActiveProspectCounters()" style="padding:9px 13px;background:#0F766E;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">♻ Reconstruir activas</button>
+          <button onclick="window.rebuildActiveProspectCounters()" style="padding:9px 13px;background:#0F766E;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:800">♻ Reconstruir contadores</button>
           <button onclick="window.showPanelHome()" style="padding:9px 13px;background:#64748B;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700">← Volver</button>
         </div>
       </div>
@@ -1489,10 +1489,11 @@
 
   window.rebuildActiveProspectCounters = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se hará una lectura única de los expedientes de Prospección para reconstruir sus contadores activos. No descarga fotos, no modifica expedientes y no se ejecuta automáticamente. ¿Continuar?')) return;
+    if (!confirm('Se hará una lectura única de los expedientes de Prospección para reconstruir sus contadores activos y Altas del mes actual por sucursal. No descarga fotos, no modifica expedientes y no se ejecuta automáticamente. ¿Continuar?')) return;
     try {
       const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION')));
       const counters = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', total: 0, por_plaza: {}, por_lider: {}, por_etapa: {} };
+      const monthlyAltas = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', mes_actual: activitySummaryMonth(Date.now()), por_plaza: {} };
       const add = (bucket, key) => {
         if (!key) return;
         bucket[key] = Math.max(0, Number(bucket[key] || 0)) + 1;
@@ -1505,15 +1506,21 @@
         if (!isRoot) return;
         scanned += 1;
         const stage = prospectWorkflowStage(record);
+        const closedMonth = activitySummaryMonth(record.cerrado_en || record.actualizado_en || record.timestamp || record.created_at);
+        if (stage === 'ALTA' && closedMonth === monthlyAltas.mes_actual) add(monthlyAltas.por_plaza, prospectCounterKey(record.plaza));
         if (PROSPECT_FINAL_STAGES.has(stage) || stage === 'RECHAZADA_POR_PROSPECTO') return;
         counters.total += 1;
         add(counters.por_plaza, prospectCounterKey(record.plaza));
         add(counters.por_lider, String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim());
         add(counters.por_etapa, prospectCounterKey(stage));
       });
-      await set(ref(database, 'app_config/prospect_active_counters'), counters);
+      await update(ref(database), {
+        'app_config/prospect_active_counters': counters,
+        [`app_config/prospect_monthly_alta_counters/${monthlyAltas.mes_actual}`]: monthlyAltas,
+      });
       recordPanelDataUsage('PANEL_REBUILD_ACTIVE_PROSPECT_COUNTERS', { records: scanned, payload: { scanned, active: counters.total }, scope: 'Reconstrucción manual de soporte' });
-      alert(`✅ Contadores reconstruidos.\n\nExpedientes de Prospección revisados: ${scanned}\nExpedientes activos: ${counters.total}\n\nLa app solo leerá una cifra pequeña desde ahora; no volverá a descargar estos expedientes para el contador.`);
+      const altas = Object.values(monthlyAltas.por_plaza).reduce((total, value) => total + Number(value || 0), 0);
+      alert(`✅ Contadores reconstruidos.\n\nExpedientes de Prospección revisados: ${scanned}\nExpedientes activos: ${counters.total}\nAltas de ${monthlyAltas.mes_actual}: ${altas}\n\nLa app solo leerá cifras pequeñas desde ahora; no volverá a descargar estos expedientes para los contadores.`);
     } catch (error) {
       alert(`❌ No se pudo reconstruir el contador: ${error?.message || 'Error desconocido'}`);
     }
