@@ -62,3 +62,4 @@
 - [x] Hacer atómica y verificable la reconstrucción de índices de Prospección por Líder para impedir listas parciales frente a contadores completos.
 - [x] Proyectar y verificar expedientes activos por correo normalizado de Líder para reparar identidades históricas de UID.
 - [x] Clasificar Rechazada por prospecto como rechazo definitivo al reconstruir los índices ligeros históricos.
+- [x] Restringir Expedientes de Prospección para cada Gerente a su plaza, excepto la cobertura Tampico–Madero autorizada.

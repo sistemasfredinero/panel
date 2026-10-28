@@ -3682,22 +3682,26 @@
     { key: 'PENDIENTES', title: 'Pendientes', bucket: 'PENDIENTES', tone: '#EA580C', empty: 'No hay expedientes pendientes.' },
   ];
   const PANEL_PLAZAS = ['TAMPICO', 'MADERO', 'MANTE', 'POZA', 'TUXPAN', 'PAPANTLA', 'VALLES', 'XALAPA', 'SALTILLO', 'ADMINISTRATIVO'];
+  const TAMPICO_MADERO_MANAGER_EMAIL = 'gerente.tampico@fredinero.com';
   let _prospectSectionsPlaza = '';
   const _prospectSectionState = new Map();
 
   function prospectSectionPlazas() {
     if (activityCanManageAll() || activityIsAdministrative()) return PANEL_PLAZAS;
     const ownPlaza = normaliseActivityText(_activityProfile?.plaza);
-    const covered = Array.isArray(_activityProfile?.plazas_cobertura)
-      ? _activityProfile.plazas_cobertura.map(normaliseActivityText)
-      : [];
-    // La gerente configurada para Tampico conserva la cobertura operativa de Madero.
-    if (String(auth.currentUser?.email || '').toLowerCase() === 'gerente.tampico@fredinero.com') covered.push('MADERO');
-    return Array.from(new Set([ownPlaza, ...covered].filter(Boolean)));
+    const email = String(auth.currentUser?.email || '').trim().toLowerCase();
+    // El modal no hereda plazas_cobertura: evita que un dato histórico o mal
+    // configurado exponga expedientes de otra sucursal. La única cobertura
+    // compartida autorizada es la Gerencia Tampico–Madero.
+    if (activityIsManagerScope() && email === TAMPICO_MADERO_MANAGER_EMAIL) return ['TAMPICO', 'MADERO'];
+    return ownPlaza ? [ownPlaza] : [];
   }
 
   function prospectSectionIsPlazaSelector() {
-    return activityCanManageAll() || activityIsAdministrative();
+    const email = String(auth.currentUser?.email || '').trim().toLowerCase();
+    return activityCanManageAll()
+      || activityIsAdministrative()
+      || (activityIsManagerScope() && email === TAMPICO_MADERO_MANAGER_EMAIL);
   }
 
   function prospectStageAge(record) {
@@ -3799,14 +3803,22 @@
         : query(base, orderByKey(), limitToLast(pageSize));
       const snap = await get(pageQuery);
       const page = [];
+      const scannedKeys = [];
       if (snap.exists()) snap.forEach(child => {
-        if (child.key !== state.cursor) page.push({ id: child.key, ...(child.val() || {}) });
+        if (child.key === state.cursor) return;
+        scannedKeys.push(child.key);
+        const record = { id: child.key, ...(child.val() || {}) };
+        // La ruta y la ficha deben coincidir en plaza antes de poder mostrarse.
+        // Así, un índice histórico inconsistente no expone otra sucursal.
+        if (normaliseActivityText(record.plaza) === plaza) page.push(record);
       });
       page.sort((a, b) => String(b.id).localeCompare(String(a.id)));
       const nextRecords = page.slice(0, PROSPECT_SECTION_PAGE_SIZE);
       state.records = [...state.records, ...nextRecords];
-      state.cursor = nextRecords.length ? nextRecords[nextRecords.length - 1].id : state.cursor;
-      state.hasMore = page.length > PROSPECT_SECTION_PAGE_SIZE;
+      // El cursor avanza con la ficha más antigua que se leyó, incluso si era
+      // inconsistente y se descartó. Esto evita repetir una página vacía.
+      state.cursor = scannedKeys.length ? scannedKeys[0] : state.cursor;
+      state.hasMore = scannedKeys.length > PROSPECT_SECTION_PAGE_SIZE;
       state.loaded = true;
       state.loading = false;
       _prospectSectionState.set(sectionKey, state);
