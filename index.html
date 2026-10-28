@@ -1670,7 +1670,7 @@
 
   window.rebuildActiveProspectCounters = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se leerán únicamente los expedientes canónicos de Prospección para regenerar por completo los activos, rechazados, cancelados, Altas del mes, páginas por sucursal, listas de Líderes y contadores. No descarga fotos al teléfono ni modifica los expedientes originales. Puede tardar según el historial. ¿Continuar?')) return;
+    if (!confirm('Se leerán únicamente los expedientes canónicos de Prospección para regenerar por completo los activos, rechazados, cancelados, Altas del mes, páginas por sucursal, listas de Líderes y contadores. Primero se escriben y verifican las fichas activas de cada Líder; los índices actuales no se borran por adelantado. No descarga fotos al teléfono ni modifica los expedientes originales. Puede tardar según el historial. ¿Continuar?')) return;
     const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir Prospección') || item.textContent?.includes('Reconstruir contadores'));
     if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo Prospección…'; }
     try {
@@ -1699,17 +1699,25 @@
       };
       const totals = { activos: 0, rechazados: 0, cancelados: 0, altasMes: 0, sinIdentidad: 0 };
       const projectionSources = {};
+      const expectedActiveByLeader = new Map();
+      const knownLeaderIds = new Set();
       roots.forEach(({ record, identitySource }) => {
         projectionSources[identitySource] = Number(projectionSources[identitySource] || 0) + 1;
         const stage = prospectWorkflowStage(record);
         const leaderUid = String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim();
         if (!leaderUid) totals.sinIdentidad += 1;
+        if (leaderUid) knownLeaderIds.add(leaderUid);
         if (isActiveProspectRecord(record)) {
           totals.activos += 1;
           counters.total += 1;
           add(counters.por_plaza, prospectCounterKey(record.plaza));
           add(counters.por_lider, leaderUid);
           add(counters.por_etapa, prospectCounterKey(stage));
+          if (leaderUid) {
+            const records = expectedActiveByLeader.get(leaderUid) || new Set();
+            records.add(String(record.id));
+            expectedActiveByLeader.set(leaderUid, records);
+          }
         }
         if (isRejectedProspectRecord(record)) totals.rechazados += 1;
         if (isCancelledProspectRecord(record)) totals.cancelados += 1;
@@ -1723,20 +1731,9 @@
         }
       });
 
-      // La limpieza se hace antes de escribir fichas hijas para no generar
-      // conflictos padre/hijo en RTDB. Sólo borra índices derivados; los
-      // expedientes originales en gestor_activities jamás se modifican.
-      await Promise.all([
-        remove(ref(database, 'activity_summaries/active_prospects')),
-        remove(ref(database, 'activity_summaries/active_prospects_by_plaza')),
-        remove(ref(database, 'activity_summaries/active_prospects_by_leader')),
-        remove(ref(database, 'activity_summaries/rejected_prospects')),
-        remove(ref(database, 'activity_summaries/cancelled_prospects')),
-        remove(ref(database, 'activity_summaries/prospect_pages/by_plaza')),
-        remove(ref(database, 'activity_summaries/prospect_pages/by_leader')),
-        remove(ref(database, 'activity_summaries/prospect_pages/plazas_index')),
-        remove(ref(database, 'activity_summaries/prospect_monthly_altas/by_plaza')),
-      ]);
+      // Se actualizan las proyecciones generales por lotes sin borrar nada
+      // antes. Esto mantiene disponible la lista anterior aunque la red falle y
+      // evita una mutación gigante cuando el historial crezca.
       const batchSize = 50;
       const projectionReport = { written: 0, omittedWithoutIdentity: 0, resolvedBy: {} };
       for (let index = 0; index < roots.length; index += batchSize) {
@@ -1748,13 +1745,43 @@
         });
         if (button) button.textContent = `⏳ ${Math.min(index + batchSize, roots.length)}/${roots.length} expedientes…`;
       }
+      // Cada Líder recibe una sustitución atómica de SU lista completa. Es el
+      // árbol que consulta el móvil; sustituirlo por UID borra fichas obsoletas
+      // sin crear el estado parcial de la versión anterior y sin exceder el
+      // tamaño máximo de una actualización global.
+      const activeLeaderReplacements = {};
+      knownLeaderIds.forEach(leaderUid => {
+        const expectedIds = expectedActiveByLeader.get(leaderUid) || new Set();
+        const entries = {};
+        roots.forEach(({ record }) => {
+          const id = String(record?.id || '').trim();
+          const recordLeaderUid = String(record?.lider_asignado_uid || record?.user_uid || record?.uid || '').trim();
+          if (recordLeaderUid === leaderUid && expectedIds.has(id)) entries[id] = buildActivitySummary(record);
+        });
+        activeLeaderReplacements[`activity_summaries/active_prospects_by_leader/${leaderUid}`] = entries;
+      });
+      if (button) button.textContent = '⏳ Publicando listas completas de Líderes…';
+      if (Object.keys(activeLeaderReplacements).length) await update(ref(database), activeLeaderReplacements);
+      if (button) button.textContent = '⏳ Verificando índices de Líder…';
+      const activeLeaderSnapshots = await Promise.all(Array.from(expectedActiveByLeader.keys()).map(async leaderUid => ({
+        leaderUid,
+        expectedIds: expectedActiveByLeader.get(leaderUid) || new Set(),
+        snapshot: await get(ref(database, `activity_summaries/active_prospects_by_leader/${leaderUid}`)),
+      })));
+      const verifiedByLeader = [];
+      activeLeaderSnapshots.forEach(({ leaderUid, expectedIds, snapshot }) => {
+        const actualIds = new Set(snapshot.exists() ? Object.keys(snapshot.val() || {}) : []);
+        const missing = Array.from(expectedIds).filter(id => !actualIds.has(id));
+        if (missing.length || actualIds.size !== expectedIds.size) throw new Error(`El índice de Líder ${leaderUid} no coincide con los expedientes canónicos. No uses la app hasta volver a ejecutar la reconstrucción.`);
+        verifiedByLeader.push({ leaderUid, activos: expectedIds.size });
+      });
       await update(ref(database), {
         'app_config/prospect_active_counters': counters,
         [`app_config/prospect_monthly_alta_counters/${monthlyAltas.mes_actual}`]: monthlyAltas,
         ...monthlyAltaDetails,
       });
-      recordPanelDataUsage('PANEL_REBUILD_CANONICAL_PROSPECT_INDEXES', { records: roots.length, payload: { total: roots.length, ...totals }, scope: 'Reconstrucción manual canónica de Prospección' });
-      alert(`✅ Prospección reconstruida desde expedientes originales.\n\nExpedientes canónicos: ${roots.length}\nActivos: ${totals.activos}\nRechazados Crédito y Riesgo: ${totals.rechazados}\nCancelados / sin cita: ${totals.cancelados}\nAltas de ${monthlyAltas.mes_actual}: ${totals.altasMes}\n\nSe regeneraron las fichas por plaza y Líder, las páginas históricas y los contadores. La app no descarga fotos, firmas ni bitácoras hasta abrir un expediente.`);
+      recordPanelDataUsage('PANEL_REBUILD_CANONICAL_PROSPECT_INDEXES', { records: roots.length, payload: { total: roots.length, ...totals, lideresVerificados: verifiedByLeader.length }, scope: 'Reconstrucción manual canónica de Prospección' });
+      alert(`✅ Prospección reconstruida y verificada desde expedientes originales.\n\nExpedientes canónicos: ${roots.length}\nActivos: ${totals.activos}\nRechazados Crédito y Riesgo: ${totals.rechazados}\nCancelados / sin cita: ${totals.cancelados}\nAltas de ${monthlyAltas.mes_actual}: ${totals.altasMes}\nLíderes verificados: ${verifiedByLeader.length}\n\nPrimero se escribieron las fichas activas y se comprobó que cada Líder recibió todas las esperadas. Después se actualizaron los contadores. La app no descarga fotos, firmas ni bitácoras hasta abrir un expediente.`);
     } catch (error) {
       alert(`❌ No se pudo reconstruir Prospección: ${error?.message || 'Error desconocido'}`);
     } finally {
