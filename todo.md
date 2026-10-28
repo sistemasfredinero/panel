@@ -56,3 +56,4 @@
 - [x] Corregir la reconstrucción de contadores de Prospección y Altas cuando los expedientes históricos usan variantes de estado.
 - [x] Reconstruir el índice ligero de expedientes activos por Líder para consultas móviles completas.
 - [x] Reconstruir desde expedientes canónicos todos los índices y contadores de Prospección, incluyendo activos, rechazos, cancelaciones y Altas.
+- [x] Corregir la reconstrucción canónica de asignaciones históricas de Líder para que ningún expediente activo quede fuera de su consulta móvil.

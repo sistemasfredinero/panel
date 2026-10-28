@@ -1390,6 +1390,127 @@
     return buckets;
   }
 
+
+  // La aplicación móvil sólo admite estos códigos. Los registros anteriores a
+  // esa normalización pueden guardar la etiqueta humana; se traduce únicamente
+  // en la ficha derivada, nunca en gestor_activities.
+  const CANONICAL_PROSPECT_STAGES = new Set([
+    'CITA_PROGRAMADA', 'RECHAZADA_POR_PROSPECTO', 'PENDIENTE_RAFIK', 'PENDIENTE_DOCUMENTACION',
+    'PENDIENTE_ONBOARDING', 'PENDIENTE_ASIGNACION_GERENTE', 'PENDIENTE_VERIFICACION',
+    'VERIFICACION_PARCIAL', 'PENDIENTE_VOBO_GERENTE', 'PENDIENTE_REVISION_CREDITO_RIESGO',
+    'DEVUELTA_A_GERENTE', 'AUTORIZADA', 'PENDIENTE_ACTIVACION', 'ALTA', 'NO_ASISTIO',
+    'RECHAZADA_CREDITO_RIESGO', 'CANCELADA'
+  ]);
+  const HISTORICAL_PROSPECT_STAGE_ALIASES = {
+    'CITA AGENDADA SIN RAFIK DOCUMENTACION': 'PENDIENTE_RAFIK',
+    'CITA AGENDADA SIN RAFIK DOCUMENTACION PENDIENTE': 'PENDIENTE_RAFIK',
+    'CITA AGENDADA DOCUMENTACION': 'CITA_PROGRAMADA',
+    'CITA AGENDADA DOCUMENTACION PENDIENTE': 'CITA_PROGRAMADA',
+    'ON BOARDING': 'PENDIENTE_ONBOARDING',
+    'ASIGNACION': 'PENDIENTE_ASIGNACION_GERENTE',
+    'VERIFICACION': 'PENDIENTE_VERIFICACION',
+    'PENDIENTE VOBO GERENTE': 'PENDIENTE_VOBO_GERENTE',
+    'PENDIENTE VOBO DE GERENTE': 'PENDIENTE_VOBO_GERENTE',
+    'PENDIENTE DE VOBO GERENTE': 'PENDIENTE_VOBO_GERENTE',
+    'PENDIENTE DE VOBO DE GERENTE': 'PENDIENTE_VOBO_GERENTE',
+    'PENDIENTE VOBO CREDITO Y RIESGO': 'PENDIENTE_REVISION_CREDITO_RIESGO',
+    'PENDIENTE VOBO DE CREDITO Y RIESGO': 'PENDIENTE_REVISION_CREDITO_RIESGO',
+    'PENDIENTE DE VOBO CREDITO Y RIESGO': 'PENDIENTE_REVISION_CREDITO_RIESGO',
+    'PENDIENTE DE VOBO DE CREDITO Y RIESGO': 'PENDIENTE_REVISION_CREDITO_RIESGO',
+    'PENDIENTE DE CREDITO Y RIESGO': 'PENDIENTE_REVISION_CREDITO_RIESGO',
+    'DEVOLUCION DE PROSPECTO': 'DEVUELTA_A_GERENTE',
+    'EN ESPERA DE ACTIVACION': 'PENDIENTE_ACTIVACION',
+    'RECHAZADA POR CREDITO Y RIESGO': 'RECHAZADA_CREDITO_RIESGO',
+    'RECHAZADA POR PROSPECTO': 'RECHAZADA_POR_PROSPECTO'
+  };
+
+  function canonicalProspectStage(record) {
+    const rawStage = normaliseActivityText(record?.estado_expediente);
+    const historicalKey = rawStage.replace(/[^A-Z0-9]+/g, ' ').trim();
+    let stage = CANONICAL_PROSPECT_STAGES.has(rawStage)
+      ? rawStage
+      : HISTORICAL_PROSPECT_STAGE_ALIASES[historicalKey] || rawStage;
+    if (stage === 'CITA_PROGRAMADA' && record?.consulta_rafik_completada && !record?.comentarios_documentacion) stage = 'PENDIENTE_DOCUMENTACION';
+    if (stage === 'AUTORIZADA') stage = 'PENDIENTE_ACTIVACION';
+    if (CANONICAL_PROSPECT_STAGES.has(stage)) return stage;
+    return record?.se_agenda_cita === true || record?.se_agenda_cita === 'SI' ? 'CITA_PROGRAMADA' : 'RECHAZADA_POR_PROSPECTO';
+  }
+
+  function normalizedProspectIdentity(value) {
+    return normaliseActivityText(value).replace(/[^A-Z0-9]/g, '');
+  }
+
+  async function loadProspectProjectionDirectory() {
+    const snap = await get(ref(database, 'users'));
+    const users = [];
+    if (snap.exists()) snap.forEach(child => {
+      const value = child.val() || {};
+      const authUid = String(child.key || '').trim();
+      if (!authUid) return;
+      users.push({
+        authUid,
+        profileUid: String(value.uid || '').trim(),
+        correo: String(value.correo || value.email || '').trim().toLowerCase(),
+        nombre: String(value.nombre_completo || value.nombre || '').trim(),
+        plaza: normaliseActivityText(value.plaza),
+        rol: normaliseActivityText(value.rol || value.role),
+      });
+    });
+    return users;
+  }
+
+  function resolveProspectLeaderIdentity(record, users) {
+    const directValues = [record?.lider_asignado_uid, record?.responsable_cita_uid, record?.lider_responsable_uid]
+      .map(value => String(value || '').trim()).filter(Boolean);
+    for (const candidate of directValues) {
+      const matched = users.find(user => user.authUid === candidate || user.profileUid === candidate);
+      if (matched) return { uid: matched.authUid, source: 'UID' };
+    }
+    const emails = [record?.lider_asignado_correo, record?.responsable_cita_correo, record?.lider_responsable_correo]
+      .map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+    for (const email of emails) {
+      const matched = users.find(user => user.correo === email);
+      if (matched) return { uid: matched.authUid, source: 'CORREO' };
+    }
+
+    const plaza = normaliseActivityText(record?.plaza);
+    const names = [record?.lider_asignado_nombre, record?.responsable_cita_nombre, record?.lider_responsable_nombre]
+      .map(normalizedProspectIdentity).filter(Boolean);
+    for (const name of names) {
+      const candidates = users.filter(user => normalizedProspectIdentity(user.nombre) === name && (!plaza || user.plaza === plaza));
+      if (candidates.length === 1) return { uid: candidates[0].authUid, source: 'NOMBRE_PLAZA' };
+    }
+
+    // Si no existe ya un perfil que coincida por UID, correo o nombre/plaza,
+    // se conserva el identificador directo para no descartar un Líder inactivo.
+    if (directValues[0]) return { uid: directValues[0], source: 'UID_SIN_PERFIL' };
+
+    const creatorUid = String(record?.user_uid || record?.uid || '').trim();
+    if (creatorUid) {
+      const matched = users.find(user => user.authUid === creatorUid || user.profileUid === creatorUid);
+      return { uid: matched?.authUid || creatorUid, source: 'CREADOR_RESPALDO' };
+    }
+    return { uid: '', source: 'SIN_IDENTIDAD' };
+  }
+
+  function projectProspectRecord(record, users) {
+    if (normaliseActivityText(record?.tipo) !== 'PROSPECCION') return { record, identitySource: 'NO_PROSPECCION' };
+    const identity = resolveProspectLeaderIdentity(record, users);
+    const creatorUid = String(record?.user_uid || record?.uid || '').trim();
+    const projected = {
+      ...record,
+      estado_expediente: canonicalProspectStage(record),
+      lider_asignado_uid: identity.uid || String(record?.lider_asignado_uid || '').trim(),
+    };
+    // Fichas históricas sin creador aún se pueden proyectar bajo la identidad
+    // resuelta del Líder. Este valor vive sólo en activity_summaries.
+    if (!creatorUid && identity.uid) {
+      projected.uid = identity.uid;
+      projected.user_uid = identity.uid;
+    }
+    return { record: projected, identitySource: identity.source };
+  }
+
   function activitySummaryTimestamp(value) {
     let numeric = Number(value);
     if (Number.isFinite(numeric) && numeric > 0) {
@@ -1439,14 +1560,22 @@
     return { isAlta, timestamp: timestamp || 0 };
   }
 
-  async function flushActivitySummaryBatch(records) {
+  async function flushActivitySummaryBatch(records, projectionUsers = null) {
     const changes = {};
-    records.forEach(record => {
+    const report = { written: 0, omittedWithoutIdentity: 0, resolvedBy: {} };
+    records.forEach(sourceRecord => {
+      const projected = projectionUsers ? projectProspectRecord(sourceRecord, projectionUsers) : { record: sourceRecord, identitySource: 'DIRECTO' };
+      const record = projected.record;
       const id = String(record?.id || '').trim();
       const uid = String(record?.user_uid || record?.uid || '').trim();
       const plaza = String(record?.plaza || '').trim().toUpperCase();
       const cancelledByUid = String(record?.cierre_negativo_por_uid || '').trim();
-      if (!id || !uid) return;
+      if (!id || !uid) {
+        report.omittedWithoutIdentity += 1;
+        return;
+      }
+      report.written += 1;
+      report.resolvedBy[projected.identitySource] = Number(report.resolvedBy[projected.identitySource] || 0) + 1;
       const summary = buildActivitySummary(record);
       changes[`activity_summaries/users/${uid}/${id}`] = summary;
       if (plaza) changes[`activity_summaries/plazas/${plaza}/${id}`] = summary;
@@ -1489,11 +1618,12 @@
       }
     });
     if (Object.keys(changes).length) await update(ref(database), changes);
+    return report;
   }
 
   window.rebuildActivitySummaries = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras sin fotos, firmas ni bitácoras. También se reconstruirán las páginas de Prospección por plaza y responsable, los rechazos/cancelaciones y seguimientos abiertos de Cobranza. Puede tardar si existe mucho historial. ¿Continuar?')) return;
+    if (!confirm('Se leerán los registros existentes una sola vez, por lotes de 50, para crear fichas ligeras de Actividad general y Cobranza sin fotos, firmas ni bitácoras. Prospección se regenera por separado con “Reconstruir Prospección”, que resuelve las asignaciones históricas de Líder. Puede tardar si existe mucho historial. ¿Continuar?')) return;
     const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir fichas'));
     if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo…'; }
     let cursor = null;
@@ -1515,7 +1645,9 @@
           page.push({ id: child.key, ...(child.val() || {}) });
         });
         if (!page.length) break;
-        const valid = page.filter(isStoredActivityRecord);
+        // Prospección se reconstruye con su propio botón canónico: resuelve el
+        // UID real de Líder y normaliza etapas históricas antes de indexar.
+        const valid = page.filter(record => isStoredActivityRecord(record) && normaliseActivityText(record?.tipo) !== 'PROSPECCION');
         scanned += page.length;
         indexed += valid.length;
         await flushActivitySummaryBatch(valid);
@@ -1525,7 +1657,7 @@
         if (button) button.textContent = `⏳ ${indexed} fichas…`;
       }
       recordPanelDataUsage('PANEL_REBUILD_ACTIVITY_SUMMARIES', { records: scanned, payload: { scanned, indexed }, scope: 'Reconstrucción manual de fichas ligeras' });
-      alert(`✅ Fichas ligeras reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nLa app descargará ahora sólo estas fichas al abrir Actividades. También quedan disponibles las Altas mensuales por sucursal, y separados los expedientes rechazados por Crédito y Riesgo de los cancelados o sin cita inicial. El expediente, foto, firma y ubicación se pedirán al tocar cada botón.`);
+      alert(`✅ Fichas ligeras de Actividad general y Cobranza reconstruidas.\n\nNodos revisados: ${scanned}\nActividades indexadas: ${indexed}\n\nPara regenerar expedientes, contadores y asignaciones de Líder de Prospección, usa el botón “Reconstruir Prospección”. El detalle, foto, firma y ubicación se pedirán sólo al tocar cada registro.`);
     } catch (error) {
       alert(`❌ No se pudieron reconstruir las fichas: ${error?.message || 'Error desconocido'}`);
     } finally {
@@ -1539,12 +1671,15 @@
     const button = Array.from(document.querySelectorAll('button')).find(item => item.textContent?.includes('Reconstruir Prospección') || item.textContent?.includes('Reconstruir contadores'));
     if (button) { button.disabled = true; button.textContent = '⏳ Reconstruyendo Prospección…'; }
     try {
-      const snap = await get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION')));
+      const [snap, projectionUsers] = await Promise.all([
+        get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION'))),
+        loadProspectProjectionDirectory(),
+      ]);
       const roots = [];
       if (snap.exists()) snap.forEach(child => {
         const record = { id: child.key, ...(child.val() || {}) };
         const isRoot = record.es_expediente_prospeccion === true || !record.seguimiento_de;
-        if (isRoot && isStoredActivityRecord(record)) roots.push(record);
+        if (isRoot && isStoredActivityRecord(record)) roots.push(projectProspectRecord(record, projectionUsers));
       });
       if (!roots.length) {
         alert('No se encontraron expedientes canónicos de Prospección para reconstruir. No se modificó ningún índice.');
@@ -1559,14 +1694,18 @@
         if (!key) return;
         bucket[key] = Math.max(0, Number(bucket[key] || 0)) + 1;
       };
-      const totals = { activos: 0, rechazados: 0, cancelados: 0, altasMes: 0 };
-      roots.forEach(record => {
+      const totals = { activos: 0, rechazados: 0, cancelados: 0, altasMes: 0, sinIdentidad: 0 };
+      const projectionSources = {};
+      roots.forEach(({ record, identitySource }) => {
+        projectionSources[identitySource] = Number(projectionSources[identitySource] || 0) + 1;
         const stage = prospectWorkflowStage(record);
+        const leaderUid = String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim();
+        if (!leaderUid) totals.sinIdentidad += 1;
         if (isActiveProspectRecord(record)) {
           totals.activos += 1;
           counters.total += 1;
           add(counters.por_plaza, prospectCounterKey(record.plaza));
-          add(counters.por_lider, String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim());
+          add(counters.por_lider, leaderUid);
           add(counters.por_etapa, prospectCounterKey(stage));
         }
         if (isRejectedProspectRecord(record)) totals.rechazados += 1;
@@ -1596,8 +1735,14 @@
         remove(ref(database, 'activity_summaries/prospect_monthly_altas/by_plaza')),
       ]);
       const batchSize = 50;
+      const projectionReport = { written: 0, omittedWithoutIdentity: 0, resolvedBy: {} };
       for (let index = 0; index < roots.length; index += batchSize) {
-        await flushActivitySummaryBatch(roots.slice(index, index + batchSize));
+        const batchReport = await flushActivitySummaryBatch(roots.slice(index, index + batchSize).map(item => item.record), projectionUsers);
+        projectionReport.written += Number(batchReport?.written || 0);
+        projectionReport.omittedWithoutIdentity += Number(batchReport?.omittedWithoutIdentity || 0);
+        Object.entries(batchReport?.resolvedBy || {}).forEach(([source, count]) => {
+          projectionReport.resolvedBy[source] = Number(projectionReport.resolvedBy[source] || 0) + Number(count || 0);
+        });
         if (button) button.textContent = `⏳ ${Math.min(index + batchSize, roots.length)}/${roots.length} expedientes…`;
       }
       await update(ref(database), {
@@ -4512,6 +4657,8 @@
     if (normaliseActivityText(record?.tipo) === 'PROSPECCION') {
       changes[`activity_summaries/active_prospects/${id}`] = null;
       if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = null;
+      const activeLeaderUid = String(record?.lider_asignado_uid || record?.user_uid || record?.uid || '').trim();
+      if (activeLeaderUid) changes[`activity_summaries/active_prospects_by_leader/${activeLeaderUid}/${id}`] = null;
       const buckets = ['ACTIVAS', 'RECHAZADAS', 'CANCELADAS', 'ALTAS', 'RECHAZADAS_PROSPECTO', 'RECHAZADAS_CREDITO', 'PENDIENTES'];
       const ownerIds = prospectIndexOwnerIds(record);
       if (uid && !ownerIds.includes(uid)) ownerIds.push(uid);
