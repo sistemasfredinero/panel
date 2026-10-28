@@ -60,3 +60,4 @@
 - [x] Renombrar el botón de soporte para indicar claramente que reconstruye Prospección canónica.
 - [x] Incluir Espera de Círculo de Crédito en etapas, fichas e índices reconstruidos de Prospección.
 - [x] Hacer atómica y verificable la reconstrucción de índices de Prospección por Líder para impedir listas parciales frente a contadores completos.
+- [x] Proyectar y verificar expedientes activos por correo normalizado de Líder para reparar identidades históricas de UID.

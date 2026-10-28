@@ -1375,6 +1375,11 @@
     ].map(value => String(value || '').trim()).filter(Boolean)));
   }
 
+  function prospectIndexLeaderEmailKeys(record) {
+    const key = prospectLeaderEmailKey(record?.lider_asignado_correo);
+    return key ? [key] : [];
+  }
+
   function prospectSectionBuckets(record) {
     if (record?.es_expediente_prospeccion === false || normaliseActivityText(record?.tipo) !== 'PROSPECCION') return [];
     const stage = prospectWorkflowStage(record);
@@ -1443,6 +1448,12 @@
     return normaliseActivityText(value).replace(/[^A-Z0-9]/g, '');
   }
 
+  function prospectLeaderEmailKey(value) {
+    return String(value || '').trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+  }
+
   async function loadProspectProjectionDirectory() {
     const snap = await get(ref(database, 'users'));
     const users = [];
@@ -1467,13 +1478,13 @@
       .map(value => String(value || '').trim()).filter(Boolean);
     for (const candidate of directValues) {
       const matched = users.find(user => user.authUid === candidate || user.profileUid === candidate);
-      if (matched) return { uid: matched.authUid, source: 'UID' };
+      if (matched) return { uid: matched.authUid, email: matched.correo, source: 'UID' };
     }
     const emails = [record?.lider_asignado_correo, record?.responsable_cita_correo, record?.lider_responsable_correo]
       .map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
     for (const email of emails) {
       const matched = users.find(user => user.correo === email);
-      if (matched) return { uid: matched.authUid, source: 'CORREO' };
+      if (matched) return { uid: matched.authUid, email: matched.correo, source: 'CORREO' };
     }
 
     const plaza = normaliseActivityText(record?.plaza);
@@ -1481,19 +1492,19 @@
       .map(normalizedProspectIdentity).filter(Boolean);
     for (const name of names) {
       const candidates = users.filter(user => normalizedProspectIdentity(user.nombre) === name && (!plaza || user.plaza === plaza));
-      if (candidates.length === 1) return { uid: candidates[0].authUid, source: 'NOMBRE_PLAZA' };
+      if (candidates.length === 1) return { uid: candidates[0].authUid, email: candidates[0].correo, source: 'NOMBRE_PLAZA' };
     }
 
     // Si no existe ya un perfil que coincida por UID, correo o nombre/plaza,
     // se conserva el identificador directo para no descartar un Líder inactivo.
-    if (directValues[0]) return { uid: directValues[0], source: 'UID_SIN_PERFIL' };
+    if (directValues[0]) return { uid: directValues[0], email: emails[0] || '', source: 'UID_SIN_PERFIL' };
 
     const creatorUid = String(record?.user_uid || record?.uid || '').trim();
     if (creatorUid) {
       const matched = users.find(user => user.authUid === creatorUid || user.profileUid === creatorUid);
-      return { uid: matched?.authUid || creatorUid, source: 'CREADOR_RESPALDO' };
+      return { uid: matched?.authUid || creatorUid, email: matched?.correo || emails[0] || '', source: 'CREADOR_RESPALDO' };
     }
-    return { uid: '', source: 'SIN_IDENTIDAD' };
+    return { uid: '', email: emails[0] || '', source: 'SIN_IDENTIDAD' };
   }
 
   function projectProspectRecord(record, users) {
@@ -1504,6 +1515,7 @@
       ...record,
       estado_expediente: canonicalProspectStage(record),
       lider_asignado_uid: identity.uid || String(record?.lider_asignado_uid || '').trim(),
+      lider_asignado_correo: identity.email || String(record?.lider_asignado_correo || '').trim().toLowerCase(),
     };
     // Fichas históricas sin creador aún se pueden proyectar bajo la identidad
     // resuelta del Líder. Este valor vive sólo en activity_summaries.
@@ -1591,6 +1603,9 @@
         if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
         const leaderUid = String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim();
         if (leaderUid) changes[`activity_summaries/active_prospects_by_leader/${leaderUid}/${id}`] = active ? summary : null;
+        prospectIndexLeaderEmailKeys(record).forEach(leaderEmailKey => {
+          changes[`activity_summaries/active_prospects_by_leader_email/${leaderEmailKey}/${id}`] = active ? summary : null;
+        });
         changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
         if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/rejected_prospects/users/${cancelledByUid}/${id}`] = rejected ? summary : null;
         changes[`activity_summaries/cancelled_prospects/users/${uid}/${id}`] = cancelled ? summary : null;
@@ -1604,6 +1619,9 @@
         }
         prospectIndexOwnerIds(record).forEach(ownerUid => {
           buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_leader/${ownerUid}/${bucket}/${id}`] = sectionBuckets.includes(bucket) ? summary : null; });
+        });
+        prospectIndexLeaderEmailKeys(record).forEach(ownerEmailKey => {
+          buckets.forEach(bucket => { changes[`activity_summaries/prospect_pages/by_leader_email/${ownerEmailKey}/${bucket}/${id}`] = sectionBuckets.includes(bucket) ? summary : null; });
         });
       }
       if (plaza && normaliseActivityText(record?.tipo) === 'PROSPECCION') {
@@ -1690,7 +1708,7 @@
       }
       const rebuiltAt = Date.now();
       const rebuiltBy = auth.currentUser?.email || 'soporte@fredinero.com';
-      const counters = { version: 2, rebuilt_at: rebuiltAt, rebuilt_by: rebuiltBy, fuente: 'gestor_activities/PROSPECCION', total: 0, por_plaza: {}, por_lider: {}, por_etapa: {} };
+      const counters = { version: 3, rebuilt_at: rebuiltAt, rebuilt_by: rebuiltBy, fuente: 'gestor_activities/PROSPECCION', total: 0, por_plaza: {}, por_lider: {}, por_lider_email: {}, por_etapa: {} };
       const monthlyAltas = { version: 2, rebuilt_at: rebuiltAt, rebuilt_by: rebuiltBy, fuente: 'gestor_activities/PROSPECCION', mes_actual: activitySummaryMonth(rebuiltAt), por_plaza: {} };
       const monthlyAltaDetails = {};
       const add = (bucket, key) => {
@@ -1700,23 +1718,33 @@
       const totals = { activos: 0, rechazados: 0, cancelados: 0, altasMes: 0, sinIdentidad: 0 };
       const projectionSources = {};
       const expectedActiveByLeader = new Map();
+      const expectedActiveByLeaderEmail = new Map();
       const knownLeaderIds = new Set();
+      const knownLeaderEmailKeys = new Set(projectionUsers.map(user => prospectLeaderEmailKey(user.correo)).filter(Boolean));
       roots.forEach(({ record, identitySource }) => {
         projectionSources[identitySource] = Number(projectionSources[identitySource] || 0) + 1;
         const stage = prospectWorkflowStage(record);
         const leaderUid = String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim();
+        const leaderEmailKey = prospectLeaderEmailKey(record.lider_asignado_correo);
         if (!leaderUid) totals.sinIdentidad += 1;
         if (leaderUid) knownLeaderIds.add(leaderUid);
+        if (leaderEmailKey) knownLeaderEmailKeys.add(leaderEmailKey);
         if (isActiveProspectRecord(record)) {
           totals.activos += 1;
           counters.total += 1;
           add(counters.por_plaza, prospectCounterKey(record.plaza));
           add(counters.por_lider, leaderUid);
+          add(counters.por_lider_email, leaderEmailKey);
           add(counters.por_etapa, prospectCounterKey(stage));
           if (leaderUid) {
             const records = expectedActiveByLeader.get(leaderUid) || new Set();
             records.add(String(record.id));
             expectedActiveByLeader.set(leaderUid, records);
+          }
+          if (leaderEmailKey) {
+            const records = expectedActiveByLeaderEmail.get(leaderEmailKey) || new Set();
+            records.add(String(record.id));
+            expectedActiveByLeaderEmail.set(leaderEmailKey, records);
           }
         }
         if (isRejectedProspectRecord(record)) totals.rechazados += 1;
@@ -1745,10 +1773,9 @@
         });
         if (button) button.textContent = `⏳ ${Math.min(index + batchSize, roots.length)}/${roots.length} expedientes…`;
       }
-      // Cada Líder recibe una sustitución atómica de SU lista completa. Es el
-      // árbol que consulta el móvil; sustituirlo por UID borra fichas obsoletas
-      // sin crear el estado parcial de la versión anterior y sin exceder el
-      // tamaño máximo de una actualización global.
+      // Cada Líder recibe una sustitución atómica de SU lista completa. Se
+      // publica por UID y por correo normalizado: la app consulta el correo,
+      // que permanece estable aunque una cuenta Auth haya sido recreada.
       const activeLeaderReplacements = {};
       knownLeaderIds.forEach(leaderUid => {
         const expectedIds = expectedActiveByLeader.get(leaderUid) || new Set();
@@ -1759,6 +1786,15 @@
           if (recordLeaderUid === leaderUid && expectedIds.has(id)) entries[id] = buildActivitySummary(record);
         });
         activeLeaderReplacements[`activity_summaries/active_prospects_by_leader/${leaderUid}`] = entries;
+      });
+      knownLeaderEmailKeys.forEach(leaderEmailKey => {
+        const expectedIds = expectedActiveByLeaderEmail.get(leaderEmailKey) || new Set();
+        const entries = {};
+        roots.forEach(({ record }) => {
+          const id = String(record?.id || '').trim();
+          if (prospectLeaderEmailKey(record?.lider_asignado_correo) === leaderEmailKey && expectedIds.has(id)) entries[id] = buildActivitySummary(record);
+        });
+        activeLeaderReplacements[`activity_summaries/active_prospects_by_leader_email/${leaderEmailKey}`] = entries;
       });
       if (button) button.textContent = '⏳ Publicando listas completas de Líderes…';
       if (Object.keys(activeLeaderReplacements).length) await update(ref(database), activeLeaderReplacements);
@@ -1775,13 +1811,25 @@
         if (missing.length || actualIds.size !== expectedIds.size) throw new Error(`El índice de Líder ${leaderUid} no coincide con los expedientes canónicos. No uses la app hasta volver a ejecutar la reconstrucción.`);
         verifiedByLeader.push({ leaderUid, activos: expectedIds.size });
       });
+      const activeLeaderEmailSnapshots = await Promise.all(Array.from(expectedActiveByLeaderEmail.keys()).map(async leaderEmailKey => ({
+        leaderEmailKey,
+        expectedIds: expectedActiveByLeaderEmail.get(leaderEmailKey) || new Set(),
+        snapshot: await get(ref(database, `activity_summaries/active_prospects_by_leader_email/${leaderEmailKey}`)),
+      })));
+      const verifiedByLeaderEmail = [];
+      activeLeaderEmailSnapshots.forEach(({ leaderEmailKey, expectedIds, snapshot }) => {
+        const actualIds = new Set(snapshot.exists() ? Object.keys(snapshot.val() || {}) : []);
+        const missing = Array.from(expectedIds).filter(id => !actualIds.has(id));
+        if (missing.length || actualIds.size !== expectedIds.size) throw new Error(`El índice por correo del Líder ${leaderEmailKey} no coincide con los expedientes canónicos.`);
+        verifiedByLeaderEmail.push({ leaderEmailKey, activos: expectedIds.size });
+      });
       await update(ref(database), {
         'app_config/prospect_active_counters': counters,
         [`app_config/prospect_monthly_alta_counters/${monthlyAltas.mes_actual}`]: monthlyAltas,
         ...monthlyAltaDetails,
       });
-      recordPanelDataUsage('PANEL_REBUILD_CANONICAL_PROSPECT_INDEXES', { records: roots.length, payload: { total: roots.length, ...totals, lideresVerificados: verifiedByLeader.length }, scope: 'Reconstrucción manual canónica de Prospección' });
-      alert(`✅ Prospección reconstruida y verificada desde expedientes originales.\n\nExpedientes canónicos: ${roots.length}\nActivos: ${totals.activos}\nRechazados Crédito y Riesgo: ${totals.rechazados}\nCancelados / sin cita: ${totals.cancelados}\nAltas de ${monthlyAltas.mes_actual}: ${totals.altasMes}\nLíderes verificados: ${verifiedByLeader.length}\n\nPrimero se escribieron las fichas activas y se comprobó que cada Líder recibió todas las esperadas. Después se actualizaron los contadores. La app no descarga fotos, firmas ni bitácoras hasta abrir un expediente.`);
+      recordPanelDataUsage('PANEL_REBUILD_CANONICAL_PROSPECT_INDEXES', { records: roots.length, payload: { total: roots.length, ...totals, lideresVerificados: verifiedByLeader.length, correosVerificados: verifiedByLeaderEmail.length }, scope: 'Reconstrucción manual canónica de Prospección' });
+      alert(`✅ Prospección reconstruida y verificada desde expedientes originales.\n\nExpedientes canónicos: ${roots.length}\nActivos: ${totals.activos}\nRechazados Crédito y Riesgo: ${totals.rechazados}\nCancelados / sin cita: ${totals.cancelados}\nAltas de ${monthlyAltas.mes_actual}: ${totals.altasMes}\nLíderes verificados por UID: ${verifiedByLeader.length}\nLíderes verificados por correo: ${verifiedByLeaderEmail.length}\n\nLa app consulta el índice estable por correo; UID queda como compatibilidad. El detalle, foto, firma y ubicación se pedirán sólo al abrir un expediente.`);
     } catch (error) {
       alert(`❌ No se pudo reconstruir Prospección: ${error?.message || 'Error desconocido'}`);
     } finally {
