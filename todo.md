@@ -54,3 +54,4 @@
 - [x] Reconstruir junto con los contadores activos el contador mensual de Altas por sucursal para la app móvil.
 - [x] Reconstruir fichas ligeras mensuales de Altas por sucursal para el desglose móvil.
 - [x] Corregir la reconstrucción de contadores de Prospección y Altas cuando los expedientes históricos usan variantes de estado.
+- [x] Reconstruir el índice ligero de expedientes activos por Líder para consultas móviles completas.

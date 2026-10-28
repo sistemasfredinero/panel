@@ -1457,6 +1457,8 @@
         const sectionBuckets = prospectSectionBuckets(record);
         changes[`activity_summaries/active_prospects/${id}`] = active ? summary : null;
         if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = active ? summary : null;
+        const leaderUid = String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim();
+        if (leaderUid) changes[`activity_summaries/active_prospects_by_leader/${leaderUid}/${id}`] = active ? summary : null;
         changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
         if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/rejected_prospects/users/${cancelledByUid}/${id}`] = rejected ? summary : null;
         changes[`activity_summaries/cancelled_prospects/users/${uid}/${id}`] = cancelled ? summary : null;
@@ -1533,11 +1535,12 @@
 
   window.rebuildActiveProspectCounters = async function() {
     if (!privacyIsSupport()) { alert('Esta acción es exclusiva para Soporte.'); return; }
-    if (!confirm('Se reconstruirán los contadores desde las mismas fichas ligeras que usa Seguimiento de Prospección, y las Altas del mes actual se verificarán contra los expedientes históricos. No descarga fotos, no modifica expedientes y no se ejecuta automáticamente. ¿Continuar?')) return;
+    if (!confirm('Se reconstruirán los contadores y las listas ligeras por Líder desde las mismas fichas que usa Seguimiento de Prospección; las Altas del mes actual se verificarán contra el historial. No descarga fotos, no modifica expedientes y no se ejecuta automáticamente. ¿Continuar?')) return;
     try {
-      const [snap, plazasSnap] = await Promise.all([
+      const [snap, plazasSnap, leaderIndexSnap] = await Promise.all([
         get(query(ref(database, 'gestor_activities'), orderByChild('tipo'), equalTo('PROSPECCION'))),
         get(ref(database, 'activity_summaries/prospect_pages/plazas_index')),
+        get(ref(database, 'activity_summaries/active_prospects_by_leader')),
       ]);
       const counters = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', total: 0, por_plaza: {}, por_lider: {}, por_etapa: {} };
       const monthlyAltas = { version: 1, rebuilt_at: Date.now(), rebuilt_by: auth.currentUser?.email || 'soporte@fredinero.com', mes_actual: activitySummaryMonth(Date.now()), por_plaza: {} };
@@ -1547,6 +1550,7 @@
         bucket[key] = Math.max(0, Number(bucket[key] || 0)) + 1;
       };
       const activeFiles = new Map();
+      const leaderIndexChanges = {};
       const plazas = plazasSnap.exists()
         ? Object.keys(plazasSnap.val() || {}).map(plaza => String(plaza || '').trim().toUpperCase()).filter(Boolean)
         : [];
@@ -1584,17 +1588,29 @@
         }
         if (!activeFiles.size) {
           scanned += 1;
+          if (isActiveProspectRecord(record)) activeFiles.set(String(record.id), buildActivitySummary(record));
           countActive(record);
         }
+      });
+      activeFiles.forEach(record => {
+        const leaderUid = String(record.lider_asignado_uid || record.user_uid || record.uid || '').trim();
+        if (leaderUid) leaderIndexChanges[`activity_summaries/active_prospects_by_leader/${leaderUid}/${record.id}`] = record;
+      });
+      if (leaderIndexSnap.exists()) leaderIndexSnap.forEach(leaderChild => {
+        leaderChild.forEach(fileChild => {
+          const path = `activity_summaries/active_prospects_by_leader/${leaderChild.key}/${fileChild.key}`;
+          if (!Object.prototype.hasOwnProperty.call(leaderIndexChanges, path)) leaderIndexChanges[path] = null;
+        });
       });
       await update(ref(database), {
         'app_config/prospect_active_counters': counters,
         [`app_config/prospect_monthly_alta_counters/${monthlyAltas.mes_actual}`]: monthlyAltas,
         ...monthlyAltaDetails,
+        ...leaderIndexChanges,
       });
-      recordPanelDataUsage('PANEL_REBUILD_ACTIVE_PROSPECT_COUNTERS', { records: scanned, payload: { scanned, active: counters.total }, scope: 'Reconstrucción manual de soporte desde fichas activas' });
+      recordPanelDataUsage('PANEL_REBUILD_ACTIVE_PROSPECT_COUNTERS', { records: scanned, payload: { scanned, active: counters.total, leaderIndex: Object.keys(leaderIndexChanges).length }, scope: 'Reconstrucción manual de soporte desde fichas activas' });
       const altas = Object.values(monthlyAltas.por_plaza).reduce((total, value) => total + Number(value || 0), 0);
-      alert(`✅ Contadores reconstruidos.\n\nFichas activas revisadas: ${scanned}\nExpedientes activos: ${counters.total}\nAltas de ${monthlyAltas.mes_actual}: ${altas}\n\nLa app leerá las mismas cifras que sus listas de Seguimiento. También se prepararon fichas ligeras de Altas por sucursal, sin fotos ni bitácoras.`);
+      alert(`✅ Contadores y listas de Líder reconstruidos.\n\nFichas activas revisadas: ${scanned}\nExpedientes activos: ${counters.total}\nAltas de ${monthlyAltas.mes_actual}: ${altas}\n\nLa app leerá las mismas cifras que sus listas de Seguimiento. También se prepararon fichas ligeras de Altas por sucursal, sin fotos ni bitácoras.`);
     } catch (error) {
       alert(`❌ No se pudo reconstruir el contador: ${error?.message || 'Error desconocido'}`);
     }
