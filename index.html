@@ -1338,20 +1338,19 @@
   function isActiveProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
       && record?.es_expediente_prospeccion !== false
-      && !PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record))
-      && prospectWorkflowStage(record) !== 'RECHAZADA_POR_PROSPECTO';
+      && !PROSPECT_FINAL_STAGES.has(prospectWorkflowStage(record));
   }
 
   function isRejectedProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
       && record?.es_expediente_prospeccion !== false
-      && prospectWorkflowStage(record) === 'RECHAZADA_CREDITO_RIESGO';
+      && ['RECHAZADA_POR_PROSPECTO', 'RECHAZADA_CREDITO_RIESGO'].includes(prospectWorkflowStage(record));
   }
 
   function isCancelledProspectRecord(record) {
     return String(record?.tipo || '').toUpperCase() === 'PROSPECCION'
       && record?.es_expediente_prospeccion !== false
-      && ['CANCELADA', 'RECHAZADA_POR_PROSPECTO'].includes(prospectWorkflowStage(record));
+      && prospectWorkflowStage(record) === 'CANCELADA';
   }
 
   function isOpenPaymentFollowUpRecord(record) {
@@ -1388,10 +1387,11 @@
     const cancelled = isCancelledProspectRecord(record);
     const buckets = [];
     if (active) buckets.push('ACTIVAS', 'PENDIENTES');
-    if (rejected) buckets.push('RECHAZADAS', 'RECHAZADAS_CREDITO');
+    if (rejected) buckets.push('RECHAZADAS');
+    if (stage === 'RECHAZADA_POR_PROSPECTO') buckets.push('RECHAZADAS_PROSPECTO');
+    if (stage === 'RECHAZADA_CREDITO_RIESGO') buckets.push('RECHAZADAS_CREDITO');
     if (cancelled) buckets.push('CANCELADAS');
     if (stage === 'ALTA') buckets.push('ALTAS');
-    if (stage === 'RECHAZADA_POR_PROSPECTO') buckets.push('RECHAZADAS_PROSPECTO');
     return buckets;
   }
 
@@ -2933,7 +2933,7 @@
   const PROSPECT_WORKFLOW_COLORS = {
     CITA_PROGRAMADA: ['#DBEAFE', '#1D4ED8'], RECHAZADA_POR_PROSPECTO: ['#E5E7EB', '#4B5563'], PENDIENTE_RAFIK: ['#FEF3C7', '#92400E'], PENDIENTE_CIRCULO_CREDITO: ['#FEF3C7', '#92400E'], PENDIENTE_DOCUMENTACION: ['#FFEDD5', '#C2410C'], PENDIENTE_ONBOARDING: ['#EDE9FE', '#6D28D9'], PENDIENTE_ASIGNACION_GERENTE: ['#FCE7F3', '#9D174D'], PENDIENTE_VERIFICACION: ['#CCFBF1', '#0F766E'], VERIFICACION_PARCIAL: ['#CCFBF1', '#0F766E'], PENDIENTE_VOBO_GERENTE: ['#DCFCE7', '#166534'], PENDIENTE_REVISION_CREDITO_RIESGO: ['#EDE9FE', '#5B21B6'], DEVUELTA_A_GERENTE: ['#FEE2E2', '#B91C1C'], AUTORIZADA: ['#DCFCE7', '#15803D'], PENDIENTE_ACTIVACION: ['#CFFAFE', '#0E7490'], ALTA: ['#BBF7D0', '#166534'], NO_ASISTIO: ['#FEE2E2', '#B91C1C'], RECHAZADA_CREDITO_RIESGO: ['#FEE2E2', '#991B1B'], CANCELADA: ['#FEE2E2', '#991B1B']
   };
-  const PROSPECT_FINAL_STAGES = new Set(['ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO', 'CANCELADA']);
+  const PROSPECT_FINAL_STAGES = new Set(['ALTA', 'NO_ASISTIO', 'RECHAZADA_POR_PROSPECTO', 'RECHAZADA_CREDITO_RIESGO', 'CANCELADA']);
   const PROSPECT_VERIFICATION_STAGES = new Set(['PENDIENTE_VERIFICACION', 'PENDIENTE_VOBO_GERENTE', 'PENDIENTE_REVISION_CREDITO_RIESGO', 'DEVUELTA_A_GERENTE', 'AUTORIZADA', 'PENDIENTE_ACTIVACION', 'ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO']);
   function prospectWorkflowStage(record) {
     const stage = normaliseActivityText(record?.estado_expediente);
