@@ -1379,6 +1379,20 @@
     return key ? [key] : [];
   }
 
+  function pendingProspectVerifierIds(record) {
+    if (!isActiveProspectRecord(record)) return [];
+    const domiciliary = record?.verificacion_domiciliaria || {};
+    const commercial = record?.verificacion_comercial || {};
+    return Array.from(new Set([
+      domiciliary?.requerida !== false && String(domiciliary?.estado || '').trim().toUpperCase() !== 'COMPLETA'
+        ? String(domiciliary?.asignado_uid || '').trim()
+        : '',
+      commercial?.requerida === true && String(commercial?.estado || '').trim().toUpperCase() !== 'COMPLETA'
+        ? String(commercial?.asignado_uid || '').trim()
+        : '',
+    ].filter(Boolean)));
+  }
+
   function prospectSectionBuckets(record) {
     if (record?.es_expediente_prospeccion === false || normaliseActivityText(record?.tipo) !== 'PROSPECCION') return [];
     const stage = prospectWorkflowStage(record);
@@ -1511,11 +1525,24 @@
     if (normaliseActivityText(record?.tipo) !== 'PROSPECCION') return { record, identitySource: 'NO_PROSPECCION' };
     const identity = resolveProspectLeaderIdentity(record, users);
     const creatorUid = String(record?.user_uid || record?.uid || '').trim();
+    const resolveAuthUid = value => {
+      const sourceUid = String(value || '').trim();
+      if (!sourceUid) return '';
+      const matched = users.find(user => user.authUid === sourceUid || user.profileUid === sourceUid);
+      return matched?.authUid || sourceUid;
+    };
+    const projectVerification = verification => {
+      if (!verification || typeof verification !== 'object') return verification;
+      const assignedUid = resolveAuthUid(verification.asignado_uid);
+      return assignedUid ? { ...verification, asignado_uid: assignedUid } : verification;
+    };
     const projected = {
       ...record,
       estado_expediente: canonicalProspectStage(record),
       lider_asignado_uid: identity.uid || String(record?.lider_asignado_uid || '').trim(),
       lider_asignado_correo: identity.email || String(record?.lider_asignado_correo || '').trim().toLowerCase(),
+      verificacion_domiciliaria: projectVerification(record?.verificacion_domiciliaria),
+      verificacion_comercial: projectVerification(record?.verificacion_comercial),
     };
     // Fichas históricas sin creador aún se pueden proyectar bajo la identidad
     // resuelta del Líder. Este valor vive sólo en activity_summaries.
@@ -1605,6 +1632,9 @@
         if (leaderUid) changes[`activity_summaries/active_prospects_by_leader/${leaderUid}/${id}`] = active ? summary : null;
         prospectIndexLeaderEmailKeys(record).forEach(leaderEmailKey => {
           changes[`activity_summaries/active_prospects_by_leader_email/${leaderEmailKey}/${id}`] = active ? summary : null;
+        });
+        pendingProspectVerifierIds(record).forEach(verifierUid => {
+          changes[`activity_summaries/active_prospects_by_verifier/${verifierUid}/${id}`] = summary;
         });
         changes[`activity_summaries/rejected_prospects/users/${uid}/${id}`] = rejected ? summary : null;
         if (cancelledByUid && cancelledByUid !== uid) changes[`activity_summaries/rejected_prospects/users/${cancelledByUid}/${id}`] = rejected ? summary : null;
@@ -1708,7 +1738,7 @@
       }
       const rebuiltAt = Date.now();
       const rebuiltBy = auth.currentUser?.email || 'soporte@fredinero.com';
-      const counters = { version: 3, rebuilt_at: rebuiltAt, rebuilt_by: rebuiltBy, fuente: 'gestor_activities/PROSPECCION', total: 0, por_plaza: {}, por_lider: {}, por_lider_email: {}, por_etapa: {} };
+      const counters = { version: 4, rebuilt_at: rebuiltAt, rebuilt_by: rebuiltBy, fuente: 'gestor_activities/PROSPECCION', total: 0, por_plaza: {}, por_lider: {}, por_lider_email: {}, por_verificador: {}, por_etapa: {} };
       const monthlyAltas = { version: 2, rebuilt_at: rebuiltAt, rebuilt_by: rebuiltBy, fuente: 'gestor_activities/PROSPECCION', mes_actual: activitySummaryMonth(rebuiltAt), por_plaza: {} };
       const monthlyAltaDetails = {};
       const add = (bucket, key) => {
@@ -1719,8 +1749,12 @@
       const projectionSources = {};
       const expectedActiveByLeader = new Map();
       const expectedActiveByLeaderEmail = new Map();
+      const expectedActiveByVerifier = new Map();
       const knownLeaderIds = new Set();
       const knownLeaderEmailKeys = new Set(projectionUsers.map(user => prospectLeaderEmailKey(user.correo)).filter(Boolean));
+      const knownVerifierIds = new Set(projectionUsers
+        .filter(user => ['GESTOR', 'GESTOR DE COBRANZA', 'COBRANZA'].includes(normaliseActivityText(user.rol)))
+        .map(user => String(user.authUid || '').trim()).filter(Boolean));
       roots.forEach(({ record, identitySource }) => {
         projectionSources[identitySource] = Number(projectionSources[identitySource] || 0) + 1;
         const stage = prospectWorkflowStage(record);
@@ -1746,6 +1780,13 @@
             records.add(String(record.id));
             expectedActiveByLeaderEmail.set(leaderEmailKey, records);
           }
+          pendingProspectVerifierIds(record).forEach(verifierUid => {
+            knownVerifierIds.add(verifierUid);
+            add(counters.por_verificador, verifierUid);
+            const records = expectedActiveByVerifier.get(verifierUid) || new Set();
+            records.add(String(record.id));
+            expectedActiveByVerifier.set(verifierUid, records);
+          });
         }
         if (isRejectedProspectRecord(record)) totals.rechazados += 1;
         if (isCancelledProspectRecord(record)) totals.cancelados += 1;
@@ -1796,7 +1837,16 @@
         });
         activeLeaderReplacements[`activity_summaries/active_prospects_by_leader_email/${leaderEmailKey}`] = entries;
       });
-      if (button) button.textContent = '⏳ Publicando listas completas de Líderes…';
+      knownVerifierIds.forEach(verifierUid => {
+        const expectedIds = expectedActiveByVerifier.get(verifierUid) || new Set();
+        const entries = {};
+        roots.forEach(({ record }) => {
+          const id = String(record?.id || '').trim();
+          if (pendingProspectVerifierIds(record).includes(verifierUid) && expectedIds.has(id)) entries[id] = buildActivitySummary(record);
+        });
+        activeLeaderReplacements[`activity_summaries/active_prospects_by_verifier/${verifierUid}`] = entries;
+      });
+      if (button) button.textContent = '⏳ Publicando listas completas de Líderes y verificadores…';
       if (Object.keys(activeLeaderReplacements).length) await update(ref(database), activeLeaderReplacements);
       if (button) button.textContent = '⏳ Verificando índices de Líder…';
       const activeLeaderSnapshots = await Promise.all(Array.from(expectedActiveByLeader.keys()).map(async leaderUid => ({
@@ -1823,13 +1873,25 @@
         if (missing.length || actualIds.size !== expectedIds.size) throw new Error(`El índice por correo del Líder ${leaderEmailKey} no coincide con los expedientes canónicos.`);
         verifiedByLeaderEmail.push({ leaderEmailKey, activos: expectedIds.size });
       });
+      const activeVerifierSnapshots = await Promise.all(Array.from(expectedActiveByVerifier.keys()).map(async verifierUid => ({
+        verifierUid,
+        expectedIds: expectedActiveByVerifier.get(verifierUid) || new Set(),
+        snapshot: await get(ref(database, `activity_summaries/active_prospects_by_verifier/${verifierUid}`)),
+      })));
+      const verifiedByVerifier = [];
+      activeVerifierSnapshots.forEach(({ verifierUid, expectedIds, snapshot }) => {
+        const actualIds = new Set(snapshot.exists() ? Object.keys(snapshot.val() || {}) : []);
+        const missing = Array.from(expectedIds).filter(id => !actualIds.has(id));
+        if (missing.length || actualIds.size !== expectedIds.size) throw new Error(`El índice de verificador ${verifierUid} no coincide con las tareas canónicas asignadas.`);
+        verifiedByVerifier.push({ verifierUid, activos: expectedIds.size });
+      });
       await update(ref(database), {
         'app_config/prospect_active_counters': counters,
         [`app_config/prospect_monthly_alta_counters/${monthlyAltas.mes_actual}`]: monthlyAltas,
         ...monthlyAltaDetails,
       });
-      recordPanelDataUsage('PANEL_REBUILD_CANONICAL_PROSPECT_INDEXES', { records: roots.length, payload: { total: roots.length, ...totals, lideresVerificados: verifiedByLeader.length, correosVerificados: verifiedByLeaderEmail.length }, scope: 'Reconstrucción manual canónica de Prospección' });
-      alert(`✅ Prospección reconstruida y verificada desde expedientes originales.\n\nExpedientes canónicos: ${roots.length}\nActivos: ${totals.activos}\nRechazados Crédito y Riesgo: ${totals.rechazados}\nCancelados / sin cita: ${totals.cancelados}\nAltas de ${monthlyAltas.mes_actual}: ${totals.altasMes}\nLíderes verificados por UID: ${verifiedByLeader.length}\nLíderes verificados por correo: ${verifiedByLeaderEmail.length}\n\nLa app consulta el índice estable por correo; UID queda como compatibilidad. El detalle, foto, firma y ubicación se pedirán sólo al abrir un expediente.`);
+      recordPanelDataUsage('PANEL_REBUILD_CANONICAL_PROSPECT_INDEXES', { records: roots.length, payload: { total: roots.length, ...totals, lideresVerificados: verifiedByLeader.length, correosVerificados: verifiedByLeaderEmail.length, verificadoresVerificados: verifiedByVerifier.length }, scope: 'Reconstrucción manual canónica de Prospección' });
+      alert(`✅ Prospección reconstruida y verificada desde expedientes originales.\n\nExpedientes canónicos: ${roots.length}\nActivos: ${totals.activos}\nRechazados Crédito y Riesgo: ${totals.rechazados}\nCancelados / sin cita: ${totals.cancelados}\nAltas de ${monthlyAltas.mes_actual}: ${totals.altasMes}\nLíderes verificados por UID: ${verifiedByLeader.length}\nLíderes verificados por correo: ${verifiedByLeaderEmail.length}\nVerificadores con tareas: ${verifiedByVerifier.length}\n\nLa app consulta índices ligeros por correo para Líderes y por UID para verificadores. El detalle, foto, firma y ubicación se pedirán sólo al abrir un expediente.`);
     } catch (error) {
       alert(`❌ No se pudo reconstruir Prospección: ${error?.message || 'Error desconocido'}`);
     } finally {
@@ -4749,6 +4811,9 @@
       if (plaza) changes[`activity_summaries/active_prospects_by_plaza/${plaza}/${id}`] = null;
       const activeLeaderUid = String(record?.lider_asignado_uid || record?.user_uid || record?.uid || '').trim();
       if (activeLeaderUid) changes[`activity_summaries/active_prospects_by_leader/${activeLeaderUid}/${id}`] = null;
+      pendingProspectVerifierIds(record).forEach(verifierUid => {
+        changes[`activity_summaries/active_prospects_by_verifier/${verifierUid}/${id}`] = null;
+      });
       const buckets = ['ACTIVAS', 'RECHAZADAS', 'CANCELADAS', 'ALTAS', 'RECHAZADAS_PROSPECTO', 'RECHAZADAS_CREDITO', 'PENDIENTES'];
       const ownerIds = prospectIndexOwnerIds(record);
       if (uid && !ownerIds.includes(uid)) ownerIds.push(uid);

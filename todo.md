@@ -63,3 +63,4 @@
 - [x] Proyectar y verificar expedientes activos por correo normalizado de Líder para reparar identidades históricas de UID.
 - [x] Clasificar Rechazada por prospecto como rechazo definitivo al reconstruir los índices ligeros históricos.
 - [x] Restringir Expedientes de Prospección para cada Gerente a su plaza, excepto la cobertura Tampico–Madero autorizada.
+- [x] Reconstruir los índices ligeros de Prospección por verificador asignado para tareas históricas.
