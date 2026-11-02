@@ -64,3 +64,4 @@
 - [x] Clasificar Rechazada por prospecto como rechazo definitivo al reconstruir los índices ligeros históricos.
 - [x] Restringir Expedientes de Prospección para cada Gerente a su plaza, excepto la cobertura Tampico–Madero autorizada.
 - [x] Reconstruir los índices ligeros de Prospección por verificador asignado para tareas históricas.
+- [x] Proyectar verificaciones históricas por correo explícito y UID vigente, manteniendo índices y contadores por ambas identidades sin asignar por nombre ni plaza.
