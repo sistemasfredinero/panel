@@ -68,3 +68,4 @@
 - [x] Reconocer etiquetas históricas de verificación pendiente/parcial sin reclasificarlas como rechazo, manteniendo identidad explícita y regresiones de proyección.
 - [x] Añadir alta de perfiles exclusiva de Soporte para cuentas ya creadas en Authentication mediante UID/correo, sin contraseña ni avisos; validar campos, impedir sobrescrituras/duplicados, confirmar correspondencia manual y preparar reglas users protegidas sin desplegar.
 - [x] Añadir botón de diagnóstico del Worker exclusivo de Soporte por UID+correo, sin consola ni copiar tokens, sólo bajo demanda, sin envíos/escrituras Firebase y con manejo seguro de cierre de sesión, timeout y errores; probar y publicar.
+- [x] Añadir botón exclusivo de Soporte para el único correo de diagnóstico aprobado, con confirmación, bloqueo de duplicados y protección de sesión; sin cambiar avisos productivos, reglas ni app; validar y publicar.

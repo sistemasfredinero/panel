@@ -492,6 +492,14 @@
       <button id="supportWorkerDiagnosticButton" type="button" class="btn-export" style="background:#0369A1;white-space:normal" onclick="window.checkSupportWorkerSession()">Comprobar conexión segura</button>
       <p id="supportWorkerDiagnosticStatus" role="status" aria-live="polite" style="font-size:13px;line-height:1.6;margin:12px 0 0"></p>
       <pre id="supportWorkerDiagnosticResult" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:12px;border-radius:10px;font-size:12px;margin:12px 0 0"></pre>
+      <div style="border-top:1px solid #BAE6FD;margin-top:18px;padding-top:16px">
+        <h4 style="margin:0 0 8px">Correo de prueba aprobado</h4>
+        <p style="font-size:13px;line-height:1.6;margin:0 0 10px">Se enviará únicamente a <strong>soporte@fredinero.com</strong>, desde Fredinero &lt;noreply@fredinero.com&gt;, con el asunto <strong>Fredinero — Prueba de correo seguro</strong>. No activa los avisos productivos. Requiere haber iniciado sesión en los últimos cinco minutos.</p>
+        <details style="font-size:13px;line-height:1.6;margin-bottom:12px"><summary style="cursor:pointer">Ver mensaje aprobado</summary><p>Este es un correo de prueba enviado desde el Worker de Fredinero para comprobar la integración con Resend. No corresponde a ninguna actividad ni solicitud y no requiere respuesta.</p></details>
+        <button id="supportEmailTestButton" type="button" class="btn-export" style="background:#15803D;white-space:normal;max-width:100%;overflow-wrap:anywhere" onclick="window.sendSupportEmailTest()">Enviar correo de prueba a soporte@fredinero.com</button>
+        <p id="supportEmailTestStatus" role="status" aria-live="polite" style="font-size:13px;line-height:1.6;margin:12px 0 0"></p>
+        <pre id="supportEmailTestResult" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:12px;border-radius:10px;font-size:12px;margin:12px 0 0"></pre>
+      </div>
     </section>
   </section>
 
@@ -1296,6 +1304,99 @@
         _supportWorkerController = null;
         _supportWorkerBusy = false;
         if (button) { button.disabled = false; button.textContent = 'Comprobar conexión segura'; }
+      }
+    }
+  };
+
+
+  const SUPPORT_EMAIL_TEST_URL = 'https://fredinero-avisos.sistemas-fredinero.workers.dev/v1/diagnostics/email-test';
+  let _supportEmailTestRun = 0;
+  let _supportEmailTestBusy = false;
+  let _supportEmailTestAccepted = false;
+  let _supportEmailTestController = null;
+
+  function supportEmailTestMessage(message, error = false) {
+    const status = document.getElementById('supportEmailTestStatus');
+    if (status) { status.textContent = message; status.style.color = error ? '#B91C1C' : '#166534'; }
+  }
+
+  function resetSupportEmailTest() {
+    _supportEmailTestRun++;
+    _supportEmailTestController?.abort();
+    _supportEmailTestController = null;
+    _supportEmailTestBusy = false;
+    _supportEmailTestAccepted = false;
+    const button = document.getElementById('supportEmailTestButton');
+    if (button) { button.disabled = false; button.textContent = 'Enviar correo de prueba a soporte@fredinero.com'; }
+    const output = document.getElementById('supportEmailTestResult');
+    if (output) { output.textContent = ''; output.hidden = true; }
+    supportEmailTestMessage('');
+  }
+
+  window.sendSupportEmailTest = async function() {
+    if (_supportEmailTestBusy || _supportEmailTestAccepted || !supportWorkerIsAuthorized()) return;
+    const operator = auth.currentUser;
+    const run = ++_supportEmailTestRun;
+    const controller = new AbortController();
+    _supportEmailTestController = controller;
+    _supportEmailTestBusy = true;
+    const button = document.getElementById('supportEmailTestButton');
+    const output = document.getElementById('supportEmailTestResult');
+    if (button) { button.disabled = true; button.textContent = 'Enviando prueba…'; }
+    if (output) { output.textContent = ''; output.hidden = true; }
+    supportEmailTestMessage('Solicitando únicamente el correo de prueba aprobado para Soporte…');
+    const sameSession = () => run === _supportEmailTestRun && auth.currentUser === operator && supportWorkerIsAuthorized();
+    let timer;
+    try {
+      const result = await Promise.race([
+        (async () => {
+          const token = await operator.getIdToken();
+          if (!sameSession() || controller.signal.aborted) throw new Error('SESSION_CHANGED');
+          const response = await fetch(SUPPORT_EMAIL_TEST_URL, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmacion: 'ENVIAR_PRUEBA_SOPORTE' }),
+            credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', signal: controller.signal,
+          });
+          if (!sameSession()) throw new Error('SESSION_CHANGED');
+          const data = await response.json();
+          if (!response.ok) {
+            const error = new Error('EMAIL_TEST_HTTP');
+            error.testStatus = response.status;
+            const allowed = ['SESION_RECIENTE_REQUERIDA', 'PRUEBA_DESACTIVADA', 'PRUEBA_VENCIDA', 'CONFIGURACION_PRUEBA_INCOMPLETA', 'PROVEEDOR_RECHAZO_PRUEBA', 'PRUEBA_EN_PROCESO_O_LIMITADA', 'RESULTADO_ENVIO_NO_CONFIRMADO', 'ENVIOS_NO_IMPLEMENTADOS'];
+            error.testCode = allowed.includes(data?.codigo) ? data.codigo : '';
+            throw error;
+          }
+          if (data?.ok !== true || data?.prueba_correo_aceptada !== true || data?.destinatario !== 'soporte@fredinero.com'
+              || data?.avisos_productivos_habilitados !== false || data?.revocacion_consultada !== false) throw new Error('EMAIL_TEST_UNCERTAIN');
+          return { ok: true, prueba_correo_aceptada: true, destinatario: 'soporte@fredinero.com', avisos_productivos_habilitados: false, revocacion_consultada: false };
+        })(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => { controller.abort(); reject(new Error('EMAIL_TEST_TIMEOUT')); }, 20000);
+        }),
+      ]);
+      if (!sameSession()) return;
+      _supportEmailTestAccepted = true;
+      if (output) { output.textContent = JSON.stringify(result, null, 2); output.hidden = false; }
+      supportEmailTestMessage('Resend aceptó la prueba. Revisa la bandeja de entrada y spam de soporte@fredinero.com; la aceptación no garantiza que ya se haya entregado.');
+    } catch (error) {
+      if (!sameSession()) return;
+      let message = 'No se pudo confirmar el resultado. El correo podría haber sido aceptado: revisa tu bandeja y Resend antes de reintentar manualmente. No habrá reintentos automáticos.';
+      if (error?.testCode === 'SESION_RECIENTE_REQUERIDA' || error?.testStatus === 401) message = 'Por seguridad, cierra sesión en el panel y vuelve a entrar como Soporte. Pulsa la prueba dentro de los siguientes cinco minutos.';
+      else if (error?.testStatus === 403) message = 'Acceso rechazado. Comprueba la cuenta de Soporte y el origen permitido del panel.';
+      else if (error?.testCode === 'PRUEBA_VENCIDA' || error?.testStatus === 410) message = 'La ventana de esta prueba ya venció. No cambies la clave idempotente ni las fechas; solicita una nueva prueba antes de continuar.';
+      else if (error?.testCode === 'PRUEBA_DESACTIVADA') message = 'La prueba está desactivada. En el Worker configura SUPPORT_EMAIL_TEST_ENABLED como Text con valor true sólo durante la prueba.';
+      else if (error?.testCode === 'CONFIGURACION_PRUEBA_INCOMPLETA') message = 'Falta completar la configuración de la prueba en el Worker. Conserva los secretos fuera del código y del chat.';
+      else if (error?.testCode === 'PROVEEDOR_RECHAZO_PRUEBA') message = 'Resend rechazó la prueba. Revisa los permisos de la clave y la verificación del dominio fredinero.com en su panel; no compartas la clave.';
+      else if (error?.testStatus === 429) message = 'La prueba está en proceso o el proveedor limitó la petición. Revisa la bandeja y espera antes de un reintento manual de la misma operación.';
+      else if (error?.testCode === 'ENVIOS_NO_IMPLEMENTADOS' || error?.testStatus === 404 || error?.testStatus === 503) message = 'Instala primero el Worker preparación-3 y activa únicamente la variable de prueba indicada en la guía.';
+      supportEmailTestMessage(message, true);
+    } finally {
+      clearTimeout(timer);
+      if (run === _supportEmailTestRun) {
+        _supportEmailTestController = null;
+        _supportEmailTestBusy = false;
+        if (button) { button.disabled = _supportEmailTestAccepted; button.textContent = _supportEmailTestAccepted ? 'Prueba aceptada por Resend' : 'Enviar correo de prueba a soporte@fredinero.com'; }
       }
     }
   };
@@ -2333,6 +2434,7 @@
 
   onAuthStateChanged(auth, async (user) => {
     resetSupportWorkerDiagnostic();
+    resetSupportEmailTest();
     if (user) {
       try {
         const profileSnap = await get(ref(database, `users/${user.uid}`));
