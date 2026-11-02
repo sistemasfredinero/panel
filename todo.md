@@ -65,3 +65,4 @@
 - [x] Restringir Expedientes de Prospección para cada Gerente a su plaza, excepto la cobertura Tampico–Madero autorizada.
 - [x] Reconstruir los índices ligeros de Prospección por verificador asignado para tareas históricas.
 - [x] Proyectar verificaciones históricas por correo explícito y UID vigente, manteniendo índices y contadores por ambas identidades sin asignar por nombre ni plaza.
+- [x] Reconocer etiquetas históricas de verificación pendiente/parcial sin reclasificarlas como rechazo, manteniendo identidad explícita y regresiones de proyección.

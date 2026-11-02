@@ -12,7 +12,7 @@ const html = readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const plain = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 
 function realFunction(name) {
-  const match = html.match(new RegExp(`^  (?:async )?function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?^  \\}`, 'm'));
+  const match = html.match(new RegExp(`^  (?:async )?function ${name}\\([^\\n]*\\) \\{(?:[^\\n]*\\}$|\\n[\\s\\S]*?^  \\})`, 'm'));
   assert.ok(match, `Función real no encontrada: ${name}`);
   return match[0];
 }
@@ -96,13 +96,15 @@ function harness({ records = {}, users = {}, initial = {}, tamper, support = tru
   const exports = [
     'projectProspectRecord', 'prospectVerificationEmail', 'pendingProspectVerifications',
     'pendingProspectVerifierIds', 'pendingProspectVerifierEmailKeys', 'prospectLeaderEmailKey',
+    'canonicalProspectStage', 'prospectWorkflowStage', 'prospectVerificationVisible', 'isActiveProspectRecord',
     'flushActivitySummaryBatch', 'activitySummaryDeletionChanges', 'deleteActivityRecordAndIndexes',
   ];
   const code = [
     html.slice(start, end),
     realConstant('PROSPECT_FINAL_STAGES'),
+    realConstant('PROSPECT_VERIFICATION_STAGES'),
     realConstant('FIREBASE_PUSH_ID_CHARS'),
-    ...['normaliseActivityText', 'prospectWorkflowStage', 'firebasePushIdTimestamp', 'activityCreatedTimestamp', 'isStoredActivityRecord'].map(realFunction),
+    ...['normaliseActivityText', 'prospectWorkflowStage', 'prospectVerificationVisible', 'firebasePushIdTimestamp', 'activityCreatedTimestamp', 'isStoredActivityRecord'].map(realFunction),
     realFunction('activitySummaryDeletionChanges'),
     realFunction('deleteActivityRecordAndIndexes'),
     realWindowFunction('rebuildActiveProspectCounters'),
@@ -214,6 +216,99 @@ test('sólo PENDIENTE_VERIFICACION y VERIFICACION_PARCIAL generan tareas UID/cor
   for (const extra of [{ tipo: 'COBRANZA' }, { es_expediente_prospeccion: false }]) {
     assert.deepEqual(plain(api.pendingProspectVerifierIds(prospect('case-1', extra))), []);
     assert.deepEqual(plain(api.pendingProspectVerifierEmailKeys(prospect('case-1', extra))), []);
+  }
+});
+
+test('alias históricos de verificación pendiente/parcial proyectan la misma etapa, visibilidad y rutas UID/correo', async () => {
+  const stages = [
+    ['PENDIENTE_VERIFICACION', ['Verificación', 'Pendiente de verificación', 'Pendiente verificación', '  PENDIENTE DE VERIFICACIÓN  ']],
+    ['VERIFICACION_PARCIAL', ['Verificación parcial', 'Verificacion parcial', '  VERIFICACIÓN PARCIAL  ']],
+  ];
+  for (const kind of ['verificacion_domiciliaria', 'verificacion_comercial']) {
+    for (const emailField of ['asignado_email', 'asignado_correo']) {
+      for (const [canonical, aliases] of stages) {
+        const sourceFor = stage => prospect('case-1', {
+          estado_expediente: stage,
+          verificacion_domiciliaria: { requerida: false },
+          verificacion_comercial: { requerida: false },
+          [kind]: { requerida: true, estado: ' pendiente ', asignado_uid: 'auth-deleted', [emailField]: ' VeRiFiEr@Example.Test ' },
+        });
+        const baseline = harness();
+        await baseline.api.flushActivitySummaryBatch([sourceFor(canonical)], [user()]);
+        for (const stage of [canonical, ...aliases]) {
+          const source = sourceFor(stage);
+          const before = plain(source);
+          const h = harness({ records: { 'case-1': source } });
+          assert.equal(h.api.canonicalProspectStage(source), canonical, stage);
+          const projected = h.api.projectProspectRecord(source, [user()]).record;
+          assert.equal(projected.estado_expediente, canonical, stage);
+          assert.equal(h.api.prospectWorkflowStage(projected), canonical, stage);
+          assert.equal(h.api.isActiveProspectRecord(projected), true, stage);
+          assert.equal(h.api.prospectVerificationVisible(projected), true, stage);
+          assert.deepEqual(plain(h.api.pendingProspectVerifierIds(projected)), ['verifier-current'], stage);
+          assert.deepEqual(plain(h.api.pendingProspectVerifierEmailKeys(projected)), ['verifier_example_test'], stage);
+          await h.api.flushActivitySummaryBatch([source], [user()]);
+          const writes = h.writes[0];
+          assert.deepEqual(Object.keys(writes).sort(), Object.keys(baseline.writes[0]).sort(), `Rutas idénticas: ${stage}`);
+          const uidRoute = 'activity_summaries/active_prospects_by_verifier/verifier-current/case-1';
+          const emailRoute = 'activity_summaries/active_prospects_by_verifier_email/verifier_example_test/case-1';
+          assert.deepEqual(writes[uidRoute], writes[emailRoute], `Misma ficha UID/correo: ${stage}`);
+          assert.equal(writes[uidRoute].estado_expediente, canonical, stage);
+          assert.equal(writes[uidRoute][kind].asignado_email, 'verifier@example.test', stage);
+          assert.equal(writes['activity_summaries/active_prospects_by_verifier/auth-deleted/case-1'], null, stage);
+          assert.equal(writes['activity_summaries/rejected_prospects/users/creator/case-1'], null, stage);
+          assert.deepEqual(source, before, 'Etiqueta e identidad originales intactas');
+          assert.deepEqual(h.store.gestor_activities, { 'case-1': before });
+          assert.ok(Object.keys(writes).every(route => route.startsWith('activity_summaries/')));
+          assert.equal(h.reads.length, 0, 'Proyección sin lecturas remotas');
+        }
+      }
+    }
+  }
+});
+
+test('VERIFICACION_PARCIAL permite mostrar datos; la visibilidad histórica no convierte cierres en tareas', () => {
+  const { api } = harness();
+  for (const stage of ['PENDIENTE_VERIFICACION', 'VERIFICACION_PARCIAL', 'ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO']) {
+    const record = prospect('case-1', { estado_expediente: stage });
+    assert.equal(api.prospectVerificationVisible(record), true, stage);
+    if (['ALTA', 'NO_ASISTIO', 'RECHAZADA_CREDITO_RIESGO'].includes(stage)) {
+      assert.deepEqual(plain(api.pendingProspectVerifierIds(record)), [], stage);
+      assert.deepEqual(plain(api.pendingProspectVerifierEmailKeys(record)), [], stage);
+    }
+  }
+  assert.equal(api.prospectVerificationVisible(prospect('case-1', { estado_expediente: 'PENDIENTE_RAFIK' })), false);
+});
+
+test('finales, otras etapas y etiquetas desconocidas no generan tareas aunque ambos verificadores estén asignados', async () => {
+  const finals = ['ALTA', 'NO_ASISTIO', 'RECHAZADA_POR_PROSPECTO', 'RECHAZADA_CREDITO_RIESGO', 'CANCELADA'];
+  const otherStages = [
+    'CITA_PROGRAMADA', 'PENDIENTE_RAFIK', 'PENDIENTE_CIRCULO_CREDITO', 'PENDIENTE_DOCUMENTACION',
+    'PENDIENTE_ONBOARDING', 'PENDIENTE_ASIGNACION_GERENTE', 'PENDIENTE_VOBO_GERENTE',
+    'PENDIENTE_REVISION_CREDITO_RIESGO', 'DEVUELTA_A_GERENTE', 'AUTORIZADA', 'PENDIENTE_ACTIVACION',
+    'Rechazada por prospecto', 'Rechazada por Crédito y Riesgo', 'Verificación inventada', undefined,
+  ];
+  for (const stage of [...finals, ...otherStages]) {
+    const assigned = { requerida: true, estado: 'PENDIENTE', asignado_uid: 'auth-deleted', asignado_correo: 'verifier@example.test', asignado_nombre: 'Same Name', plaza: 'NORTE' };
+    const source = prospect('case-1', { estado_expediente: stage, verificacion_domiciliaria: assigned, verificacion_comercial: { ...assigned } });
+    const before = structuredClone(source);
+    const h = harness({ records: { 'case-1': source } });
+    const projected = h.api.projectProspectRecord(source, [user()]).record;
+    if (finals.includes(stage)) assert.equal(h.api.isActiveProspectRecord(projected), false, stage);
+    if (stage === 'Verificación inventada' || stage === undefined) assert.equal(projected.estado_expediente, 'RECHAZADA_POR_PROSPECTO', 'No se infiere etapa desde nombre, plaza ni asignación');
+    assert.deepEqual(plain(h.api.pendingProspectVerifications(projected)), [], stage);
+    assert.deepEqual(plain(h.api.pendingProspectVerifierIds(projected)), [], stage);
+    assert.deepEqual(plain(h.api.pendingProspectVerifierEmailKeys(projected)), [], stage);
+    await h.api.flushActivitySummaryBatch([source], [user()]);
+    const writes = h.writes[0];
+    for (const route of [
+      'activity_summaries/active_prospects_by_verifier/auth-deleted/case-1',
+      'activity_summaries/active_prospects_by_verifier/verifier-current/case-1',
+      'activity_summaries/active_prospects_by_verifier_email/verifier_example_test/case-1',
+    ]) assert.equal(writes[route], null, `${stage}: ${route}`);
+    assert.deepEqual(source, before);
+    assert.deepEqual(h.store.gestor_activities, { 'case-1': plain(before) });
+    assert.ok(Object.keys(writes).every(route => route.startsWith('activity_summaries/')));
   }
 });
 
@@ -344,6 +439,37 @@ function rebuildFixture(options = {}) {
   };
   return { ...harness({ records, users, initial, ...options }), originals: plain(records) };
 }
+
+test('reconstrucción real conserva etiquetas históricas y publica los mismos IDs y contadores activos por UID/correo', async () => {
+  const active = ['Pendiente de verificación', 'Pendiente verificación', 'Verificación parcial'];
+  const records = Object.fromEntries(active.map((stage, index) => {
+    const id = `alias-${index}`;
+    return [id, prospect(id, { estado_expediente: stage })];
+  }));
+  records.closed = prospect('closed', { estado_expediente: 'ALTA' });
+  records.other = prospect('other', { estado_expediente: 'PENDIENTE_RAFIK' });
+  records.complete = prospect('complete', {
+    estado_expediente: 'Verificación parcial',
+    verificacion_domiciliaria: { requerida: true, estado: ' completa ', asignado_uid: 'auth-deleted', asignado_email: 'verifier@example.test' },
+  });
+  const h = rebuildFixture({ records });
+  const before = plain(records);
+  await h.window.rebuildActiveProspectCounters();
+  assert.match(h.alerts.at(-1), /reconstruida y verificada/);
+  const expectedIds = active.map((_, index) => `alias-${index}`);
+  const uidEntries = h.readPath('activity_summaries/active_prospects_by_verifier/verifier-current');
+  const emailEntries = h.readPath('activity_summaries/active_prospects_by_verifier_email/verifier_example_test');
+  assert.deepEqual(Object.keys(uidEntries).sort(), expectedIds);
+  assert.deepEqual(Object.keys(emailEntries).sort(), expectedIds);
+  for (const id of expectedIds) assert.equal(uidEntries[id].estado_expediente, emailEntries[id].estado_expediente);
+  assert.equal(emailEntries['alias-2'].estado_expediente, 'VERIFICACION_PARCIAL');
+  const counters = h.readPath('app_config/prospect_active_counters');
+  assert.deepEqual(counters.por_verificador, { 'verifier-current': active.length });
+  assert.deepEqual(counters.por_verificador_email, { verifier_example_test: active.length });
+  assert.deepEqual(h.store.gestor_activities, before);
+  assert.deepEqual(records, before);
+  assert.ok(h.writes.every(batch => Object.keys(batch).every(route => !route.startsWith('gestor_activities') && !route.startsWith('users'))));
+});
 
 test('reconstrucción publica contadores únicos por expediente/correo y reemplaza listas conocidas incluidas vacías', async () => {
   const h = rebuildFixture();
