@@ -483,6 +483,34 @@
     <button id="dataUsageAdminEntry" onclick="window.showDataUsageDiagnostics()" style="display:none;margin-top:10px;width:100%;padding:14px 18px;border:1px solid #FCD34D;border-radius:14px;background:#FFFBEB;color:#92400E;cursor:pointer;font-size:14px;font-weight:800;text-align:left">
       📡 Diagnóstico de descargas <span style="float:right">Ver acciones y estimaciones →</span>
     </button>
+    <button id="supportProfileAdminEntry" onclick="window.showSupportProfileAdmin()" style="display:none;margin-top:10px;width:100%;padding:14px 18px;border:1px solid #A7D8C0;border-radius:14px;background:#EFFAF4;color:#14532D;cursor:pointer;font-size:14px;font-weight:800;text-align:left">
+      Alta de perfiles <span style="float:right">Soporte →</span>
+    </button>
+  </section>
+
+  <section id="supportProfileSection" style="display:none;padding:24px 32px">
+    <div class="filter-card" style="max-width:920px;margin:0 auto">
+      <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <div><h2 style="margin-bottom:6px">Alta de perfil de usuario</h2><p style="color:#475569;line-height:1.6;margin:0;max-width:650px">Primero crea la cuenta en Firebase Authentication. Después copia aquí el UID y correo de esa misma cuenta. Este formulario sólo crea su perfil en Realtime Database; no crea cuentas ni pide contraseñas.</p></div>
+        <button type="button" class="btn-export" style="background:#64748B" onclick="window.showPanelHome()">← Volver</button>
+      </div>
+      <div style="margin-top:16px;padding:12px 14px;border:1px solid #FCD34D;border-radius:10px;background:#FFFBEB;color:#78350F;font-size:13px;line-height:1.6">No modifica perfiles existentes, actividades, evidencias, métricas, tokens ni consentimientos. El panel no puede verificar otra cuenta de Authentication: confirma manualmente que UID y correo pertenecen a la misma cuenta.</div>
+      <form id="supportProfileForm" style="margin-top:18px" onsubmit="event.preventDefault();window.checkSupportProfile()" oninput="window.resetSupportProfileCheck()" autocomplete="off">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
+          <div class="filter-group"><label for="supportProfileUid">UID de Authentication *</label><input id="supportProfileUid" required maxlength="128" spellcheck="false" autocapitalize="none" placeholder="Pega el UID exacto; conserva mayúsculas" /></div>
+          <div class="filter-group"><label for="supportProfileEmail">Correo de Authentication *</label><input id="supportProfileEmail" type="email" required maxlength="254" spellcheck="false" autocapitalize="none" placeholder="usuario@fredinero.com" /></div>
+          <div class="filter-group"><label for="supportProfileName">Nombre completo *</label><input id="supportProfileName" required minlength="2" maxlength="120" placeholder="Nombre y apellidos" /></div>
+          <div class="filter-group"><label for="supportProfileSurname">Apellido paterno *</label><input id="supportProfileSurname" required maxlength="80" placeholder="Como en el registro de la app" /></div>
+          <div class="filter-group"><label for="supportProfileRole">Rol *</label><select id="supportProfileRole" required><option value="">Selecciona el rol</option><option value="GERENTE">GERENTE</option><option value="LIDER A">LIDER A</option><option value="LIDER B">LIDER B</option><option value="LIDER C">LIDER C</option><option value="CANJES">CANJES</option><option value="GESTOR">GESTOR</option><option value="GESTOR DE COBRANZA">GESTOR DE COBRANZA</option><option value="ADMINISTRATIVO">ADMINISTRATIVO</option></select></div>
+          <div class="filter-group"><label for="supportProfilePlaza">Clave de plaza *</label><input id="supportProfilePlaza" required maxlength="50" list="supportProfilePlazas" placeholder="Ej. TAMPICO; usa la clave exacta" /><datalist id="supportProfilePlazas"><option value="TAMPICO"></option><option value="MADERO"></option><option value="POZA"></option><option value="TUXPAN"></option><option value="VALLES"></option><option value="XALAPA"></option><option value="MANTE"></option><option value="PAPANTLA"></option><option value="SALTILLO"></option><option value="ADMINISTRATIVO"></option></datalist></div>
+        </div>
+        <p style="font-size:12px;color:#475569;line-height:1.6">Una plaza nueva se puede escribir aquí, pero también necesita configurarse en los catálogos, mapas y filtros de la operación. Este formulario no hace esa configuración.</p>
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:#334155;line-height:1.6;margin:16px 0"><input id="supportProfileAuthConfirmed" type="checkbox" required style="margin-top:4px" /><span>Confirmo que creé la cuenta en Authentication y copié el UID y correo de la misma cuenta.</span></label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><button id="supportProfileCheckButton" type="submit" class="btn-export" style="background:#0369A1">Revisar datos</button><button id="supportProfileSaveButton" type="button" class="btn-export" style="background:#15803D" disabled onclick="window.saveSupportProfile()">Guardar perfil nuevo</button></div>
+      </form>
+      <div id="supportProfilePreview" style="margin-top:16px"></div>
+      <p id="supportProfileStatus" role="status" aria-live="polite" style="font-size:13px;line-height:1.6;margin-top:12px"></p>
+    </div>
   </section>
 
   <section id="privacyConsentSection" style="display:none;padding:24px 32px">
@@ -1051,7 +1079,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import { getDatabase, ref, get, set, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, endAt, limitToLast } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import { getDatabase, ref, get, set, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, endAt, limitToLast, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
   // ── Firebase config ────────────────────────────────────────────────────────
   window._RKEY = ['re_Z43VX','V9_Y37Jz','9Mp8tUmq','t7NmKyNw','xem'].join('');
@@ -1161,11 +1189,146 @@
     if (entry) entry.style.display = privacyIsSupport() ? '' : 'none';
     const dataUsageEntry = document.getElementById('dataUsageAdminEntry');
     if (dataUsageEntry) dataUsageEntry.style.display = privacyIsSupport() ? '' : 'none';
+    const supportProfileEntry = document.getElementById('supportProfileAdminEntry');
+    if (supportProfileEntry) supportProfileEntry.style.display = privacyIsSupport() ? '' : 'none';
   }
 
   function privacyEscape(value) {
     return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
   }
+
+
+  const SUPPORT_PROFILE_ROLES = new Set(['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA', 'ADMINISTRATIVO']);
+  let _supportProfileChecked = null;
+  let _supportProfileBusy = false;
+  let _supportProfileLastAttemptAt = 0;
+
+  function normalizedSupportProfile(input) {
+    const uid = String(input.uid || '').trim();
+    if (!uid || uid.length > 128 || /[.#$\[\]\/\s\u0000-\u001F\u007F]/.test(uid)) throw new Error('Pega un UID válido de Authentication, sin espacios ni caracteres de ruta.');
+    const correo = String(input.correo || '').trim().toLowerCase();
+    if (correo.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) throw new Error('Escribe un correo válido.');
+    const nombre_completo = String(input.nombre_completo || '').trim().replace(/\s+/g, ' ');
+    const apellido_paterno = String(input.apellido_paterno || '').trim().replace(/\s+/g, ' ');
+    if (nombre_completo.length < 2 || nombre_completo.length > 120 || /[\u0000-\u001F\u007F]/.test(nombre_completo)) throw new Error('El nombre completo debe tener entre 2 y 120 caracteres.');
+    if (!apellido_paterno || apellido_paterno.length > 80 || /[\u0000-\u001F\u007F]/.test(apellido_paterno)) throw new Error('Escribe el apellido paterno, máximo 80 caracteres.');
+    const rol = String(input.rol || '').trim().toUpperCase();
+    if (!SUPPORT_PROFILE_ROLES.has(rol)) throw new Error('Selecciona un rol válido del catálogo.');
+    const plaza = String(input.plaza || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    if (!plaza || plaza.length > 50 || !/^[A-Z0-9][A-Z0-9 _-]*$/.test(plaza)) throw new Error('La clave de plaza debe tener de 1 a 50 letras, números, espacios, guiones o guiones bajos.');
+    return { uid, correo, nombre_completo, apellido_paterno, rol, plaza };
+  }
+
+  function supportProfileFingerprint(profile) {
+    return JSON.stringify([profile.uid, profile.correo, profile.nombre_completo, profile.apellido_paterno, profile.rol, profile.plaza]);
+  }
+
+  function supportProfileInput() {
+    return normalizedSupportProfile({
+      uid: document.getElementById('supportProfileUid').value,
+      correo: document.getElementById('supportProfileEmail').value,
+      nombre_completo: document.getElementById('supportProfileName').value,
+      apellido_paterno: document.getElementById('supportProfileSurname').value,
+      rol: document.getElementById('supportProfileRole').value,
+      plaza: document.getElementById('supportProfilePlaza').value,
+    });
+  }
+
+  function supportProfileSetBusy(busy) {
+    _supportProfileBusy = busy;
+    const check = document.getElementById('supportProfileCheckButton');
+    const save = document.getElementById('supportProfileSaveButton');
+    if (check) check.disabled = busy;
+    if (save) save.disabled = busy || !_supportProfileChecked;
+  }
+
+  function supportProfileMessage(message, error = false) {
+    const element = document.getElementById('supportProfileStatus');
+    if (!element) return;
+    element.textContent = message;
+    element.style.color = error ? '#B91C1C' : '#166534';
+  }
+
+  window.resetSupportProfileCheck = function() {
+    _supportProfileChecked = null;
+    const preview = document.getElementById('supportProfilePreview');
+    if (preview) preview.innerHTML = '';
+    const save = document.getElementById('supportProfileSaveButton');
+    if (save) save.disabled = true;
+    supportProfileMessage('');
+  };
+
+  window.showSupportProfileAdmin = function() {
+    if (!privacyIsSupport()) { alert('Esta sección es exclusiva para Soporte.'); return; }
+    ['moduleLanding', 'attendanceWorkspace', 'vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection', 'privacyConsentSection', 'dataUsageDiagnosticsSection'].forEach(id => {
+      const section = document.getElementById(id);
+      if (section) section.style.display = 'none';
+    });
+    document.getElementById('app').style.display = 'block';
+    setPanelHeader('supportProfile');
+    document.getElementById('supportProfileSection').style.display = 'block';
+  };
+
+  window.checkSupportProfile = async function() {
+    if (_supportProfileBusy || !privacyIsSupport()) return;
+    window.resetSupportProfileCheck();
+    const operatorUid = auth.currentUser?.uid;
+    try {
+      const profile = supportProfileInput();
+      if (!document.getElementById('supportProfileAuthConfirmed').checked) throw new Error('Confirma primero que UID y correo pertenecen a la misma cuenta de Authentication.');
+      supportProfileSetBusy(true);
+      supportProfileMessage('Revisando únicamente el UID y el correo indicados…');
+      const [existing, emailMatches] = await Promise.all([
+        get(ref(database, `users/${profile.uid}`)),
+        get(query(ref(database, 'users'), orderByChild('correo'), equalTo(profile.correo), limitToLast(2))),
+      ]);
+      if (!privacyIsSupport() || auth.currentUser?.uid !== operatorUid) throw new Error('La sesión cambió. Inicia sesión como Soporte y revisa de nuevo.');
+      if (existing.exists()) throw new Error('Ese UID ya contiene datos en users. No se sobrescribirá ni completará automáticamente; revisa el perfil existente.');
+      if (emailMatches.exists()) throw new Error('Ese correo ya está asociado a un perfil. No se creará un duplicado.');
+      if (supportProfileFingerprint(supportProfileInput()) !== supportProfileFingerprint(profile) || !document.getElementById('supportProfileAuthConfirmed').checked) throw new Error('Los datos cambiaron durante la consulta. Pulsa Revisar datos nuevamente.');
+      _supportProfileChecked = { profile, fingerprint: supportProfileFingerprint(profile), operatorUid };
+      const rows = [['UID', profile.uid], ['Correo', profile.correo], ['Nombre completo', profile.nombre_completo], ['Apellido paterno', profile.apellido_paterno], ['Rol', profile.rol], ['Plaza', profile.plaza]];
+      document.getElementById('supportProfilePreview').innerHTML = '<div style="padding:14px;border:1px solid #A7D8C0;border-radius:10px;background:#EFFAF4"><strong>Perfil nuevo que se guardará</strong><dl style="margin-bottom:0">' + rows.map(([label, value]) => `<dt style="font-size:12px;color:#475569;margin-top:8px">${privacyEscape(label)}</dt><dd style="margin:2px 0 0;overflow-wrap:anywhere">${privacyEscape(value)}</dd>`).join('') + '</dl></div>';
+      supportProfileMessage('UID libre y sin coincidencias de correo en Realtime Database. Esto no verifica Authentication. Revisa el resumen antes de guardar.');
+    } catch (error) {
+      _supportProfileChecked = null;
+      supportProfileMessage(error?.message || 'No se pudieron revisar los datos.', true);
+    } finally {
+      supportProfileSetBusy(false);
+    }
+  };
+
+  window.saveSupportProfile = async function() {
+    if (_supportProfileBusy || !privacyIsSupport()) return;
+    const operatorUid = auth.currentUser?.uid;
+    try {
+      const profile = supportProfileInput();
+      if (!_supportProfileChecked || _supportProfileChecked.operatorUid !== operatorUid || _supportProfileChecked.fingerprint !== supportProfileFingerprint(profile) || !document.getElementById('supportProfileAuthConfirmed').checked) throw new Error('Pulsa Revisar datos y confirma el resumen antes de guardar.');
+      if (Date.now() - _supportProfileLastAttemptAt < 1500) throw new Error('Espera un momento antes de reintentar el guardado.');
+      _supportProfileLastAttemptAt = Date.now();
+      supportProfileSetBusy(true);
+      supportProfileMessage('Guardando únicamente el perfil nuevo…');
+      const matches = await get(query(ref(database, 'users'), orderByChild('correo'), equalTo(profile.correo), limitToLast(2)));
+      if (!privacyIsSupport() || auth.currentUser?.uid !== operatorUid) throw new Error('La sesión cambió. No se guardó el perfil.');
+      if (matches.exists()) throw new Error('Ese correo ya tiene un perfil. No se creará otro.');
+      if (supportProfileFingerprint(supportProfileInput()) !== supportProfileFingerprint(profile) || !document.getElementById('supportProfileAuthConfirmed').checked) throw new Error('Los datos cambiaron. Pulsa Revisar datos nuevamente.');
+      const payload = { ...profile, creado_en: serverTimestamp() };
+      const result = await runTransaction(ref(database, `users/${profile.uid}`), current => {
+        if (!privacyIsSupport() || auth.currentUser?.uid !== operatorUid || current !== null) return;
+        return payload;
+      }, { applyLocally: false });
+      if (!result.committed) throw new Error('El UID ya contiene datos o cambió la sesión. No se sobrescribió nada.');
+      _supportProfileChecked = null;
+      document.getElementById('supportProfileForm').reset();
+      document.getElementById('supportProfilePreview').innerHTML = '';
+      supportProfileMessage(`Perfil creado en users/${profile.uid}. Authentication no fue modificado; no se enviaron correos ni notificaciones.`);
+    } catch (error) {
+      _supportProfileChecked = null;
+      supportProfileMessage(error?.message || 'No se pudo crear el perfil. Revisa las reglas y los permisos de Soporte.', true);
+    } finally {
+      supportProfileSetBusy(false);
+    }
+  };
 
   function privacyFormatDate(timestamp) {
     if (!timestamp) return '—';
@@ -2084,12 +2247,18 @@
       document.getElementById('tableContainer').innerHTML =
         '<div class="loading" style="color:#888">🔍 Usa los filtros y presiona <strong>Buscar</strong> para cargar los registros.</div>';
     } else {
+      _panelProfile = {};
+      window.resetSupportProfileCheck();
+      document.getElementById('supportProfileForm')?.reset();
+      const supportSection = document.getElementById('supportProfileSection');
+      if (supportSection) supportSection.style.display = 'none';
       document.getElementById('loginOverlay').style.display = 'flex';
       document.getElementById('app').style.display = 'none';
     }
   });
 
   const PANEL_HEADER_CONTENT = {
+    supportProfile: { className: 'panel-home', title: 'Soporte · Alta de perfiles', copy: 'Configura perfiles de cuentas ya creadas en Firebase Authentication.' },
     home: {
       className: 'panel-home',
       title: 'Centro Operativo',
@@ -2118,6 +2287,8 @@
   };
 
   function setPanelHeader(section) {
+    const profileSection = document.getElementById('supportProfileSection');
+    if (profileSection && section !== 'supportProfile') profileSection.style.display = 'none';
     const config = PANEL_HEADER_CONTENT[section] || PANEL_HEADER_CONTENT.home;
     const header = document.getElementById('panelHeader');
     if (!header) return;

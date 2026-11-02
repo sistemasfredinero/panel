@@ -66,3 +66,4 @@
 - [x] Reconstruir los índices ligeros de Prospección por verificador asignado para tareas históricas.
 - [x] Proyectar verificaciones históricas por correo explícito y UID vigente, manteniendo índices y contadores por ambas identidades sin asignar por nombre ni plaza.
 - [x] Reconocer etiquetas históricas de verificación pendiente/parcial sin reclasificarlas como rechazo, manteniendo identidad explícita y regresiones de proyección.
+- [x] Añadir alta de perfiles exclusiva de Soporte para cuentas ya creadas en Authentication mediante UID/correo, sin contraseña ni avisos; validar campos, impedir sobrescrituras/duplicados, confirmar correspondencia manual y preparar reglas users protegidas sin desplegar.

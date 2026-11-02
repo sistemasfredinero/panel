@@ -1,0 +1,94 @@
+{
+  "users": {
+    ".read": true,
+    ".write": false,
+    ".indexOn": ["correo", "rol", "plaza", "uid"],
+    "$uid": {
+      ".write": "auth != null && auth.uid === '__SUPPORT_AUTH_UID__' && auth.token.email === 'soporte@fredinero.com'",
+      ".validate": "data.exists() || newData.hasChildren(['uid', 'nombre_completo', 'apellido_paterno', 'correo', 'rol', 'plaza'])",
+      "uid": {
+        ".validate": "newData.val() === data.val() || (newData.isString() && newData.val() === $uid)"
+      },
+      "nombre_completo": {
+        ".validate": "newData.val() === data.val() || (newData.isString() && newData.val().length > 0 && newData.val().length <= 200 && newData.val().matches(/.*[^ ].*/))"
+      },
+      "apellido_paterno": {
+        ".validate": "newData.val() === data.val() || (newData.isString() && newData.val().length > 0 && newData.val().length <= 100 && newData.val().matches(/.*[^ ].*/))"
+      },
+      "correo": {
+        ".validate": "newData.val() === data.val() || (newData.isString() && newData.val().length <= 254 && newData.val() === newData.val().toLowerCase() && newData.val().matches(/^[a-z0-9_.+%-]+@[a-z0-9.-]+[.][a-z]{2,63}$/))"
+      },
+      "rol": {
+        ".validate": "newData.val() === data.val() || (newData.isString() && (newData.val() === 'GESTOR' || newData.val() === 'GESTOR DE COBRANZA' || newData.val() === 'CANJES' || newData.val() === 'LIDER A' || newData.val() === 'LIDER B' || newData.val() === 'LIDER C' || newData.val() === 'GERENTE' || newData.val() === 'ADMINISTRATIVO'))"
+      },
+      "plaza": {
+        ".validate": "newData.val() === data.val() || (newData.isString() && newData.val().length > 0 && newData.val().length <= 100 && newData.val() === newData.val().toUpperCase() && newData.val().matches(/.*[^ ].*/))"
+      },
+      "creado_en": {
+        ".validate": "newData.val() === data.val() || (newData.isNumber() && newData.val() >= 0)"
+      },
+      "app_connection": {
+        ".write": false,
+        "version": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64"
+        },
+        "version_code": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() % 1 === 0"
+        },
+        "last_connected_at": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        }
+      },
+      "fcm_token": {
+        ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+        ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 4096"
+      },
+      "expo_push_token": {
+        ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+        ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 4096"
+      },
+      "data_usage_metrics": {
+        ".write": false,
+        "$day": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && !newData.exists() && newData.parent().parent().exists()",
+          ".validate": "$day.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
+          "$action": {
+            ".write": false,
+            ".validate": "$action.matches(/^[A-Z0-9_]+$/)",
+            "read_count": {
+              ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() % 1 === 0"
+            },
+            "estimated_bytes": {
+              ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() % 1 === 0"
+            },
+            "last_estimated_bytes": {
+              ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 52428800 && newData.val() % 1 === 0"
+            },
+            "last_records": {
+              ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() % 1 === 0"
+            },
+            "last_scope": {
+              ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+              ".validate": "newData.isString() && newData.val().length <= 120"
+            },
+            "last_at": {
+              ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "source": {
+              ".write": "auth != null && auth.uid === $uid && root.child('users').child($uid).exists() && newData.exists()",
+              ".validate": "newData.isString() && (newData.val() === 'APP' || newData.val() === 'PANEL')"
+            }
+          }
+        }
+      }
+    }
+  }
+}
