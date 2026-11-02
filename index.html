@@ -486,6 +486,13 @@
     <button id="supportProfileAdminEntry" onclick="window.showSupportProfileAdmin()" style="display:none;margin-top:10px;width:100%;padding:14px 18px;border:1px solid #A7D8C0;border-radius:14px;background:#EFFAF4;color:#14532D;cursor:pointer;font-size:14px;font-weight:800;text-align:left">
       Alta de perfiles <span style="float:right">Soporte →</span>
     </button>
+    <section id="supportWorkerDiagnosticEntry" style="display:none;margin-top:10px;padding:18px;border:1px solid #BAE6FD;border-radius:14px;background:#F0F9FF;color:#0C4A6E">
+      <h3 style="margin:0 0 8px;font-size:16px">Diagnóstico de avisos · Soporte</h3>
+      <p style="font-size:13px;line-height:1.6;margin:0 0 12px">Comprueba tu sesión con el Worker de Cloudflare sin abrir la consola ni copiar tokens. Sólo se ejecuta al pulsar el botón; no consulta expedientes, no cambia datos y no envía correos ni notificaciones.</p>
+      <button id="supportWorkerDiagnosticButton" type="button" class="btn-export" style="background:#0369A1;white-space:normal" onclick="window.checkSupportWorkerSession()">Comprobar conexión segura</button>
+      <p id="supportWorkerDiagnosticStatus" role="status" aria-live="polite" style="font-size:13px;line-height:1.6;margin:12px 0 0"></p>
+      <pre id="supportWorkerDiagnosticResult" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:12px;border-radius:10px;font-size:12px;margin:12px 0 0"></pre>
+    </section>
   </section>
 
   <section id="supportProfileSection" style="display:none;padding:24px 32px">
@@ -1191,11 +1198,107 @@
     if (dataUsageEntry) dataUsageEntry.style.display = privacyIsSupport() ? '' : 'none';
     const supportProfileEntry = document.getElementById('supportProfileAdminEntry');
     if (supportProfileEntry) supportProfileEntry.style.display = privacyIsSupport() ? '' : 'none';
+    const workerEntry = document.getElementById('supportWorkerDiagnosticEntry');
+    if (workerEntry) workerEntry.style.display = supportWorkerIsAuthorized() ? '' : 'none';
   }
 
   function privacyEscape(value) {
     return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
   }
+
+  const SUPPORT_WORKER_UID = '5dVKDIhQZlbzonMbSG9mX1pXHYg1';
+  const SUPPORT_WORKER_URL = 'https://fredinero-avisos.sistemas-fredinero.workers.dev/v1/auth/check';
+  let _supportWorkerRun = 0;
+  let _supportWorkerBusy = false;
+  let _supportWorkerController = null;
+
+  function supportWorkerIsAuthorized() {
+    const user = auth.currentUser;
+    return user?.uid === SUPPORT_WORKER_UID && String(user.email || '').trim().toLowerCase() === 'soporte@fredinero.com';
+  }
+
+  function supportWorkerMessage(message, error = false) {
+    const status = document.getElementById('supportWorkerDiagnosticStatus');
+    if (status) { status.textContent = message; status.style.color = error ? '#B91C1C' : '#166534'; }
+  }
+
+  function resetSupportWorkerDiagnostic() {
+    _supportWorkerRun++;
+    _supportWorkerController?.abort();
+    _supportWorkerController = null;
+    _supportWorkerBusy = false;
+    const button = document.getElementById('supportWorkerDiagnosticButton');
+    if (button) { button.disabled = false; button.textContent = 'Comprobar conexión segura'; }
+    const result = document.getElementById('supportWorkerDiagnosticResult');
+    if (result) { result.textContent = ''; result.hidden = true; }
+    const entry = document.getElementById('supportWorkerDiagnosticEntry');
+    if (entry) entry.style.display = supportWorkerIsAuthorized() ? '' : 'none';
+    supportWorkerMessage('');
+  }
+
+  window.checkSupportWorkerSession = async function() {
+    if (_supportWorkerBusy || !supportWorkerIsAuthorized()) return;
+    const operator = auth.currentUser;
+    const run = ++_supportWorkerRun;
+    const controller = new AbortController();
+    _supportWorkerController = controller;
+    _supportWorkerBusy = true;
+    const button = document.getElementById('supportWorkerDiagnosticButton');
+    const output = document.getElementById('supportWorkerDiagnosticResult');
+    if (button) { button.disabled = true; button.textContent = 'Comprobando…'; }
+    if (output) { output.textContent = ''; output.hidden = true; }
+    supportWorkerMessage('Comprobando tu sesión. No se enviarán avisos ni se modificarán registros.');
+    let timer;
+    const sameSession = () => run === _supportWorkerRun && auth.currentUser === operator && supportWorkerIsAuthorized();
+    try {
+      const data = await Promise.race([
+        (async () => {
+          // El token vive sólo en memoria y sólo se envía por Authorization al destino fijo.
+          // No se imprime, almacena ni incluye en URLs o en el resultado visible.
+          const token = await operator.getIdToken();
+          if (!sameSession() || controller.signal.aborted) throw new Error('SESSION_CHANGED');
+          const response = await fetch(SUPPORT_WORKER_URL, {
+            method: 'GET', headers: { Authorization: `Bearer ${token}` },
+            credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer',
+            signal: controller.signal,
+          });
+          if (!sameSession()) throw new Error('SESSION_CHANGED');
+          const body = await response.json();
+          if (!response.ok) {
+            const error = new Error('WORKER_HTTP');
+            error.workerStatus = response.status;
+            throw error;
+          }
+          if (body?.ok !== true || body?.autenticado !== true || body?.soporte_autorizado !== true
+              || body?.envios_habilitados !== false || body?.revocacion_consultada !== false) throw new Error('UNEXPECTED_RESPONSE');
+          // Lista cerrada: nunca mostrar mensajes ni propiedades arbitrarias del servidor.
+          return { ok: true, autenticado: true, soporte_autorizado: true, envios_habilitados: false, revocacion_consultada: false };
+        })(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => { controller.abort(); reject(new Error('DIAGNOSTIC_TIMEOUT')); }, 12000);
+        }),
+      ]);
+      if (!sameSession()) return;
+      if (output) { output.textContent = JSON.stringify(data, null, 2); output.hidden = false; }
+      supportWorkerMessage('Conexión segura confirmada: el Worker reconoce tu sesión de Soporte. No se envió ningún aviso.');
+    } catch (error) {
+      if (!sameSession()) return;
+      let message = 'No se pudo completar la conexión. Comprueba Internet y la configuración CORS del Worker; puedes reintentar manualmente.';
+      if (error?.workerStatus === 401) message = 'El Worker no aceptó la sesión. Cierra sesión en el panel, vuelve a entrar como Soporte y reintenta.';
+      else if (error?.workerStatus === 403) message = 'El Worker rechazó el acceso. Revisa que estés usando la cuenta y UID de Soporte configurados.';
+      else if (error?.workerStatus === 503) message = 'El Worker no está listo para comprobar la sesión. Revisa sus variables y la versión publicada; no se intentó ningún envío.';
+      else if (error?.message === 'UNEXPECTED_RESPONSE') message = 'El Worker respondió, pero no confirmó el diagnóstico sin envíos. Revisa que tenga publicada la versión preparación-2.';
+      else if (error?.message === 'DIAGNOSTIC_TIMEOUT' || error?.name === 'AbortError') message = 'La comprobación superó el tiempo de espera. No se modificaron registros; puedes reintentar manualmente.';
+      supportWorkerMessage(message, true);
+    } finally {
+      clearTimeout(timer);
+      if (run === _supportWorkerRun) {
+        _supportWorkerController = null;
+        _supportWorkerBusy = false;
+        if (button) { button.disabled = false; button.textContent = 'Comprobar conexión segura'; }
+      }
+    }
+  };
 
 
   const SUPPORT_PROFILE_ROLES = new Set(['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA', 'ADMINISTRATIVO']);
@@ -2229,6 +2332,7 @@
   };
 
   onAuthStateChanged(auth, async (user) => {
+    resetSupportWorkerDiagnostic();
     if (user) {
       try {
         const profileSnap = await get(ref(database, `users/${user.uid}`));
