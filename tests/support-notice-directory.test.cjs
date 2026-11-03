@@ -359,3 +359,68 @@ test('UID duplicado y controles en plaza/cobertura fallan cerrados; gerente no i
   const report = h.api.buildSupportNoticeDirectory([row('manager', manager)]);
   assert.deepEqual(plain(report.conflicts), []); assert.equal(report.projection.managers_by_plaza.MADERO, 'manager');
 });
+
+test('nodo sólo data_usage_metrics se excluye sin escribir users, copiar métricas o conceder identidad', async t => {
+  const technical = row('aVBW2N3iFmbMnXKAEjmrFIUGxC42', { data_usage_metrics: { '2026-11-02': { metric: PRIVATE } } });
+  const h = harness(t, { rows: [technical, row('valid-user', profile('valid@fredinero.com'))] });
+  await h.prepare();
+  assert.match(h.preview.textContent, /Usuarios revisados: 2\nIdentidades válidas: 1\nNodos sólo de métricas excluidos: 1\nConflictos\/bloqueos: 0/);
+  const prepared = h.api.state().prepared;
+  assert.equal(prepared.count, 1);
+  assert.deepEqual(Object.keys(prepared.projection.by_uid), ['valid-user']);
+  assert.equal(prepared.projection.by_uid[technical.uid], undefined);
+  assert.ok(!JSON.stringify(prepared.projection).includes('data_usage_metrics'));
+  assert.equal(h.writes.length, 0);
+  await h.save();
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.writes[0].request.location, 'notice_directory');
+  assert.match(h.confirms.at(-1), /con 1 identidades/);
+  assert.ok(!JSON.stringify(h.writes).includes(technical.uid));
+});
+
+test('perfiles parciales junto a métricas, métricas malformadas y flags falsificados siguen bloqueando', async t => {
+  for (const p of [
+    { data_usage_metrics: {}, rol: 'GESTOR', plaza: 'TAMPICO' },
+    { data_usage_metrics: {}, correo: '' },
+    { data_usage_metrics: {}, correo: 'external@example.test', rol: 'GESTOR', plaza: 'TAMPICO' },
+    { data_usage_metrics: {}, legacy_unknown: true },
+    { data_usage_metrics: null }, { data_usage_metrics: [] }, { data_usage_metrics: 'wrong' },
+    { __notice_metrics_only: true },
+    { data_usage_metrics: {}, __notice_metrics_only: true },
+    { data_usage_metrics: {}, email: 'valid@fredinero.com' },
+  ]) {
+    const h = harness(t, { rows: [row('technical-or-invalid', p), row('valid-user', profile('valid@fredinero.com'))] });
+    await h.prepare(); blocked(h, /Conflictos\/bloqueos: 1/);
+    assert.match(h.preview.textContent, /Nodos sólo de métricas excluidos: 0/);
+  }
+});
+
+test('fuente con sólo métricas no permite reemplazar el directorio con uno vacío', async t => {
+  const h = harness(t, { rows: [row('technical', { data_usage_metrics: { '2026-11-02': {} } })] });
+  await h.prepare(); blocked(h, /sin perfiles válidos/);
+  assert.match(h.preview.textContent, /Identidades válidas: 0\nNodos sólo de métricas excluidos: 1/);
+  await h.save(); assert.equal(h.writes.length, 0);
+});
+
+test('paginación avanza por todas las claves aunque una página completa tenga sólo métricas', async t => {
+  const technical = Array.from({ length: 10 }, (_, i) => row(`a-${i}`, { data_usage_metrics: { '2026-11-02': { count: i } } }));
+  const valid = row('z-valid', profile('valid@fredinero.com'));
+  const h = harness(t, { rows: [...technical, valid] });
+  h.nodes.supportNoticeDirectoryFresh.checked = true;
+  await h.prepare();
+  assert.equal(h.reads.length, 2);
+  assert.equal(h.reads[1].constraints.find(c => c.kind === 'startAfter').key, 'a-9');
+  assert.equal(h.api.state().prepared.count, 1);
+  assert.deepEqual(Object.keys(h.api.state().prepared.projection.by_uid), ['z-valid']);
+  assert.match(h.preview.textContent, /Nodos sólo de métricas excluidos: 10/);
+});
+
+test('un perfil válido conserva sus avisos aunque tenga métricas; UID técnico inválido no se salta', async t => {
+  const h = harness(t, { rows: [row('valid', profile('valid@fredinero.com', { data_usage_metrics: { secret: PRIVATE } }))] });
+  await h.prepare();
+  assert.equal(h.api.state().prepared.count, 1);
+  assert.match(h.preview.textContent, /Nodos sólo de métricas excluidos: 0/);
+  assert.equal(h.api.state().prepared.projection.by_uid.valid.email, 'valid@fredinero.com');
+  const bad = harness(t, { rows: [row('bad/key', { data_usage_metrics: {} }), row('valid', profile('valid@fredinero.com'))] });
+  await bad.prepare(); blocked(bad, /UID o perfil inválido/);
+});

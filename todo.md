@@ -72,3 +72,4 @@
 - [x] Añadir comprobación manual de configuración FCM de preparación-4 sólo para Soporte, con sesión reciente, sin entregar push, descargar perfiles o exponer tokens; probar y publicar.
 - [x] Implementar avisos del panel por evento autorizado sin claves en frontend, conservar acciones administrativas y destinatarios, directorio protegido y comprobación final sin entrega; validar 214 regresiones y sintaxis sin envíos reales.
 - [ ] Usuario: comprobar publicación de reglas, marcador avisos-1, directorio de identidades y Worker integrado antes de activar avisos operativos y validar los flujos productivos.
+- [x] Excluir del directorio de avisos únicamente nodos users/{UID} que contienen sólo data_usage_metrics, mostrar su conteo sin borrar datos; mantener bloqueo de perfiles incompletos/externos, identidades contradictorias y fuente sin perfiles válidos; validar 219 regresiones sin fallos y publicar sólo panel.

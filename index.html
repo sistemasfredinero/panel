@@ -1609,6 +1609,10 @@
 
   function supportNoticeProfile(profile) {
     if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return null;
+    // Marca interna derivada de la estructura real, nunca de un flag del usuario.
+    // Un nodo sólo técnico no acredita identidad ni recibe avisos; se conserva en users.
+    const keys = Object.keys(profile);
+    if (keys.length === 1 && keys[0] === 'data_usage_metrics' && profile.data_usage_metrics && typeof profile.data_usage_metrics === 'object' && !Array.isArray(profile.data_usage_metrics)) return { __notice_metrics_only: true };
     return Object.fromEntries(SUPPORT_NOTICE_FIELDS.filter(key => Object.hasOwn(profile, key)).map(key => [key, profile[key]]));
   }
 
@@ -1631,9 +1635,11 @@
   function buildSupportNoticeDirectory(rows) {
     const projection = { version: 1, updated_at: serverTimestamp(), by_uid: Object.create(null), by_email: Object.create(null), manager_coverage: Object.create(null), managers_by_plaza: Object.create(null) };
     const conflicts = [], candidates = new Map();
+    let technicalNodes = 0;
     for (const { uid, profile: p } of rows) {
       try {
         if (!supportNoticeKey(uid) || uid.length > 128 || /\s/.test(uid) || !p) throw new Error('UID o perfil inválido');
+        if (p.__notice_metrics_only === true && Object.keys(p).length === 1) { technicalNodes++; continue; }
         const emails = [p.correo, p.email].filter(value => value != null && value !== '').map(value => {
           if (typeof value !== 'string') throw new Error('Correo inválido');
           return value.trim().toLowerCase();
@@ -1668,8 +1674,8 @@
       if (selected.length !== 1) conflicts.push(`Gerencia ambigua en ${plaza}: ${selected.map(uid => `${projection.by_uid[uid].name} (${projection.by_uid[uid].email})`).join(' / ')}`);
       else projection.managers_by_plaza[plaza] = selected[0];
     });
-    if (!rows.length) conflicts.push('Fuente vacía: no se borrará el directorio existente');
-    return { projection: conflicts.length ? null : projection, count: rows.length, valid: Object.keys(projection.by_uid).length, conflicts };
+    if (!rows.length || !Object.keys(projection.by_uid).length) conflicts.push('Fuente vacía o sin perfiles válidos: no se borrará el directorio existente');
+    return { projection: conflicts.length ? null : projection, count: rows.length, valid: Object.keys(projection.by_uid).length, technicalNodes, conflicts };
   }
 
   function supportNoticeMessage(message, error = false) {
@@ -1752,10 +1758,10 @@
       }
       if (!sameSession()) return;
       const report = buildSupportNoticeDirectory(rows);
-      const summary = `Usuarios revisados: ${report.count}\nIdentidades válidas: ${report.valid}\nConflictos/bloqueos: ${report.conflicts.length}`;
+      const summary = `Usuarios revisados: ${report.count}\nIdentidades válidas: ${report.valid}\nNodos sólo de métricas excluidos: ${report.technicalNodes}\nConflictos/bloqueos: ${report.conflicts.length}`;
       if (output) { output.textContent = summary + (report.conflicts.length ? '\n' + report.conflicts.join('\n') : `\nGerentes: ${Object.keys(report.projection.manager_coverage).length}\nPlazas con gerencia: ${Object.keys(report.projection.managers_by_plaza).length}\nSólo se reemplazará notice_directory; no concede nuevos permisos de Authentication.`); output.hidden = false; }
       if (!report.projection) { supportNoticeMessage('Revisión bloqueada: corrige los conflictos en la fuente y prepara de nuevo. No se guardará un índice parcial.', true); return; }
-      _supportNoticePrepared = { projection: report.projection, count: report.count, operator, run, at: Date.now() };
+      _supportNoticePrepared = { projection: report.projection, count: report.valid, operator, run, at: Date.now() };
       supportNoticeMessage('Vista previa completa. Revisa los conteos y confirma Guardar sólo después de instalar las reglas de avisos.');
     } catch (error) {
       if (sameSession()) supportNoticeMessage(error?.code === 'PERMISSION_DENIED' || /permission[-_]denied/i.test(error?.code || '') ? 'Acceso denegado. Aplica primero las reglas futuras de avisos; no se cambió el directorio.' : error?.message === 'TIMEOUT' ? 'La página superó 20 segundos. No se guardó nada; reintenta manualmente.' : 'No se pudo completar la fuente. No se guardó ningún índice parcial; reintenta manualmente.', true);
