@@ -1617,7 +1617,7 @@
   }
 
   function supportNoticeKey(value) {
-    return typeof value === 'string' && !!value && !/[.#$\[\]\/\u0000-\u001F\u007F]/.test(value);
+    return typeof value === 'string' && !!value && !['__proto__', 'prototype', 'constructor', 'hasownproperty'].includes(value.toLowerCase()) && !/[.#$\[\]\/\u0000-\u001F\u007F]/.test(value);
   }
 
   function supportNoticeLabel(value) {
@@ -1633,12 +1633,14 @@
   }
 
   function buildSupportNoticeDirectory(rows) {
-    const projection = { version: 1, updated_at: serverTimestamp(), by_uid: Object.create(null), by_email: Object.create(null), manager_coverage: Object.create(null), managers_by_plaza: Object.create(null) };
+    // Sólo las ramas admitidas por notice_directory; metadatos no requeridos
+    // por el Worker como version/updated_at están prohibidos por sus reglas.
+    const projection = { by_uid: Object.create(null), by_email: Object.create(null), manager_coverage: Object.create(null), managers_by_plaza: Object.create(null) };
     const conflicts = [], candidates = new Map();
     let technicalNodes = 0;
     for (const { uid, profile: p } of rows) {
       try {
-        if (!supportNoticeKey(uid) || uid.length > 128 || /\s/.test(uid) || !p) throw new Error('UID o perfil inválido');
+        if (!supportNoticeKey(uid) || uid.length > 128 || !/^[A-Za-z0-9_-]+$/.test(uid) || !p) throw new Error('UID o perfil inválido');
         if (p.__notice_metrics_only === true && Object.keys(p).length === 1) { technicalNodes++; continue; }
         const emails = [p.correo, p.email].filter(value => value != null && value !== '').map(value => {
           if (typeof value !== 'string') throw new Error('Correo inválido');
@@ -1646,14 +1648,14 @@
         });
         if (new Set(emails).size > 1) throw new Error('Aliases correo/email contradictorios');
         const email = emails[0] || '';
-        if (email.length > 254 || !/^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@fredinero\.com$/.test(email)) throw new Error('Correo ausente o fuera del dominio fredinero.com');
+        if (!/^[a-z0-9_.+-]{1,100}@fredinero\.com$/.test(email) || !/^[a-z0-9_+-]+(?:\.[a-z0-9_+-]+)*@fredinero\.com$/.test(email)) throw new Error('Correo ausente, fuera del dominio fredinero.com o incompatible con las reglas de avisos');
         const roles = [p.rol, p.role].filter(value => value != null && value !== '').map(supportNoticeLabel);
         if (new Set(roles).size > 1) throw new Error('Aliases rol/role contradictorios');
         const role = roles[0] || '', plaza = supportNoticeLabel(p.plaza);
         if (!role || role.length > 80 || /[\u0000-\u001F\u007F]/.test(role)) throw new Error('Rol ausente o inválido');
         if ((plaza && (!supportNoticeKey(plaza) || plaza.length > 50)) || (!plaza && role !== 'ADMINISTRATIVO')) throw new Error('Plaza ausente o inválida');
         const name = [p.nombre_completo, p.nombre].find(value => typeof value === 'string' && value.trim())?.trim() || email;
-        if (name.length > 254 || /[\u0000-\u001F\u007F]/.test(name)) throw new Error('Nombre inválido');
+        if (name.length > 200 || /[\u0000-\u001F\u007F]/.test(name)) throw new Error('Nombre inválido (máximo 200 caracteres en el directorio)');
         const managedPlazas = role === 'GERENTE' ? managerProfilePlazas({ ...supportNoticeProfile(p), email, plaza }) : [];
         if (managedPlazas.some(value => !supportNoticeKey(value) || value.length > 50)) throw new Error('Cobertura de plazas inválida');
         const emailKey = btoa(email).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -1780,10 +1782,18 @@
     supportNoticeMessage('Guardando únicamente notice_directory en una sustitución atómica. Una escritura ya enviada no puede cancelarse.');
     try {
       if (!sameSession()) return;
-      await supportNoticeWait(set(ref(database, 'notice_directory'), { ...prepared.projection, updated_at: serverTimestamp() }), new AbortController());
+      // Conserva mapas sin prototipo durante la construcción segura, pero el SDK
+      // Firebase usa obj.hasOwnProperty y exige mapas JSON normales al escribir.
+      const payload = JSON.parse(JSON.stringify(prepared.projection));
+      if (!sameSession()) return;
+      await supportNoticeWait(set(ref(database, 'notice_directory'), payload), new AbortController());
       if (sameSession()) supportNoticeMessage('Directorio protegido guardado. Authentication y perfiles originales no cambiaron; avisos operativos siguen sin activar.');
     } catch (error) {
-      if (sameSession()) supportNoticeMessage(/permission[-_]denied/i.test(error?.code || '') ? 'PERMISSION_DENIED: aplica primero las reglas futuras de avisos. No se publicaron cambios parciales.' : 'No se confirmó el guardado. No se reintentará automáticamente; revisa el índice y prepara de nuevo manualmente.', true);
+      const message = /permission[-_]denied/i.test(error?.code || '') ? 'PERMISSION_DENIED: aplica primero las reglas futuras de avisos. No se publicaron cambios parciales.'
+        : error?.message === 'TIMEOUT' ? 'TIMEOUT: Firebase no confirmó el guardado en 20 segundos. La escritura puede terminar después; no se reintentará automáticamente. Revisa el índice antes de preparar de nuevo.'
+        : /hasOwnProperty|contains undefined|invalid key|circular|serialize|serialization/i.test(error?.message || '') ? 'DIRECTORY_DATA_INVALID: no se pudo serializar el directorio para Firebase. Actualiza el panel y prepara de nuevo; no cambies las reglas ni borres datos.'
+        : 'No se confirmó el guardado. No se reintentará automáticamente; revisa el índice y prepara de nuevo manualmente.';
+      if (sameSession()) supportNoticeMessage(message, true);
     } finally {
       if (prepared.run === _supportNoticeRun) { _supportNoticeBusy = false; supportNoticeControls(); }
     }

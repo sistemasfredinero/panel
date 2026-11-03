@@ -152,14 +152,15 @@ test('proyección cerrada, UID real de child.key, correo ASCII base64url biyecti
   const h = harness(t, { rows: [row('canonical-child', source)] });
   await h.prepare(); assert.equal(h.writes.length, 0);
   const p = h.api.state().prepared.projection;
-  assert.deepEqual(Object.keys(p).sort(), ['version', 'updated_at', 'by_uid', 'by_email', 'manager_coverage', 'managers_by_plaza'].sort());
+  assert.deepEqual(Object.keys(p).sort(), ['by_uid', 'by_email', 'manager_coverage', 'managers_by_plaza'].sort());
   assert.deepEqual(plain(p.by_uid['canonical-child']), { uid: 'canonical-child', email: 'persona.prueba+uno@fredinero.com', role: 'LIDER A', plaza: 'TAMPICO', name: 'Persona', managedPlazas: [] });
   const key = Object.keys(p.by_email)[0];
   assert.match(key, /^[A-Za-z0-9_-]+$/); assert.equal(Buffer.from(key, 'base64url').toString(), 'persona.prueba+uno@fredinero.com');
   assert.equal(p.by_email[key], 'canonical-child');
   assert.ok(!JSON.stringify(p).includes('UID-EMBEBIDO'));
   await h.save(); assert.equal(h.writes.length, 1);
-  assert.deepEqual(h.writes[0].projection.updated_at, { '.sv': 'timestamp' });
+  assert.equal(Object.hasOwn(h.writes[0].projection, 'updated_at'), false);
+  assert.equal(Object.hasOwn(h.writes[0].projection, 'version'), false);
   assert.match(h.confirms[1], /REEMPLAZAR ÚNICAMENTE notice_directory/);
   assert.match(h.status.textContent, /avisos operativos siguen sin activar/);
 });
@@ -271,7 +272,7 @@ test('timeout de página y escritura no cuelga, no reintenta ni acepta respuesta
   get.resolve(snapshot([row('late')])); await flush(); assert.equal(h.api.state().prepared, null);
   const set = deferred(); h.hooks.get = async () => snapshot([row('user')]); h.hooks.set = () => set.promise;
   await h.prepare(); const saving = h.save(); await h.timeout(); await saving;
-  assert.match(h.status.textContent, /No se confirmó el guardado/); assert.equal(h.writes.length, 1);
+  assert.match(h.status.textContent, /^TIMEOUT:.*no confirmó el guardado/); assert.equal(h.writes.length, 1);
   const status = h.status.textContent; set.resolve(); await flush(); assert.equal(h.status.textContent, status);
 });
 
@@ -423,4 +424,80 @@ test('un perfil válido conserva sus avisos aunque tenga métricas; UID técnico
   assert.equal(h.api.state().prepared.projection.by_uid.valid.email, 'valid@fredinero.com');
   const bad = harness(t, { rows: [row('bad/key', { data_usage_metrics: {} }), row('valid', profile('valid@fredinero.com'))] });
   await bad.prepare(); blocked(bad, /UID o perfil inválido/);
+});
+
+test('guardar convierte mapas sin prototipo a JSON compatible, preservando cada identidad y timestamp', async t => {
+  const h = harness(t, { rows: [row('gestor', profile('gestor@fredinero.com')), row('manager', profile('manager@fredinero.com', { rol: 'GERENTE' }))] });
+  await h.prepare();
+  const prepared = h.api.state().prepared.projection;
+  assert.equal(Object.getPrototypeOf(prepared.by_uid), null);
+  assert.equal(Object.getPrototypeOf(prepared.by_email), null);
+  const expected = plain(prepared);
+  function sdkCompatible(value) {
+    if (!value || typeof value !== 'object') return;
+    assert.equal(typeof value.hasOwnProperty, 'function', 'El SDK requiere hasOwnProperty en cada mapa');
+    for (const key of Object.keys(value)) { assert.ok(value.hasOwnProperty(key)); sdkCompatible(value[key]); }
+  }
+  h.hooks.set = (_, payload) => {
+    sdkCompatible(payload);
+    assert.deepEqual(plain(payload), expected);
+    return Promise.resolve();
+  };
+  await h.save();
+  assert.equal(h.writes.length, 1);
+  assert.match(h.status.textContent, /Directorio protegido guardado/);
+  assert.equal(Object.getPrototypeOf(prepared.by_uid), null, 'No se debilita construcción original');
+});
+
+test('claves reservadas no pueden interferir con prototipos o hasOwnProperty del SDK', async t => {
+  for (const uid of ['__proto__', 'prototype', 'constructor', 'hasOwnProperty']) {
+    const h = harness(t, { rows: [row(uid)] });
+    await h.prepare(); blocked(h, /UID o perfil inválido/);
+  }
+  for (const plaza of ['__proto__', 'prototype', 'constructor', 'hasOwnProperty']) {
+    const h = harness(t, { rows: [row('manager', profile('manager@fredinero.com', { rol: 'GERENTE', plaza, managedPlazas: [plaza] }))] });
+    await h.prepare(); blocked(h, /Plaza ausente o inválida/);
+  }
+});
+
+test('fallo local de SDK se muestra sanitizado y no provoca reintentos automáticos', async t => {
+  const h = harness(t, { hooks: { set: () => { throw new TypeError('obj.hasOwnProperty is not a function '+PRIVATE); } } });
+  await h.prepare(); await h.save();
+  assert.match(h.status.textContent, /^DIRECTORY_DATA_INVALID:/);
+  assert.equal(h.writes.length, 1); await h.save(); assert.equal(h.writes.length, 1);
+  assert.doesNotMatch(h.status.textContent, /obj\.hasOwnProperty|TEST_ONLY/);
+});
+
+test('timeout de escritura explica resultado ambiguo y no reintenta aunque la escritura termine tarde', async t => {
+  const gate = deferred();
+  const h = harness(t, { hooks: { set: () => gate.promise } });
+  await h.prepare(); const saving = h.save();
+  await h.timeout(); await saving;
+  assert.match(h.status.textContent, /^TIMEOUT:.*puede terminar después/);
+  assert.equal(h.writes.length, 1); await h.save(); assert.equal(h.writes.length, 1);
+  gate.resolve(); await flush();
+  assert.match(h.status.textContent, /^TIMEOUT:/);
+});
+
+test('payload del directorio sólo contiene las ramas admitidas por reglas, sin metadatos no usados', async t => {
+  const h = harness(t); await h.prepare(); await h.save();
+  const payload = h.writes[0].projection;
+  assert.deepEqual(Object.keys(payload).sort(), ['by_uid', 'by_email', 'manager_coverage', 'managers_by_plaza'].sort());
+  assert.ok(!Object.hasOwn(payload, 'version'));
+  assert.ok(!Object.hasOwn(payload, 'updated_at'));
+});
+
+test('límites de nombre/correo/UID coinciden con reglas; valores fuera del contrato bloquean antes de set', async t => {
+  for (const [uid, p] of [
+    ['user', profile('valid@fredinero.com', { nombre_completo: 'N'.repeat(201) })],
+    ['user', profile('name!test@fredinero.com')],
+    ['user', profile('x'.repeat(101)+'@fredinero.com')],
+    ['user:legacy', profile('valid@fredinero.com')],
+    ['usuarioñ', profile('valid@fredinero.com')],
+  ]) {
+    const h = harness(t, { rows: [row(uid, p)] }); await h.prepare(); blocked(h); await h.save(); assert.equal(h.writes.length, 0);
+  }
+  for (const p of [profile('valid@fredinero.com', { nombre_completo: 'N'.repeat(200) }), profile('x'.repeat(100)+'@fredinero.com')]) {
+    const h = harness(t, { rows: [row('valid', p)] }); await h.prepare(); assert.ok(h.api.state().prepared); await h.save(); assert.equal(h.writes.length, 1);
+  }
 });
