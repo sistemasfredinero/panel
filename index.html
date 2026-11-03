@@ -500,6 +500,24 @@
         <p id="supportEmailTestStatus" role="status" aria-live="polite" style="font-size:13px;line-height:1.6;margin:12px 0 0"></p>
         <pre id="supportEmailTestResult" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:12px;border-radius:10px;font-size:12px;margin:12px 0 0"></pre>
       </div>
+      <div id="supportNoticeDirectoryEntry" style="display:none;border-top:1px solid #BAE6FD;margin-top:18px;padding-top:16px">
+        <h4 style="margin:0 0 8px">Preparar directorio de avisos</h4>
+        <p style="font-size:13px;line-height:1.6">Requiere reglas de avisos; no activar hasta instalación. Prepara un índice protegido de identidad y cobertura; no cambia Authentication, perfiles originales ni avisos operativos. No consulta fotos, asistencias, actividades ni notificaciones.</p>
+        <p style="font-size:13px;line-height:1.6">Usa la caché completa de privacidad de esta sesión si tiene menos de cinco minutos. Sin caché, descarga perfiles completos de users en páginas de 10: RTDB no permite proyectar campos y sus métricas pueden pesar varios MB. Sólo conserva campos de identidad y cobertura.</p>
+        <label style="display:block;font-size:13px;margin-bottom:12px"><input id="supportNoticeDirectoryFresh" type="checkbox"> Reconstruir desde todas las páginas, aunque exista caché (descarga adicional manual).</label>
+        <button id="supportNoticeDirectoryPrepare" type="button" class="btn-export" style="background:#0369A1;white-space:normal" onclick="window.prepareSupportNoticeDirectory()">Preparar directorio de avisos</button>
+        <button id="supportNoticeDirectoryCancel" type="button" class="btn-export" style="background:#64748B" hidden onclick="window.cancelSupportNoticeDirectory()">Cancelar</button>
+        <button id="supportNoticeDirectorySave" type="button" class="btn-export" style="background:#15803D;white-space:normal" disabled onclick="window.saveSupportNoticeDirectory()">Guardar directorio revisado</button>
+        <p id="supportNoticeDirectoryStatus" role="status" aria-live="polite" style="font-size:13px;line-height:1.6;margin:12px 0 0"></p>
+        <pre id="supportNoticeDirectoryPreview" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:12px;border-radius:10px;font-size:12px"></pre>
+      </div>
+    </section>
+    <section id="supportNoticeSetupEntry" style="display:none;margin-top:10px;padding:18px;border:1px solid #BAE6FD;border-radius:14px;background:#F0F9FF;color:#0C4A6E">
+      <h3 style="margin:0 0 8px;font-size:16px">Integración de avisos · Comprobación final</h3>
+      <p style="font-size:13px;line-height:1.6">Comprueba las tablas de D1, las reglas protegidas y tu ficha del directorio. Requiere sesión reciente de Soporte; no entrega correos ni push.</p>
+      <button id="supportNoticeSetupButton" class="btn-export" type="button" onclick="window.checkSupportNoticeSetup()" style="white-space:normal;background:#0369A1">Comprobar integración segura</button>
+      <p id="supportNoticeSetupStatus" role="status" aria-live="polite" style="font-size:13px;line-height:1.6"></p>
+      <pre id="supportNoticeSetupResult" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:12px;border-radius:10px;font-size:12px"></pre>
     </section>
     <section id="supportFcmDiagnosticEntry" style="display:none;margin-top:10px;padding:18px;border:1px solid #BAE6FD;border-radius:14px;background:#F0F9FF;color:#0C4A6E">
       <h3 style="margin:0 0 8px;font-size:16px">Configuración de push · Soporte</h3>
@@ -1102,10 +1120,11 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import { getDatabase, ref, get, set, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, endAt, limitToLast, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import { getDatabase, ref, get, set, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, startAfter, endAt, limitToFirst, limitToLast, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+  import {makePanelNoticeClient} from './notice-client.js?v=integracion-1';
 
   // ── Firebase config ────────────────────────────────────────────────────────
-  window._RKEY = ['re_Z43VX','V9_Y37Jz','9Mp8tUmq','t7NmKyNw','xem'].join('');
   const firebaseConfig = {
     apiKey: "AIzaSyD342m2nnNmahZIfLV9e2-CurZs2zTvRDE",
     authDomain: "fredineroappasistencia.firebaseapp.com",
@@ -1119,6 +1138,10 @@
   const app      = initializeApp(firebaseConfig);
   const auth     = getAuth(app);
   const database = getDatabase(app);
+  const panelNotices=makePanelNoticeClient({auth,database,get,ref,update,remove,query,orderByKey,limitToFirst,startAfter});
+  const panelNoticeBusy=new Set();
+  async function panelNoticeCanonical(path){const snap=await get(ref(database,path));if(!snap.exists())throw new Error('La solicitud ya no existe.');return snap.val();}
+  window.reintentarAvisosPendientes=async()=>{const result=await panelNotices.flush();if(result.error)alert(result.error);return result;};
 
   let allRecords = [];
   let usersMap   = {};
@@ -1218,11 +1241,23 @@
     if (workerEntry) workerEntry.style.display = supportWorkerIsAuthorized() ? '' : 'none';
     const fcmEntry = document.getElementById('supportFcmDiagnosticEntry');
     if (fcmEntry) fcmEntry.style.display = supportWorkerIsAuthorized() ? '' : 'none';
+    const directoryEntry = document.getElementById('supportNoticeDirectoryEntry');
+    if (directoryEntry) directoryEntry.style.display = supportWorkerIsAuthorized() ? '' : 'none';
   }
 
   function privacyEscape(value) {
     return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
   }
+
+  let supportNoticeSetupRun=0,supportNoticeSetupBusy=false,supportNoticeSetupController=null;
+  function resetSupportNoticeSetup(){supportNoticeSetupRun++;supportNoticeSetupController?.abort();supportNoticeSetupController=null;supportNoticeSetupBusy=false;const entry=document.getElementById('supportNoticeSetupEntry');if(entry)entry.style.display=supportWorkerIsAuthorized()?'':'none';const button=document.getElementById('supportNoticeSetupButton');if(button)button.disabled=false;for(const id of ['supportNoticeSetupStatus','supportNoticeSetupResult']){const el=document.getElementById(id);if(el){el.textContent='';if(id.endsWith('Result'))el.hidden=true;}}}
+  window.checkSupportNoticeSetup=async function(){if(supportNoticeSetupBusy||!supportWorkerIsAuthorized())return;const operator=auth.currentUser,run=++supportNoticeSetupRun,controller=new AbortController();supportNoticeSetupController=controller;supportNoticeSetupBusy=true;const button=document.getElementById('supportNoticeSetupButton'),status=document.getElementById('supportNoticeSetupStatus'),output=document.getElementById('supportNoticeSetupResult');if(button)button.disabled=true;if(output){output.hidden=true;output.textContent='';}if(status)status.textContent='Comprobando recursos protegidos; no se enviarán avisos.';
+   let timer;const check=()=>{if(controller.signal.aborted||run!==supportNoticeSetupRun||auth.currentUser!==operator||!supportWorkerIsAuthorized())throw Error('SESSION_CHANGED');};
+   const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error('TIMEOUT'));},25000);});
+   try{const body=await Promise.race([timeout,(async()=>{const token=await operator.getIdToken();check();const response=await fetch('https://fredinero-avisos.sistemas-fredinero.workers.dev/v1/notices/status',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}',signal:controller.signal,credentials:'omit'});check();if(!response.ok)throw Error(response.status===401?'RECENT_LOGIN':response.status===429?'RATE_LIMIT':'SETUP');const text=await response.text();check();if(new TextEncoder().encode(text).length>4096)throw Error('REPLY');const data=JSON.parse(text),keys=['ok','d1_tablas_validadas','reglas_version_correcta','directorio_soporte_validado','avisos_productivos_habilitados','revocacion_consultada','validacion_sin_entrega'];if(!data||Array.isArray(data)||keys.some(k=>typeof data[k]!=='boolean')||data.validacion_sin_entrega!==true||data.revocacion_consultada!==true)throw Error('REPLY');return Object.fromEntries(keys.map(k=>[k,data[k]]));})()]);check();if(output){output.textContent=JSON.stringify(body,null,2);output.hidden=false;}if(status)status.textContent=body.ok?'D1, reglas y directorio validados. No se entregó ningún aviso.':'La instalación todavía necesita completar reglas o directorio. No se entregó ningún aviso.';
+   }catch(error){if(run!==supportNoticeSetupRun||auth.currentUser!==operator)return;if(status)status.textContent=error.message==='RECENT_LOGIN'?'Cierra e inicia sesión en Soporte y repite la comprobación.':error.message==='RATE_LIMIT'?'Se alcanzó el límite temporal. Espera antes de volver a comprobar.':'No se pudo validar la instalación. Comprueba Worker, tablas, reglas y directorio; no se envió ningún aviso.';}
+   finally{clearTimeout(timer);controller.abort();if(run===supportNoticeSetupRun){supportNoticeSetupBusy=false;supportNoticeSetupController=null;if(button)button.disabled=false;}}
+  };
 
   const SUPPORT_WORKER_UID = '5dVKDIhQZlbzonMbSG9mX1pXHYg1';
   const SUPPORT_WORKER_URL = 'https://fredinero-avisos.sistemas-fredinero.workers.dev/v1/auth/check';
@@ -1565,6 +1600,189 @@
   };
 
   const SUPPORT_PROFILE_ROLES = new Set(['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA', 'ADMINISTRATIVO']);
+  const SUPPORT_NOTICE_FIELDS = ['correo', 'email', 'rol', 'role', 'plaza', 'nombre_completo', 'nombre', 'plazas_a_cargo', 'plazasACargo', 'managed_plazas', 'managedPlazas'];
+  let _supportNoticeRun = 0;
+  let _supportNoticeBusy = false;
+  let _supportNoticeController = null;
+  let _supportNoticePrepared = null;
+  let _supportNoticeCache = null;
+
+  function supportNoticeProfile(profile) {
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return null;
+    return Object.fromEntries(SUPPORT_NOTICE_FIELDS.filter(key => Object.hasOwn(profile, key)).map(key => [key, profile[key]]));
+  }
+
+  function supportNoticeKey(value) {
+    return typeof value === 'string' && !!value && !/[.#$\[\]\/\u0000-\u001F\u007F]/.test(value);
+  }
+
+  function supportNoticeLabel(value) {
+    if (value != null && typeof value !== 'string') throw new Error('Campo de identidad no textual');
+    if (/[\u0000-\u001F\u007F]/.test(value || '')) throw new Error('Campo de identidad con caracteres de control');
+    return normaliseActivityText(value).replace(/\s+/g, ' ');
+  }
+
+  function managerProfilePlazas(profile) {
+    // Misma cobertura que src/utils/managerCoverage.ts: principal + cuatro aliases + Tampico–Madero.
+    const values = value => Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : value && typeof value === 'object' ? Object.values(value) : [];
+    return [...new Set([profile.plaza, ...values(profile.plazas_a_cargo), ...values(profile.plazasACargo), ...values(profile.managed_plazas), ...values(profile.managedPlazas), ...(profile.email === TAMPICO_MADERO_MANAGER_EMAIL ? ['TAMPICO', 'MADERO'] : [])].map(supportNoticeLabel).filter(Boolean))];
+  }
+
+  function buildSupportNoticeDirectory(rows) {
+    const projection = { version: 1, updated_at: serverTimestamp(), by_uid: Object.create(null), by_email: Object.create(null), manager_coverage: Object.create(null), managers_by_plaza: Object.create(null) };
+    const conflicts = [], candidates = new Map();
+    for (const { uid, profile: p } of rows) {
+      try {
+        if (!supportNoticeKey(uid) || uid.length > 128 || /\s/.test(uid) || !p) throw new Error('UID o perfil inválido');
+        const emails = [p.correo, p.email].filter(value => value != null && value !== '').map(value => {
+          if (typeof value !== 'string') throw new Error('Correo inválido');
+          return value.trim().toLowerCase();
+        });
+        if (new Set(emails).size > 1) throw new Error('Aliases correo/email contradictorios');
+        const email = emails[0] || '';
+        if (email.length > 254 || !/^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@fredinero\.com$/.test(email)) throw new Error('Correo ausente o fuera del dominio fredinero.com');
+        const roles = [p.rol, p.role].filter(value => value != null && value !== '').map(supportNoticeLabel);
+        if (new Set(roles).size > 1) throw new Error('Aliases rol/role contradictorios');
+        const role = roles[0] || '', plaza = supportNoticeLabel(p.plaza);
+        if (!role || role.length > 80 || /[\u0000-\u001F\u007F]/.test(role)) throw new Error('Rol ausente o inválido');
+        if ((plaza && (!supportNoticeKey(plaza) || plaza.length > 50)) || (!plaza && role !== 'ADMINISTRATIVO')) throw new Error('Plaza ausente o inválida');
+        const name = [p.nombre_completo, p.nombre].find(value => typeof value === 'string' && value.trim())?.trim() || email;
+        if (name.length > 254 || /[\u0000-\u001F\u007F]/.test(name)) throw new Error('Nombre inválido');
+        const managedPlazas = role === 'GERENTE' ? managerProfilePlazas({ ...supportNoticeProfile(p), email, plaza }) : [];
+        if (managedPlazas.some(value => !supportNoticeKey(value) || value.length > 50)) throw new Error('Cobertura de plazas inválida');
+        const emailKey = btoa(email).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const previous = projection.by_uid[projection.by_email[emailKey]];
+        if (previous) throw new Error(`Correo duplicado ${email}: ${previous.name} (${previous.uid}) / ${name} (${uid})`);
+        if (projection.by_uid[uid]) throw new Error('UID repetido entre páginas');
+        projection.by_uid[uid] = { uid, email, role, plaza, name, managedPlazas };
+        projection.by_email[emailKey] = uid;
+        if (role === 'GERENTE') {
+          projection.manager_coverage[uid] = Object.fromEntries(managedPlazas.map(value => [value, true]));
+          managedPlazas.forEach(value => candidates.set(value, [...(candidates.get(value) || []), uid]));
+        }
+      } catch (error) { conflicts.push(`${uid || 'Sin UID'}: ${error.message}`); }
+    }
+    candidates.forEach((uids, plaza) => {
+      const principal = uids.filter(uid => projection.by_uid[uid].plaza === plaza);
+      const selected = principal.length ? principal : uids;
+      if (selected.length !== 1) conflicts.push(`Gerencia ambigua en ${plaza}: ${selected.map(uid => `${projection.by_uid[uid].name} (${projection.by_uid[uid].email})`).join(' / ')}`);
+      else projection.managers_by_plaza[plaza] = selected[0];
+    });
+    if (!rows.length) conflicts.push('Fuente vacía: no se borrará el directorio existente');
+    return { projection: conflicts.length ? null : projection, count: rows.length, valid: Object.keys(projection.by_uid).length, conflicts };
+  }
+
+  function supportNoticeMessage(message, error = false) {
+    const node = document.getElementById('supportNoticeDirectoryStatus');
+    if (node) { node.textContent = message; node.style.color = error ? '#B91C1C' : '#166534'; }
+  }
+
+  function supportNoticeControls() {
+    const allowed = supportWorkerIsAuthorized();
+    const entry = document.getElementById('supportNoticeDirectoryEntry');
+    if (entry) entry.style.display = allowed ? '' : 'none';
+    [['Prepare', _supportNoticeBusy || !allowed], ['Save', _supportNoticeBusy || !allowed || !_supportNoticePrepared], ['Fresh', _supportNoticeBusy || !allowed]].forEach(([suffix, disabled]) => {
+      const node = document.getElementById(`supportNoticeDirectory${suffix}`);
+      if (node) node.disabled = disabled;
+    });
+    const cancel = document.getElementById('supportNoticeDirectoryCancel');
+    if (cancel) cancel.hidden = !_supportNoticeController;
+  }
+
+  function resetSupportNoticeDirectory() {
+    _supportNoticeRun++;
+    _supportNoticeController?.abort();
+    _supportNoticeController = null;
+    _supportNoticeBusy = false;
+    _supportNoticePrepared = null;
+    _supportNoticeCache = null;
+    const preview = document.getElementById('supportNoticeDirectoryPreview');
+    if (preview) { preview.textContent = ''; preview.hidden = true; }
+    supportNoticeMessage('');
+    supportNoticeControls();
+  }
+
+  window.cancelSupportNoticeDirectory = function() {
+    if (!supportWorkerIsAuthorized() || !_supportNoticeController) return;
+    resetSupportNoticeDirectory();
+    supportNoticeMessage('Preparación cancelada. No se guardó el directorio; una lectura SDK ya iniciada puede terminar, pero se descarta.');
+  };
+
+  async function supportNoticeWait(promise, controller) {
+    let timer, aborted;
+    try {
+      return await Promise.race([promise, new Promise((_, reject) => {
+        aborted = () => reject(new Error('CANCELLED'));
+        controller.signal.addEventListener('abort', aborted, { once: true });
+        if (controller.signal.aborted) aborted();
+        timer = setTimeout(() => reject(new Error('TIMEOUT')), 20000);
+      })]);
+    } finally { clearTimeout(timer); controller.signal.removeEventListener('abort', aborted); }
+  }
+
+  window.prepareSupportNoticeDirectory = async function() {
+    if (_supportNoticeBusy || !supportWorkerIsAuthorized()) return;
+    const operator = auth.currentUser;
+    if (!confirm('¿Preparar el directorio protegido de avisos? Requiere reglas de avisos instaladas. Se reutiliza la caché fresca o se descargan TODAS las páginas de 10 perfiles completos de users (pueden ser varios MB). Esta revisión no escribe datos ni activa avisos.')) return;
+    if (auth.currentUser !== operator || !supportWorkerIsAuthorized()) return;
+    const run = ++_supportNoticeRun, controller = new AbortController();
+    _supportNoticeController = controller; _supportNoticeBusy = true; _supportNoticePrepared = null;
+    const sameSession = () => run === _supportNoticeRun && auth.currentUser === operator && supportWorkerIsAuthorized() && !controller.signal.aborted;
+    const output = document.getElementById('supportNoticeDirectoryPreview');
+    if (output) { output.textContent = ''; output.hidden = true; }
+    supportNoticeControls();
+    try {
+      const fresh = !document.getElementById('supportNoticeDirectoryFresh')?.checked && _supportNoticeCache?.operator === operator && Date.now() - _supportNoticeCache.at < 300000;
+      const rows = fresh ? _supportNoticeCache.rows : [];
+      if (fresh) supportNoticeMessage(`Reutilizando ${rows.length} perfiles en memoria; sin descargas adicionales.`);
+      else {
+        let cursor = '', page = 0;
+        while (sameSession()) {
+          supportNoticeMessage(`Página ${++page}: hasta 10 usuarios; ${rows.length} revisados. Puedes cancelar.`);
+          const constraints = [orderByKey(), ...(cursor ? [startAfter(cursor)] : []), limitToFirst(10)];
+          const snap = await supportNoticeWait(get(query(ref(database, 'users'), ...constraints)), controller);
+          if (!sameSession()) return;
+          const batch = [];
+          snap.forEach(child => { batch.push({ uid: child.key, profile: supportNoticeProfile(child.val()) }); });
+          rows.push(...batch);
+          if (batch.length < 10) break;
+          if (!batch.at(-1).uid || batch.at(-1).uid === cursor) throw new Error('PAGE_INVALID');
+          cursor = batch.at(-1).uid;
+        }
+      }
+      if (!sameSession()) return;
+      const report = buildSupportNoticeDirectory(rows);
+      const summary = `Usuarios revisados: ${report.count}\nIdentidades válidas: ${report.valid}\nConflictos/bloqueos: ${report.conflicts.length}`;
+      if (output) { output.textContent = summary + (report.conflicts.length ? '\n' + report.conflicts.join('\n') : `\nGerentes: ${Object.keys(report.projection.manager_coverage).length}\nPlazas con gerencia: ${Object.keys(report.projection.managers_by_plaza).length}\nSólo se reemplazará notice_directory; no concede nuevos permisos de Authentication.`); output.hidden = false; }
+      if (!report.projection) { supportNoticeMessage('Revisión bloqueada: corrige los conflictos en la fuente y prepara de nuevo. No se guardará un índice parcial.', true); return; }
+      _supportNoticePrepared = { projection: report.projection, count: report.count, operator, run, at: Date.now() };
+      supportNoticeMessage('Vista previa completa. Revisa los conteos y confirma Guardar sólo después de instalar las reglas de avisos.');
+    } catch (error) {
+      if (sameSession()) supportNoticeMessage(error?.code === 'PERMISSION_DENIED' || /permission[-_]denied/i.test(error?.code || '') ? 'Acceso denegado. Aplica primero las reglas futuras de avisos; no se cambió el directorio.' : error?.message === 'TIMEOUT' ? 'La página superó 20 segundos. No se guardó nada; reintenta manualmente.' : 'No se pudo completar la fuente. No se guardó ningún índice parcial; reintenta manualmente.', true);
+    } finally {
+      if (run === _supportNoticeRun) { _supportNoticeController = null; _supportNoticeBusy = false; supportNoticeControls(); }
+    }
+  };
+
+  window.saveSupportNoticeDirectory = async function() {
+    if (_supportNoticeBusy || !supportWorkerIsAuthorized()) return;
+    const prepared = _supportNoticePrepared;
+    const sameSession = () => prepared && prepared.run === _supportNoticeRun && auth.currentUser === prepared.operator && supportWorkerIsAuthorized();
+    if (!sameSession() || Date.now() - prepared.at >= 300000) { _supportNoticePrepared = null; supportNoticeControls(); return; }
+    if (!confirm(`¿Confirmas que instalaste las reglas de avisos y deseas REEMPLAZAR ÚNICAMENTE notice_directory con ${prepared.count} identidades? Se eliminarán roles/coberturas obsoletos del índice. No modifica users, Authentication ni registros originales; no activa ni envía avisos.`) || !sameSession()) return;
+    _supportNoticeBusy = true; _supportNoticePrepared = null; supportNoticeControls();
+    supportNoticeMessage('Guardando únicamente notice_directory en una sustitución atómica. Una escritura ya enviada no puede cancelarse.');
+    try {
+      if (!sameSession()) return;
+      await supportNoticeWait(set(ref(database, 'notice_directory'), { ...prepared.projection, updated_at: serverTimestamp() }), new AbortController());
+      if (sameSession()) supportNoticeMessage('Directorio protegido guardado. Authentication y perfiles originales no cambiaron; avisos operativos siguen sin activar.');
+    } catch (error) {
+      if (sameSession()) supportNoticeMessage(/permission[-_]denied/i.test(error?.code || '') ? 'PERMISSION_DENIED: aplica primero las reglas futuras de avisos. No se publicaron cambios parciales.' : 'No se confirmó el guardado. No se reintentará automáticamente; revisa el índice y prepara de nuevo manualmente.', true);
+    } finally {
+      if (prepared.run === _supportNoticeRun) { _supportNoticeBusy = false; supportNoticeControls(); }
+    }
+  };
+
   let _supportProfileChecked = null;
   let _supportProfileBusy = false;
   let _supportProfileLastAttemptAt = 0;
@@ -2515,6 +2733,7 @@
 
   window.showPrivacyConsentAdmin = async function() {
     if (!privacyIsSupport()) { alert('Esta sección es exclusiva para Soporte.'); return; }
+    const directoryOperator = auth.currentUser, directoryRun = _supportNoticeRun, directoryAt = Date.now();
     ['moduleLanding', 'attendanceWorkspace', 'vacPermSection', 'activitiesSection', 'alfredoSection', 'eliminarRegistrosSection', 'dataUsageDiagnosticsSection'].forEach(id => {
       const section = document.getElementById(id);
       if (section) section.style.display = 'none';
@@ -2531,6 +2750,9 @@
       const consents = consentsSnap.val() || {};
       const rows = [];
       if (usersSnap.exists()) usersSnap.forEach(child => rows.push({ uid: child.key, profile: child.val() || {}, consent: consents[child.key] || null }));
+      if (auth.currentUser === directoryOperator && directoryRun === _supportNoticeRun && supportWorkerIsAuthorized()) {
+        _supportNoticeCache = { operator: directoryOperator, at: directoryAt, rows: rows.map(row => ({ uid: row.uid, profile: supportNoticeProfile(row.profile) })) };
+      }
       Object.entries(consents).forEach(([uid, consent]) => {
         if (!rows.some(row => row.uid === uid)) rows.push({ uid, profile: {}, consent });
       });
@@ -2598,7 +2820,10 @@
     resetSupportWorkerDiagnostic();
     resetSupportEmailTest();
     resetSupportFcmDiagnostic();
+    resetSupportNoticeDirectory();
+    resetSupportNoticeSetup();
     if (user) {
+      void panelNotices.flush().catch(()=>{});
       try {
         const profileSnap = await get(ref(database, `users/${user.uid}`));
         _panelProfile = profileSnap.val() || {};
@@ -6582,6 +6807,7 @@
     const siguiente = ruta[indice + 1] || 'completado';
     const nombreAdmin = String(auth.currentUser?.email || 'Administrador');
     if (!confirm(`¿Aprobar la etapa ${approvalStageLabel(etapaActual).replace(/^Pendiente\s+/, '')} de esta solicitud?`)) return;
+    const noticeLock='request:'+tipo+':'+id;if(panelNoticeBusy.has(noticeLock))return;panelNoticeBusy.add(noticeLock);
     try {
       const path = tipo === 'vacaciones' ? `vacation_requests/${id}` : `permission_requests/${id}`;
       const base = {
@@ -6601,10 +6827,12 @@
           ? { confirmada_empleado: true, respondida: false }
           : { respondida: false, confirmada_empleado: false });
       }
-      await update(ref(database, path), base);
+      const before=await panelNoticeCanonical(path);
+      if(!vpPuedeGestionarFlujo({...before,id,_tipo:tipo}))throw new Error('La etapa cambió. Actualiza la búsqueda.');
+      await panelNotices.save({kind:(tipo==='vacaciones'?'vacation':'permission')+(siguiente==='completado'?'.panel_final_approved':'.panel_stage_approved'),sourceId:id,before,patch:base});
       alert(siguiente === 'completado' ? '✅ Solicitud aprobada de forma final.' : `✅ Solicitud enviada a ${approvalStageLabel(siguiente)}.`);
       window.buscarVacPerm();
-    } catch (e) { alert('❌ No se pudo aprobar la etapa: ' + e.message); }
+    } catch (e) { alert('❌ No se pudo aprobar la etapa: ' + e.message); } finally { panelNoticeBusy.delete(noticeLock); }
   };
 
   window.vpDevolverFlujo = async function(id, tipo) {
@@ -6619,6 +6847,7 @@
     const etapaAnterior = indice > 0 ? ruta[indice - 1] : ruta[0];
     const nombreAdmin = String(auth.currentUser?.email || 'Administrador');
     if (!confirm(`¿Devolver esta solicitud a ${indice > 0 ? approvalStageLabel(etapaAnterior).replace(/^Pendiente\s+/, '') : 'la persona solicitante'}?`)) return;
+    const noticeLock='request:'+tipo+':'+id;if(panelNoticeBusy.has(noticeLock))return;panelNoticeBusy.add(noticeLock);
     try {
       const path = tipo === 'vacaciones' ? `vacation_requests/${id}` : `permission_requests/${id}`;
       const base = {
@@ -6630,10 +6859,12 @@
       };
       if (tipo === 'permisos') Object.assign(base, { estado: 'sin_responder', confirmada_empleado: false, respondida_lgallegos: false, aprobado_lgallegos: false });
       else Object.assign(base, { respondida: false, confirmada_empleado: false, cancelado: false });
-      await update(ref(database, path), base);
+      const before=await panelNoticeCanonical(path);
+      if(!vpPuedeGestionarFlujo({...before,id,_tipo:tipo}))throw new Error('La etapa cambió. Actualiza la búsqueda.');
+      await panelNotices.save({kind:(tipo==='vacaciones'?'vacation':'permission')+'.panel_returned',sourceId:id,before,patch:base,createdAt:base.devolucion_timestamp});
       alert(indice > 0 ? `↩️ Solicitud devuelta a ${approvalStageLabel(etapaAnterior)}.` : '↩️ Solicitud devuelta a la persona solicitante.');
       window.buscarVacPerm();
-    } catch (e) { alert('❌ No se pudo devolver la solicitud: ' + e.message); }
+    } catch (e) { alert('❌ No se pudo devolver la solicitud: ' + e.message); } finally { panelNoticeBusy.delete(noticeLock); }
   };
 
   window.vpVerEvidenciaPermiso = async function(id) {
@@ -6889,8 +7120,11 @@
       }
     }
 
+    const noticeLock='request:vacaciones:'+document.getElementById('vacEditId').value;if(panelNoticeBusy.has(noticeLock))return;panelNoticeBusy.add(noticeLock);
     try {
-      await update(ref(database, `vacation_requests/${id}`), updates);
+      const before=await panelNoticeCanonical('vacation_requests/'+id);
+      if(!vpPuedeEditarVacacion({...before,id}))throw new Error('La solicitud ya no admite edición.');
+      await panelNotices.save({kind:'vacation.panel_edited',sourceId:id,before,patch:updates});
       document.getElementById('vacEditModal').style.display = 'none';
       alert('✅ Solicitud actualizada correctamente.');
       // Recargar la vista que esté activa
@@ -6901,7 +7135,7 @@
       }
     } catch(e) {
       alert('❌ Error al guardar: ' + e.message);
-    }
+    } finally { panelNoticeBusy.delete(noticeLock); }
   };
 
   // ── Eliminar ──────────────────────────────────────────────────────────────────────────────────────
@@ -7939,16 +8173,6 @@
     if (completo && horas) horas.style.display = completo.checked ? 'none' : 'grid';
   };
 
-  async function _enviarCorreoPropuestaAlfredo(sol, asunto, descripcion, nota) {
-    const destinatario = sol.user_email || sol.correo || 'cleon@fredinero.com';
-    const nombre = sol.nombre_solicitante || sol.nombre || 'RH';
-    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f5f7f5;padding:24px;border-radius:12px">
-      <div style="background:#1565C0;padding:16px 24px;border-radius:8px 8px 0 0"><h2 style="color:#fff;margin:0;font-size:18px">🌿 Fredinero Operativo</h2></div>
-      <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #D0DDD0"><h3 style="color:#1565C0;margin-top:0">📅 Propuesta de Alfredo</h3><p>Hola <strong>${nombre}</strong>, Alfredo propuso cambios para tu solicitud. Revisa y confirma la propuesta desde la app.</p><p style="font-weight:700;color:#1A2E1A">${descripcion}</p>${nota ? `<p><strong>Nota de Alfredo:</strong> ${nota}</p>` : ''}</div>
-      <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:12px">Este es un correo automático, no responder.</p></div>`;
-    await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Authorization':'Bearer '+(window._RKEY||''),'Content-Type':'application/json'}, body:JSON.stringify({from:'Fredinero <noreply@fredinero.com>',to:destinatario,subject:asunto,html}) });
-  }
-
   window.alfredoProponer = async function() {
     alert('Alfredo no puede proponer cambios de fecha. Su alcance es aprobar o rechazar vacaciones de cleon@fredinero.com.');
   };
@@ -7967,80 +8191,18 @@
     const esVac = sol._tipo === 'vac';
     const esAprobada = nuevoEstado === 'aprobada_alfredo';
     if (!esAprobada && !nota) { alert('Por favor escribe un motivo para el rechazo.'); return; }
-    const RESEND_KEY = window._RKEY || '';
-    const emailCleon = sol.user_email || sol.correo || 'cleon@fredinero.com';
-    const nombre = sol.nombre_solicitante || sol.nombre || 'RH';
+    const key='cleon:'+sol.id;if(panelNoticeBusy.has(key))return;panelNoticeBusy.add(key);
     try {
-      if (esVac) {
-        // ── Vacaciones ──
-        await update(ref(database, 'cleon_solicitudes/vacaciones/' + sol.id), {
-          estado: nuevoEstado,
-          nota_alfredo: nota || null,
-          timestamp_respuesta: Date.now(),
-          respondido_por: correoResponsable,
-          respondido_por_nombre: responsableRespuesta,
-        });
-        const asunto = esAprobada
-          ? `✅ Tus vacaciones fueron aprobadas — ${sol.fecha_inicio} al ${sol.fecha_fin}`
-          : `❌ Solicitud de vacaciones rechazada`;
-        const colorT = esAprobada ? '#1B7A3E' : '#D32F2F';
-        const bColor = esAprobada ? '#2E7D32' : '#D32F2F';
-        const bBg    = esAprobada ? '#E8F5E9' : '#FFEBEE';
-        const bLabel = esAprobada ? '✅ Aprobada' : '❌ Rechazada';
-        const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f5f7f5;padding:24px;border-radius:12px;">
-          <div style="background:#1B7A3E;padding:16px 24px;border-radius:8px 8px 0 0;"><h2 style="color:#fff;margin:0;font-size:18px;">🌿 Fredinero Operativo</h2></div>
-          <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #D0DDD0;">
-            <h3 style="color:${colorT};margin-top:0;">${esAprobada ? `✅ Vacaciones aprobadas por ${responsableRespuesta}` : '❌ Solicitud de vacaciones rechazada'}</h3>
-            <p style="color:#1A2E1A;">Hola <strong>${nombre}</strong>, ${esAprobada ? `${responsableRespuesta} aprobó tu solicitud de vacaciones.` : `${responsableRespuesta} no pudo aprobar tu solicitud de vacaciones.`}</p>
-            <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${bBg};color:${bColor};font-size:12px;font-weight:700;">${bLabel}</span>
-            <table style="width:100%;border-collapse:collapse;margin-top:12px;">
-              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;width:140px;">Fecha inicio</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_inicio}</td></tr>
-              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Fecha fin</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_fin}</td></tr>
-              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Días</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.dias_solicitados}</td></tr>
-              ${nota ? `<tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">${esAprobada ? `Nota de ${responsableRespuesta}` : 'Motivo del rechazo'}</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${nota}</td></tr>` : ''}
-            </table>
-          </div>
-          <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:12px;">Este es un correo automático, no responder.</p>
-        </div>`;
-        await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Authorization':'Bearer '+RESEND_KEY,'Content-Type':'application/json'}, body: JSON.stringify({ from:'Fredinero <noreply@fredinero.com>', to: emailCleon, subject: asunto, html: htmlBody }) });
-      } else {
-        // ── Permisos ──
-        // Para permisos no hay un estado de Alfredo en el flujo actual, solo registramos una nota
-        // y notificamos a cleon por correo. Guardamos nota_alfredo y timestamp en el permiso.
-        await set(ref(database, 'permission_requests/' + sol.id + '/nota_alfredo'), nota || null);
-        await set(ref(database, 'permission_requests/' + sol.id + '/alfredo_visto'), nuevoEstado);
-        await set(ref(database, 'permission_requests/' + sol.id + '/alfredo_estado'), nuevoEstado);
-        await set(ref(database, 'permission_requests/' + sol.id + '/timestamp_alfredo'), Date.now());
-        const horario = sol.dia_completo ? 'Día completo' : `${sol.hora_inicio||'?'} - ${sol.hora_salida||'?'}`;
-        const asunto = esAprobada
-          ? `✅ Tu permiso fue aprobado por Alfredo`
-          : `❌ Tu permiso fue rechazado por Alfredo`;
-        const colorT = esAprobada ? '#1B7A3E' : '#D32F2F';
-        const bColor = esAprobada ? '#2E7D32' : '#D32F2F';
-        const bBg    = esAprobada ? '#E8F5E9' : '#FFEBEE';
-        const bLabel = esAprobada ? '✅ Aprobado' : '❌ Rechazado';
-        const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f5f7f5;padding:24px;border-radius:12px;">
-          <div style="background:#1B7A3E;padding:16px 24px;border-radius:8px 8px 0 0;"><h2 style="color:#fff;margin:0;font-size:18px;">🌿 Fredinero Operativo</h2></div>
-          <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #D0DDD0;">
-            <h3 style="color:${colorT};margin-top:0;">${esAprobada ? '✅ Permiso aprobado por Alfredo' : '❌ Permiso rechazado por Alfredo'}</h3>
-            <p style="color:#1A2E1A;">Hola <strong>${nombre}</strong>, ${esAprobada ? 'Alfredo aprobó tu solicitud de permiso.' : 'Alfredo no pudo aprobar tu solicitud de permiso.'}</p>
-            <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${bBg};color:${bColor};font-size:12px;font-weight:700;">${bLabel}</span>
-            <table style="width:100%;border-collapse:collapse;margin-top:12px;">
-              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;width:140px;">Fecha inicio</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_inicio||'—'}</td></tr>
-              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Fecha regreso</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.fecha_regreso||'—'}</td></tr>
-              <tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Horario</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${horario}</td></tr>
-              ${sol.motivo ? `<tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">Motivo</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${sol.motivo}</td></tr>` : ''}
-              ${nota ? `<tr><td style="padding:6px 0;color:#7A8C7A;font-size:13px;">${esAprobada ? 'Nota de Alfredo' : 'Motivo del rechazo'}</td><td style="padding:6px 0;color:#1A2E1A;font-size:13px;font-weight:600;">${nota}</td></tr>` : ''}
-            </table>
-          </div>
-          <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:12px;">Este es un correo automático, no responder.</p>
-        </div>`;
-        await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Authorization':'Bearer '+RESEND_KEY,'Content-Type':'application/json'}, body: JSON.stringify({ from:'Fredinero <noreply@fredinero.com>', to: emailCleon, subject: asunto, html: htmlBody }) });
-      }
+      const before=await panelNoticeCanonical('cleon_solicitudes/vacaciones/'+sol.id);
+      if(!esVac||!vpPuedeResponderVacacionCleon({...before,id:sol.id,_tipo:'vac'}))throw new Error('Esta vacación ya fue resuelta o no corresponde a Cleon.');
+      if(!['aprobada_alfredo','rechazada_alfredo'].includes(nuevoEstado))throw new Error('Respuesta no permitida.');
+      const timestamp=Date.now();
+      await panelNotices.save({kind:'cleon-vacation.'+(esAprobada?'approved':'rejected'),sourceId:sol.id,before,
+        patch:{estado:nuevoEstado,nota_alfredo:nota||null,timestamp_respuesta:timestamp,respondido_por:correoResponsable,respondido_por_nombre:responsableRespuesta},createdAt:timestamp});
       document.getElementById('alfredoModal').style.display = 'none';
-      alert(esAprobada ? `✅ Solicitud aprobada por ${responsableRespuesta}. Se notificó a la persona solicitante por correo.` : `❌ Solicitud rechazada por ${responsableRespuesta}. Se notificó a la persona solicitante por correo.`);
+      alert(esAprobada ? `✅ Solicitud aprobada por ${responsableRespuesta}. El aviso quedó registrado para su entrega.` : `❌ Solicitud rechazada por ${responsableRespuesta}. El aviso quedó registrado para su entrega.`);
       window.loadAlfredoSolicitudes();
-    } catch(e) { alert('Error al responder: ' + e.message); }
+    } catch(e) { alert('Error al responder: ' + e.message); } finally { panelNoticeBusy.delete(key); }
   };
 
 </script>

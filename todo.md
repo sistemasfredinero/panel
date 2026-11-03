@@ -70,3 +70,5 @@
 - [x] Añadir botón de diagnóstico del Worker exclusivo de Soporte por UID+correo, sin consola ni copiar tokens, sólo bajo demanda, sin envíos/escrituras Firebase y con manejo seguro de cierre de sesión, timeout y errores; probar y publicar.
 - [x] Añadir botón exclusivo de Soporte para el único correo de diagnóstico aprobado, con confirmación, bloqueo de duplicados y protección de sesión; sin cambiar avisos productivos, reglas ni app; validar y publicar.
 - [x] Añadir comprobación manual de configuración FCM de preparación-4 sólo para Soporte, con sesión reciente, sin entregar push, descargar perfiles o exponer tokens; probar y publicar.
+- [x] Implementar avisos del panel por evento autorizado sin claves en frontend, conservar acciones administrativas y destinatarios, directorio protegido y comprobación final sin entrega; validar 214 regresiones y sintaxis sin envíos reales.
+- [ ] Usuario: comprobar publicación de reglas, marcador avisos-1, directorio de identidades y Worker integrado antes de activar avisos operativos y validar los flujos productivos.
