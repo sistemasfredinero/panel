@@ -501,6 +501,14 @@
         <pre id="supportEmailTestResult" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:12px;border-radius:10px;font-size:12px;margin:12px 0 0"></pre>
       </div>
     </section>
+    <section id="supportFcmDiagnosticEntry" style="display:none;margin-top:10px;padding:18px;border:1px solid #BAE6FD;border-radius:14px;background:#F0F9FF;color:#0C4A6E">
+      <h3 style="margin:0 0 8px;font-size:16px">Configuración de push · Soporte</h3>
+      <p style="font-size:13px;line-height:1.6;margin:0 0 12px">Valida la clave del servidor y sus permisos en Google; no entrega notificaciones ni descarga registros.</p>
+      <p style="font-size:13px;line-height:1.6;margin:0 0 12px">Sólo se ejecuta al pulsar el botón. Requiere haber iniciado sesión en los últimos cinco minutos y no activa avisos operativos.</p>
+      <button id="supportFcmDiagnosticButton" type="button" class="btn-export" style="background:#0369A1;white-space:normal;max-width:100%" onclick="window.checkSupportFcmConfiguration()">Comprobar configuración de push</button>
+      <p id="supportFcmDiagnosticStatus" role="status" aria-live="polite" style="font-size:13px;line-height:1.6;margin:12px 0 0"></p>
+      <pre id="supportFcmDiagnosticResult" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:12px;border-radius:10px;font-size:12px;margin:12px 0 0"></pre>
+    </section>
   </section>
 
   <section id="supportProfileSection" style="display:none;padding:24px 32px">
@@ -1208,6 +1216,8 @@
     if (supportProfileEntry) supportProfileEntry.style.display = privacyIsSupport() ? '' : 'none';
     const workerEntry = document.getElementById('supportWorkerDiagnosticEntry');
     if (workerEntry) workerEntry.style.display = supportWorkerIsAuthorized() ? '' : 'none';
+    const fcmEntry = document.getElementById('supportFcmDiagnosticEntry');
+    if (fcmEntry) fcmEntry.style.display = supportWorkerIsAuthorized() ? '' : 'none';
   }
 
   function privacyEscape(value) {
@@ -1401,6 +1411,158 @@
     }
   };
 
+
+  const SUPPORT_FCM_URL = 'https://fredinero-avisos.sistemas-fredinero.workers.dev/v1/diagnostics/fcm-check';
+  const SUPPORT_FCM_MAX_BYTES = 8192;
+  const SUPPORT_FCM_TIMEOUT_MS = 25000;
+  const SUPPORT_FCM_ERROR_CODES = new Set(['FCM_CONFIG_INVALID', 'OAUTH_REJECTED', 'OAUTH_UNAVAILABLE', 'FCM_REJECTED', 'SESION_RECIENTE_REQUERIDA', 'SESION_INVALIDA', 'SOLO_SOPORTE', 'CONFIGURACION_AUTH_INCOMPLETA', 'RUTA_NO_DISPONIBLE']);
+  let _supportFcmRun = 0;
+  let _supportFcmBusy = false;
+  let _supportFcmController = null;
+
+  function supportFcmMessage(message, error = false) {
+    const status = document.getElementById('supportFcmDiagnosticStatus');
+    if (status) { status.textContent = message; status.style.color = error ? '#B91C1C' : '#166534'; }
+  }
+
+  function resetSupportFcmDiagnostic() {
+    _supportFcmRun++;
+    _supportFcmController?.abort();
+    _supportFcmController = null;
+    _supportFcmBusy = false;
+    const button = document.getElementById('supportFcmDiagnosticButton');
+    if (button) { button.disabled = false; button.textContent = 'Comprobar configuración de push'; }
+    const output = document.getElementById('supportFcmDiagnosticResult');
+    if (output) { output.textContent = ''; output.hidden = true; }
+    const entry = document.getElementById('supportFcmDiagnosticEntry');
+    if (entry) entry.style.display = supportWorkerIsAuthorized() ? '' : 'none';
+    supportFcmMessage('');
+  }
+
+  async function supportFcmReadJson(response, sameSession, signal) {
+    const length = response.headers?.get('content-length');
+    if (length && /^\d+$/.test(length) && Number(length) > SUPPORT_FCM_MAX_BYTES) {
+      response.body?.cancel().catch(() => {});
+      throw new Error('FCM_RESPONSE_INVALID');
+    }
+    // Lectura incremental: limita cuerpos sin Content-Length o comprimidos.
+    if (!response.body?.getReader) throw new Error('FCM_RESPONSE_INVALID');
+    const reader = response.body.getReader();
+    const bytes = new Uint8Array(SUPPORT_FCM_MAX_BYTES);
+    let size = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (!sameSession() || signal.aborted) throw new Error('SESSION_CHANGED');
+        if (chunk.done) break;
+        if (!(chunk.value instanceof Uint8Array) || size + chunk.value.byteLength > SUPPORT_FCM_MAX_BYTES) throw new Error('FCM_RESPONSE_INVALID');
+        bytes.set(chunk.value, size);
+        size += chunk.value.byteLength;
+      }
+      return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, size)));
+    } catch {
+      reader.cancel().catch(() => {});
+      throw new Error('FCM_RESPONSE_INVALID');
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  function supportFcmProjectResult(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)
+        || data.ok !== true || data.fcm_configuracion_validada !== true || data.validacion_sin_entrega !== true
+        || data.envios_habilitados !== false || data.avisos_productivos_habilitados !== false || data.revocacion_consultada !== false) throw new Error('FCM_RESPONSE_INVALID');
+    const result = { ok: true, fcm_configuracion_validada: true, validacion_sin_entrega: true, envios_habilitados: false, avisos_productivos_habilitados: false, revocacion_consultada: false };
+    for (const key of ['secreto_presente', 'estructura_valida']) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        if (typeof data[key] !== 'boolean') throw new Error('FCM_RESPONSE_INVALID');
+        result[key] = data[key];
+      }
+    }
+    return result;
+  }
+
+  function supportFcmErrorMessage(code, status) {
+    if (status === 401 || code === 'SESION_RECIENTE_REQUERIDA' || code === 'SESION_INVALIDA') return 'Por seguridad, cierra sesión en el panel y vuelve a entrar como Soporte. Pulsa la comprobación dentro de los siguientes cinco minutos; renovar el token no sustituye un nuevo inicio de sesión.';
+    if (status === 404 || code === 'RUTA_NO_DISPONIBLE') return 'Esta ruta aún no está disponible. Instala primero el Worker preparación-4; el Worker preparación-3 no incluye esta comprobación.';
+    switch (code) {
+      case 'FCM_CONFIG_INVALID': return 'Revisa el secreto GOOGLE_FCM_SERVICE_ACCOUNT_JSON del Worker y su estructura de cuenta de servicio. La cuenta esperada es fredinero-avisos-worker@fredineroappasistencia.iam.gserviceaccount.com. No copies ni compartas la clave privada.';
+      case 'OAUTH_REJECTED': return 'Google rechazó la credencial. Revisa que la clave siga vigente y que la cuenta de servicio esté habilitada. Si la clave fue revocada, reemplázala en el secreto del Worker; no la compartas.';
+      case 'OAUTH_UNAVAILABLE': return 'Google no está disponible temporalmente para validar la credencial. Espera y reintenta manualmente; no habrá reintentos automáticos.';
+      case 'FCM_REJECTED': return 'Google rechazó la validación de FCM. Revisa que Firebase Cloud Messaging API esté habilitada y que la cuenta de servicio tenga el rol Firebase Cloud Messaging API Admin (roles/firebasecloudmessaging.admin) en el proyecto correcto.';
+      case 'SOLO_SOPORTE': return 'Acceso rechazado. Comprueba que Authentication utiliza el UID y correo de Soporte autorizados.';
+      case 'CONFIGURACION_AUTH_INCOMPLETA': return 'Falta completar la configuración de autenticación del Worker. Revisa sus variables públicas y la versión publicada; no compartas credenciales.';
+      case 'FCM_RESPONSE_INVALID': return 'El Worker respondió, pero no confirmó la validación de FCM sin entregas y con avisos deshabilitados. Revisa la versión preparación-4.';
+      case 'FCM_TIMEOUT': return 'La comprobación superó el tiempo de espera. No confirma la configuración; puedes reintentar manualmente. No habrá reintentos automáticos.';
+      default: return 'No se pudo comprobar la configuración de push. Comprueba Internet y la configuración CORS del Worker; reintenta sólo manualmente. No se confirmó la validación ni se solicitaron entregas.';
+    }
+  }
+
+  window.checkSupportFcmConfiguration = async function() {
+    if (_supportFcmBusy || !supportWorkerIsAuthorized()) return;
+    const operator = auth.currentUser;
+    const run = ++_supportFcmRun;
+    const controller = new AbortController();
+    _supportFcmController = controller;
+    _supportFcmBusy = true;
+    const button = document.getElementById('supportFcmDiagnosticButton');
+    const output = document.getElementById('supportFcmDiagnosticResult');
+    if (button) { button.disabled = true; button.textContent = 'Comprobando…'; }
+    if (output) { output.textContent = ''; output.hidden = true; }
+    supportFcmMessage('Validando la configuración de FCM en Google sin entregar mensajes…');
+    const sameSession = () => run === _supportFcmRun && auth.currentUser === operator && supportWorkerIsAuthorized();
+    let timer, cancelPending;
+    try {
+      const result = await Promise.race([
+        (async () => {
+          let token = '';
+          try {
+            // getIdToken(false) no cambia auth_time. Nunca persistir ni publicar el token.
+            token = await operator.getIdToken(false);
+            if (!sameSession() || controller.signal.aborted) throw new Error('SESSION_CHANGED');
+            const pending = fetch(SUPPORT_FCM_URL, {
+              method: 'GET', headers: { Authorization: `Bearer ${token}` },
+              credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', signal: controller.signal,
+            });
+            token = '';
+            const response = await pending;
+            if (!sameSession() || controller.signal.aborted) throw new Error('SESSION_CHANGED');
+            let data;
+            try { data = await supportFcmReadJson(response, sameSession, controller.signal); }
+            catch { if (response.ok) throw new Error('FCM_RESPONSE_INVALID'); }
+            if (!sameSession() || controller.signal.aborted) throw new Error('SESSION_CHANGED');
+            if (!response.ok) {
+              const error = new Error('FCM_HTTP');
+              error.fcmStatus = response.status;
+              error.fcmCode = SUPPORT_FCM_ERROR_CODES.has(data?.codigo) ? data.codigo : '';
+              throw error;
+            }
+            return supportFcmProjectResult(data);
+          } finally { token = ''; }
+        })(),
+        new Promise((_, reject) => {
+          cancelPending = () => reject(new Error('SESSION_CHANGED'));
+          controller.signal.addEventListener('abort', cancelPending, { once: true });
+          timer = setTimeout(() => { reject(new Error('FCM_TIMEOUT')); controller.abort(); }, SUPPORT_FCM_TIMEOUT_MS);
+        }),
+      ]);
+      if (!sameSession() || controller.signal.aborted) return;
+      if (output) { output.textContent = JSON.stringify(result, null, 2); output.hidden = false; }
+      supportFcmMessage('Google aceptó la validación de FCM sin entregar mensajes. Esta prueba no confirma recepción en un celular ni activa avisos operativos.');
+    } catch (error) {
+      if (!sameSession()) return;
+      const code = error?.fcmCode || (['FCM_RESPONSE_INVALID', 'FCM_TIMEOUT'].includes(error?.message) ? error.message : error?.name === 'AbortError' ? 'FCM_TIMEOUT' : '');
+      supportFcmMessage(supportFcmErrorMessage(code, error?.fcmStatus), true);
+    } finally {
+      clearTimeout(timer);
+      if (cancelPending) controller.signal.removeEventListener('abort', cancelPending);
+      if (run === _supportFcmRun) {
+        _supportFcmController = null;
+        _supportFcmBusy = false;
+        if (button) { button.disabled = false; button.textContent = 'Comprobar configuración de push'; }
+      }
+    }
+  };
 
   const SUPPORT_PROFILE_ROLES = new Set(['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA', 'ADMINISTRATIVO']);
   let _supportProfileChecked = null;
@@ -2435,6 +2597,7 @@
   onAuthStateChanged(auth, async (user) => {
     resetSupportWorkerDiagnostic();
     resetSupportEmailTest();
+    resetSupportFcmDiagnostic();
     if (user) {
       try {
         const profileSnap = await get(ref(database, `users/${user.uid}`));
