@@ -526,3 +526,23 @@ test('reconstrucción sin permiso, cancelada o sin raíces no escribe y fallo de
   assert.deepEqual(h.store.gestor_activities, h.originals);
   assert.equal(h.button.disabled, false);
 });
+
+test('Chihuahua normalizado publica índices de plaza, fichas y calendario sin whitelist ni lecturas nuevas', async () => {
+  const h = harness();
+  const timestamp = new Date(2026, 10, 6, 10).getTime();
+  const appointment = prospect('chih-prospect', { plaza: ' Chihuáhua ', estado_expediente: 'PENDIENTE_VERIFICACION', se_agenda_cita: true, cita_timestamp: timestamp });
+  const promise = { id: 'chih-promise', user_uid: 'creator', plaza: ' chihuahua ', tipo: 'COBRANZA', gestion_realizada: 'PROMESA DE PAGO', promesa_timestamp: timestamp, timestamp };
+  const before = plain([appointment, promise]);
+  await h.api.flushActivitySummaryBatch([appointment, promise]);
+  const writes = h.writes[0];
+  for (const route of [
+    'activity_summaries/plazas/CHIHUAHUA/chih-prospect',
+    'activity_summaries/plazas/CHIHUAHUA/chih-promise',
+    'activity_summaries/prospect_pages/by_plaza/CHIHUAHUA/PENDIENTES/chih-prospect',
+    'activity_summaries/calendar/by_plaza/CHIHUAHUA/2026-11/citas/chih-prospect',
+    'activity_summaries/calendar/by_plaza/CHIHUAHUA/2026-11/promesas/chih-promise',
+  ]) assert.ok(writes[route], route);
+  assert.deepEqual([appointment, promise], before, 'No altera registros originales');
+  assert.equal(h.reads.length, 0);
+  assert.ok(Object.keys(writes).every(route => route.startsWith('activity_summaries/')));
+});

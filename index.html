@@ -172,6 +172,7 @@
     .chip-MANTE      { background: #16A085; color: #fff; }
     .chip-PAPANTLA   { background: #D35400; color: #fff; }
     .chip-SALTILLO   { background: #7F8C8D; color: #fff; }
+    .chip-CHIHUAHUA  { background: #0E7490; color: #fff; }
 
     /* Puntualidad */
     .chip-ahora      { background: #D5F5E3; color: #1E8449; }
@@ -543,7 +544,7 @@
           <div class="filter-group"><label for="supportProfileName">Nombre completo *</label><input id="supportProfileName" required minlength="2" maxlength="120" placeholder="Nombre y apellidos" /></div>
           <div class="filter-group"><label for="supportProfileSurname">Apellido paterno *</label><input id="supportProfileSurname" required maxlength="80" placeholder="Como en el registro de la app" /></div>
           <div class="filter-group"><label for="supportProfileRole">Rol *</label><select id="supportProfileRole" required><option value="">Selecciona el rol</option><option value="GERENTE">GERENTE</option><option value="LIDER A">LIDER A</option><option value="LIDER B">LIDER B</option><option value="LIDER C">LIDER C</option><option value="CANJES">CANJES</option><option value="GESTOR">GESTOR</option><option value="GESTOR DE COBRANZA">GESTOR DE COBRANZA</option><option value="ADMINISTRATIVO">ADMINISTRATIVO</option></select></div>
-          <div class="filter-group"><label for="supportProfilePlaza">Clave de plaza *</label><input id="supportProfilePlaza" required maxlength="50" list="supportProfilePlazas" placeholder="Ej. TAMPICO; usa la clave exacta" /><datalist id="supportProfilePlazas"><option value="TAMPICO"></option><option value="MADERO"></option><option value="POZA"></option><option value="TUXPAN"></option><option value="VALLES"></option><option value="XALAPA"></option><option value="MANTE"></option><option value="PAPANTLA"></option><option value="SALTILLO"></option><option value="ADMINISTRATIVO"></option></datalist></div>
+          <div class="filter-group"><label for="supportProfilePlaza">Clave de plaza *</label><input id="supportProfilePlaza" required maxlength="50" list="supportProfilePlazas" placeholder="Ej. TAMPICO; usa la clave exacta" /><datalist id="supportProfilePlazas"><option value="TAMPICO"></option><option value="MADERO"></option><option value="POZA"></option><option value="TUXPAN"></option><option value="VALLES"></option><option value="XALAPA"></option><option value="MANTE"></option><option value="PAPANTLA"></option><option value="SALTILLO"></option><option value="CHIHUAHUA"></option><option value="ADMINISTRATIVO"></option></datalist></div>
         </div>
         <p style="font-size:12px;color:#475569;line-height:1.6">Una plaza nueva se puede escribir aquí, pero también necesita configurarse en los catálogos, mapas y filtros de la operación. Este formulario no hace esa configuración.</p>
         <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:#334155;line-height:1.6;margin:16px 0"><input id="supportProfileAuthConfirmed" type="checkbox" required style="margin-top:4px" /><span>Confirmo que creé la cuenta en Authentication y copié el UID y correo de la misma cuenta.</span></label>
@@ -634,7 +635,7 @@
             <option value="XALAPA">Xalapa</option>
             <option value="MANTE">Mante</option>
             <option value="PAPANTLA">Papantla</option>
-            <option value="SALTILLO">Saltillo</option>
+            <option value="SALTILLO">Saltillo</option><option value="CHIHUAHUA">Chihuahua</option>
             <option value="ADMINISTRATIVO">Administrativo</option>
           </select>
         </div>
@@ -746,7 +747,7 @@
       <div class="filter-group"><label>Tipo</label><select id="activityType"><option value="">Todos</option><option value="GENERAL">General</option><option value="COBRANZA">Cobranza</option><option value="PROSPECCION">Prospección</option></select></div>
       <div class="filter-group activity-filter-multiselect"><label>Actividades</label><button type="button" id="activityActionTrigger" class="activity-filter-trigger" aria-haspopup="true" aria-expanded="false" onclick="window.toggleActivityActionMenu(event)"><span id="activityActionSelectionLabel">Todas las actividades</span><span aria-hidden="true">▾</span></button><div id="activityActionMenu" class="activity-filter-menu" onclick="event.stopPropagation()"><div class="activity-filter-menu-head"><strong>Selecciona una o varias</strong><button type="button" class="activity-filter-clear" onclick="window.clearActivityActionFilters()">Limpiar</button></div><div id="activityActionOptions"></div></div></div>
       <div class="filter-group"><label>Rol</label><select id="activityRole"><option value="">Todos</option><option value="GERENTE">Gerente</option><option value="LIDER A">Líder A</option><option value="LIDER B">Líder B</option><option value="LIDER C">Líder C</option><option value="CANJES">Canjes</option><option value="GESTOR">Gestor</option><option value="GESTOR DE COBRANZA">Gestor de cobranza</option></select></div>
-      <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
+      <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="CHIHUAHUA">Chihuahua</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
       <div class="filter-group"><label>Buscar usuario</label><input id="activityUser" placeholder="Nombre o correo..." style="min-width:210px" /></div>
       <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
       <button class="btn-export" style="background:#7C3AED" onclick="window.exportActivitiesCsv('GENERAL')">⬇ Exportar General</button>
@@ -813,7 +814,7 @@
 <div id="annualFeedbackModal" style="display:none;position:fixed;inset:0;z-index:1260;background:rgba(15,23,42,.55);overflow:auto;padding:28px">
   <div style="max-width:1320px;margin:0 auto;background:#F8FAFC;border:1px solid #DDD6FE;border-radius:18px;padding:20px;box-shadow:0 24px 60px rgba(15,23,42,.25)">
     <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:900;color:#5B21B6">📈 Retroalimentación anual por sucursal</div><div style="font-size:12px;color:#6D28D9;margin-top:3px">Consulta independiente de actividades por tipo y seguimiento de citas.</div></div><button class="btn-export" style="background:#64748B" onclick="window.closeAnnualFeedbackModal()">✕ Cerrar</button></div>
-    <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:15px"><div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Año</label><input id="annualFeedbackYear" type="number" min="2020" max="2099" value="2026" style="width:90px" /></div><div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Sucursal</label><select id="annualFeedbackPlaza"><option value="">Todas las sucursales</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="MANTE">El Mante</option><option value="SALTILLO">Saltillo</option><option value="POZA">Poza Rica</option><option value="TUXPAN">Tuxpan</option><option value="PAPANTLA">Papantla</option><option value="VALLES">Ciudad Valles</option><option value="XALAPA">Xalapa</option></select></div><button class="btn-export" style="background:#6D28D9" onclick="window.loadAnnualFeedback()">📈 Cargar retroalimentación anual</button></div>
+    <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:15px"><div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Año</label><input id="annualFeedbackYear" type="number" min="2020" max="2099" value="2026" style="width:90px" /></div><div><label style="display:block;font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:4px">Sucursal</label><select id="annualFeedbackPlaza"><option value="">Todas las sucursales</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="MANTE">El Mante</option><option value="SALTILLO">Saltillo</option><option value="CHIHUAHUA">Chihuahua</option><option value="POZA">Poza Rica</option><option value="TUXPAN">Tuxpan</option><option value="PAPANTLA">Papantla</option><option value="VALLES">Ciudad Valles</option><option value="XALAPA">Xalapa</option></select></div><button class="btn-export" style="background:#6D28D9" onclick="window.loadAnnualFeedback()">📈 Cargar retroalimentación anual</button></div>
     <div id="annualFeedbackDownloads" style="display:none;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #DDD6FE"><button class="btn-export" style="background:#0F766E;padding:8px 11px;font-size:12px" onclick="window.downloadAnnualFeedbackExcel('CITAS')">⬇ Descargar reporte anual de citas</button><button class="btn-export" style="background:#1D4ED8;padding:8px 11px;font-size:12px" onclick="window.downloadAnnualFeedbackExcel('ACTIVIDADES')">⬇ Descargar reporte anual de actividades</button></div>
     <div id="annualFeedbackContainer" style="margin-top:15px;color:#5B21B6;font-size:13px">Elige el año y presiona el botón para generar los reportes.</div>
   </div>
@@ -904,7 +905,7 @@
           <option value="XALAPA">Xalapa</option>
           <option value="MANTE">Mante</option>
           <option value="PAPANTLA">Papantla</option>
-          <option value="SALTILLO">Saltillo</option>
+          <option value="SALTILLO">Saltillo</option><option value="CHIHUAHUA">Chihuahua</option>
           <option value="ADMINISTRATIVO">Administrativo</option>
         </select>
       </div>
@@ -2053,6 +2054,7 @@
     'tiene_evidencia', 'tiene_firma_promesa', 'verificacion_domiciliaria', 'verificacion_comercial', 'cerrado_en',
     'motivo_rechazo_prospecto', 'motivo_rechazo_credito', 'motivo_cierre', 'tipo_cierre',
     'cierre_negativo_en', 'cierre_negativo_por_uid', 'cierre_negativo_por_nombre', 'cancelado_en', 'cancelado_por',
+    'estatus_alta', 'estado_alta', 'status_alta',
   ];
 
   function cleanActivitySummaryValue(value) {
@@ -2404,7 +2406,7 @@
       const record = projected.record;
       const id = String(record?.id || '').trim();
       const uid = String(record?.user_uid || record?.uid || '').trim();
-      const plaza = String(record?.plaza || '').trim().toUpperCase();
+      const plaza = normaliseActivityText(record?.plaza);
       const cancelledByUid = String(record?.cierre_negativo_por_uid || '').trim();
       if (!id || !uid) {
         report.omittedWithoutIdentity += 1;
@@ -2621,7 +2623,7 @@
         const closedMonth = activitySummaryMonth(alta.timestamp);
         if (alta.isAlta && closedMonth === monthlyAltas.mes_actual) {
           totals.altasMes += 1;
-          const plaza = String(record.plaza || '').trim().toUpperCase();
+          const plaza = normaliseActivityText(record.plaza);
           add(monthlyAltas.por_plaza, prospectCounterKey(plaza));
           if (plaza) monthlyAltaDetails[`activity_summaries/prospect_monthly_altas/by_plaza/${plaza}/${closedMonth}/${record.id}`] = buildActivitySummary(record);
         }
@@ -2997,7 +2999,7 @@
     const tipo       = document.getElementById('filtroTipo').value;
     const buscar     = document.getElementById('filtroUsuario').value.toLowerCase();
     const filtroRol  = document.getElementById('filtroRol').value.toUpperCase();
-    const filtroPlz  = document.getElementById('filtroPlaza').value.toUpperCase();
+    const filtroPlz  = branchKey(document.getElementById('filtroPlaza').value);
     // Nota: el filtro de fechas ya lo aplica Firebase en loadData, no se repite aqui
 
     // Soportar múltiples términos separados por coma: "Jorge Rodriguez, Luis Alberto"
@@ -3011,7 +3013,7 @@
       const nombre    = (user.nombre_completo || '').toLowerCase();
       const correo    = (user.correo || '').toLowerCase();
       const userRol   = (user.rol   || '').toUpperCase();
-      const userPlaza = (user.plaza || '').toUpperCase();
+      const userPlaza = branchKey(user.plaza);
       const coincideUsuario = terminos.length === 0
         || terminos.some(t => nombre.includes(t) || correo.includes(t));
       return (!tipo      || r.tipo === tipo)
@@ -3039,7 +3041,7 @@
       const nombre = String(u.nombre_completo || '').toLowerCase();
       const correo = String(u.correo || '').toLowerCase();
       const userRol = String(u.rol || '').toUpperCase();
-      const userPlaza = String(u.plaza || '').toUpperCase();
+      const userPlaza = branchKey(u.plaza);
       const coincideUsuario = terminos.length === 0
         || terminos.some(t => nombre.includes(t) || correo.includes(t));
       return coincideUsuario
@@ -3080,7 +3082,7 @@
             const correoViaje = String(u.correo || '').toLowerCase();
             return nombreViaje.includes(t) || correoViaje.includes(t);
           });
-          if (!coincideViaje || (filtroRol && String(u.rol || '').toUpperCase() !== filtroRol) || (filtroPlz && String(u.plaza || '').toUpperCase() !== filtroPlz)) return;
+          if (!coincideViaje || (filtroRol && String(u.rol || '').toUpperCase() !== filtroRol) || (filtroPlz && branchKey(u.plaza) !== filtroPlz)) return;
           viajesParaAlertas.push({
             id: c.key,
             uid: v.user_uid,
@@ -3154,12 +3156,12 @@
   const BRANCH_MAP_COLORS = Object.freeze({
     TAMPICO: '#0F766E', MADERO: '#2563EB', MANTE: '#7C3AED', POZA: '#BE123C',
     TUXPAN: '#C2410C', XALAPA: '#B45309', PAPANTLA: '#6D28D9', VALLES: '#0369A1',
-    SALTILLO: '#166534', ADMINISTRATIVO: '#475569',
+    SALTILLO: '#166534', CHIHUAHUA: '#0E7490', ADMINISTRATIVO: '#475569',
   });
   let outsideBranchMapInstance = null;
 
   function branchKey(plaza) {
-    return String(plaza || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return normaliseActivityText(plaza);
   }
 
   function distanceInMeters(lat1, lng1, lat2, lng2) {
@@ -3327,6 +3329,8 @@
     const report = document.getElementById('outsideBranchReport');
     const badge = document.getElementById('outsideBranchBadge');
     if (!report || !badge) return;
+    const withoutCenter = [...new Set(records.map(record => branchKey(usersMap[record.user_uid]?.plaza)).filter(plaza => plaza && !BRANCH_CENTERS[plaza]))];
+    const centerWarning = withoutCenter.length ? `<div style="padding:9px 0;color:#B45309;font-size:12px">Sin centro de oficina configurado para ${withoutCenter.map(escapeMapHtml).join(', ')}: no se evalúa distancia a sucursal. Puedes consultar el GPS guardado en cada registro y las rutas de viajes.</div>` : '';
     const outside = records.map(record => {
       const user = usersMap[record.user_uid] || {};
       const plaza = branchKey(user.plaza);
@@ -3354,7 +3358,7 @@
     badge.textContent = outside.length ? `(${outside.length})` : '(0)';
     badge.style.color = outside.length ? '#B91C1C' : '#1A7A3C';
     if (!outside.length) {
-      report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0"><div style="color:#1A7A3C;font-weight:700">✅ No se encontraron entradas ni salidas a más de ${OUTSIDE_BRANCH_RADIUS_METERS} metros de la sucursal dentro de los filtros actuales.</div><button onclick="window.openOutsideBranchMap()" style="padding:8px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Mapear registros</button></div>`;
+      report.innerHTML = `${centerWarning}<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0"><div style="color:#1A7A3C;font-weight:700">No se detectaron incidencias de distancia en las sucursales con centro configurado dentro de los filtros actuales.</div><button onclick="window.openOutsideBranchMap()" style="padding:8px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Mapear registros</button></div>`;
       return;
     }
     const rows = outside.map(item => {
@@ -3370,7 +3374,7 @@
         <td style="padding:9px 10px"><a href="${maps}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:5px 9px;background:#1565C0;color:#fff;border-radius:7px;text-decoration:none;font-size:11px;font-weight:700">📍 Ver ubicación</a></td>
       </tr>`;
     }).join('');
-    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px"><div style="color:#7A3E00;font-size:12px">Se muestran registros a más de ${OUTSIDE_BRANCH_RADIUS_METERS} metros del punto de referencia de su sucursal.</div><button onclick="window.openOutsideBranchMap()" style="padding:8px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Mapear registros</button></div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px"><thead><tr style="background:#FFF7ED;color:#7C2D12;text-align:left"><th style="padding:9px 10px">Usuario</th><th style="padding:9px 10px">Sucursal</th><th style="padding:9px 10px">Rol</th><th style="padding:9px 10px">Fecha y hora</th><th style="padding:9px 10px">Tipo</th><th style="padding:9px 10px;text-align:right">Distancia</th><th style="padding:9px 10px">Ubicación</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    report.innerHTML = `${centerWarning}<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px"><div style="color:#7A3E00;font-size:12px">Se muestran registros a más de ${OUTSIDE_BRANCH_RADIUS_METERS} metros del punto de referencia de su sucursal.</div><button onclick="window.openOutsideBranchMap()" style="padding:8px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Mapear registros</button></div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px"><thead><tr style="background:#FFF7ED;color:#7C2D12;text-align:left"><th style="padding:9px 10px">Usuario</th><th style="padding:9px 10px">Sucursal</th><th style="padding:9px 10px">Rol</th><th style="padding:9px 10px">Fecha y hora</th><th style="padding:9px 10px">Tipo</th><th style="padding:9px 10px;text-align:right">Distancia</th><th style="padding:9px 10px">Ubicación</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   async function renderCharts(records) {
@@ -3536,7 +3540,7 @@
       const nombre = user.nombre_completo || 'Usuario desconocido';
       const correo = user.correo || '—';
       const rol    = (user.rol   || '').toUpperCase();
-      const plaza  = (user.plaza || '').toUpperCase();
+      const plaza  = branchKey(user.plaza);
       const tipo   = r.tipo || '—';
       const lat    = r.latitud  != null ? Number(r.latitud).toFixed(6)  : null;
       const lng    = r.longitud != null ? Number(r.longitud).toFixed(6) : null;
@@ -3852,7 +3856,7 @@
   let _prospectCalendarPlaza = '';
   const PROSPECT_CALENDAR_COLORS = {
     TAMPICO: '#2563EB', MADERO: '#7C3AED', MANTE: '#059669', POZA: '#EA580C', TUXPAN: '#DC2626',
-    XALAPA: '#0891B2', PAPANTLA: '#BE123C', VALLES: '#4F46E5', SALTILLO: '#65A30D', ADMINISTRATIVO: '#A16207',
+    XALAPA: '#0891B2', PAPANTLA: '#BE123C', VALLES: '#4F46E5', SALTILLO: '#65A30D', CHIHUAHUA: '#0E7490', ADMINISTRATIVO: '#A16207',
   };
   const ACTIVITY_ROUTE_COLORS = ['#7C3AED', '#2563EB', '#059669', '#EA580C', '#DC2626', '#0891B2', '#BE123C', '#4F46E5', '#65A30D', '#A16207'];
   const PROSPECT_WORKFLOW_LABELS = {
@@ -4227,6 +4231,12 @@
   async function resolveActivitySearchSource(criteria) {
     const plaza = normaliseActivityText(criteria?.plaza);
     const rawUser = String(criteria?.userSearch || '').trim();
+    if (activityIsManagerScope()) {
+      const allowed = prospectSectionPlazas();
+      const selected = plaza || normaliseActivityText(_activityProfile?.plaza);
+      if (!selected || !allowed.includes(selected)) throw new Error('La sucursal seleccionada no pertenece al alcance del gerente.');
+      return { path: `activity_summaries/plazas/${selected}`, label: `índice de sucursal ${selected}`, indexed: true };
+    }
     if (rawUser) {
       const users = await loadActivityUserDirectory();
       const matches = users.filter(user => matchesActivityUser({ nombre_usuario: user.nombre, correo_usuario: user.correo }, rawUser));
@@ -4390,9 +4400,9 @@
 
   function isInManagerActivityScope(record) {
     if (!activityIsManagerScope()) return true;
-    const sameUser = record.user_uid === auth.currentUser?.uid || record.uid === auth.currentUser?.uid;
-    const samePlaza = normaliseActivityText(record.plaza) === normaliseActivityText(_activityProfile?.plaza);
-    return sameUser || samePlaza;
+    // Ni el UID propio ni coberturas históricas abren otra sucursal.
+    // prospectSectionPlazas conserva la única excepción Tampico–Madero.
+    return prospectSectionPlazas().includes(normaliseActivityText(record.plaza));
   }
 
   const ANNUAL_FEEDBACK_PLAZAS = [
@@ -4400,7 +4410,7 @@
     { code: 'VALLES', label: 'CIUDAD VALLES' }, { code: 'MANTE', label: 'EL MANTE' },
     { code: 'SALTILLO', label: 'SALTILLO' }, { code: 'POZA', label: 'POZA RICA' },
     { code: 'TUXPAN', label: 'TUXPAN' }, { code: 'PAPANTLA', label: 'PAPANTLA' },
-    { code: 'XALAPA', label: 'XALAPA' }
+    { code: 'XALAPA', label: 'XALAPA' }, { code: 'CHIHUAHUA', label: 'CHIHUAHUA' }
   ];
   const ANNUAL_FEEDBACK_ROLES = [
     { key: 'GERENTE', label: 'Gerente' }, { key: 'LIDER A', label: 'Líder A' },
@@ -4510,7 +4520,13 @@
       if (container) container.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;color:#B91C1C">❌ No se pudo cargar el análisis: ${activityText(error.message)}</div>`;
     }
   };
-  window.openAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', true); };
+  window.openAnnualFeedbackModal = function() {
+    const select = document.getElementById('annualFeedbackPlaza');
+    const allowed = prospectSectionPlazas();
+    Array.from(select.options).forEach(option => { option.disabled = option.value ? !allowed.includes(option.value) : activityIsManagerScope(); });
+    if (activityIsManagerScope() && !allowed.includes(select.value)) select.value = allowed[0] || '';
+    setActivityModalVisibility('annualFeedbackModal', true);
+  };
   window.closeAnnualFeedbackModal = function() { setActivityModalVisibility('annualFeedbackModal', false); };
   window.openResponseChartsModal = async function(type) {
     const requested = normaliseActivityText(type);
@@ -4577,13 +4593,13 @@
         const item = { id: child.key, ...(child.val() || {}) };
         const citaTimestamp = Number(item.cita_timestamp || 0);
         const scheduled = item.se_agenda_cita === true || item.se_agenda_cita === 'SI';
-        if (citaTimestamp >= from && citaTimestamp <= to && normaliseActivityText(item.tipo) === 'PROSPECCION' && scheduled && normaliseActivityText(item.estado_cita) !== 'CANCELADA') citas.push(item);
+        if (normaliseActivityText(item.plaza) === plaza && citaTimestamp >= from && citaTimestamp <= to && normaliseActivityText(item.tipo) === 'PROSPECCION' && scheduled && normaliseActivityText(item.estado_cita) !== 'CANCELADA') citas.push(item);
       });
       if (promiseSnap?.exists()) promiseSnap.forEach(child => {
         const item = { id: child.key, ...(child.val() || {}) };
         const promiseTimestamp = Number(item.promesa_timestamp || 0);
         const isPromise = normaliseActivityText(item.tipo) === 'COBRANZA' && normaliseActivityText(item.gestion_realizada) === 'PROMESA DE PAGO';
-        if (promiseTimestamp >= from && promiseTimestamp <= to && isPromise && normaliseActivityText(item.estado_seguimiento_pago) !== 'COMPROBADO') promesas.push(item);
+        if (normaliseActivityText(item.plaza) === plaza && promiseTimestamp >= from && promiseTimestamp <= to && isPromise && normaliseActivityText(item.estado_seguimiento_pago) !== 'COMPROBADO') promesas.push(item);
       });
       citas.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
       promesas.sort((a, b) => Number(a.promesa_timestamp) - Number(b.promesa_timestamp));
@@ -4609,7 +4625,7 @@
     { key: 'RECHAZADAS_CREDITO', title: 'Rechazadas por Crédito y Riesgo (VoBo)', bucket: 'RECHAZADAS_CREDITO', tone: '#B91C1C', empty: 'No hay rechazos por Crédito y Riesgo.' },
     { key: 'PENDIENTES', title: 'Pendientes', bucket: 'PENDIENTES', tone: '#EA580C', empty: 'No hay expedientes pendientes.' },
   ];
-  const PANEL_PLAZAS = ['TAMPICO', 'MADERO', 'MANTE', 'POZA', 'TUXPAN', 'PAPANTLA', 'VALLES', 'XALAPA', 'SALTILLO', 'ADMINISTRATIVO'];
+  const PANEL_PLAZAS = ['TAMPICO', 'MADERO', 'MANTE', 'POZA', 'TUXPAN', 'PAPANTLA', 'VALLES', 'XALAPA', 'SALTILLO', 'CHIHUAHUA', 'ADMINISTRATIVO'];
   const TAMPICO_MADERO_MANAGER_EMAIL = 'gerente.tampico@fredinero.com';
   let _prospectSectionsPlaza = '';
   const _prospectSectionState = new Map();
@@ -4714,7 +4730,7 @@
   window.loadProspectSection = async function(sectionKey, reset = false) {
     const section = PROSPECT_SECTION_DEFINITIONS.find(item => item.key === sectionKey);
     const plaza = _prospectSectionsPlaza;
-    if (!section || !plaza) return;
+    if (!section || !plaza || !prospectSectionPlazas().includes(plaza)) return;
     const current = _prospectSectionState.get(sectionKey) || { records: [], cursor: '', hasMore: true, loading: false, loaded: false };
     if (current.loading) return;
     const state = reset ? { records: [], cursor: '', hasMore: true, loading: false, loaded: false } : current;
@@ -4732,10 +4748,12 @@
       const snap = await get(pageQuery);
       const page = [];
       const scannedKeys = [];
+      let fetchedCount = 0;
       if (snap.exists()) snap.forEach(child => {
+        fetchedCount += 1;
         if (child.key === state.cursor) return;
         scannedKeys.push(child.key);
-        const record = { id: child.key, ...(child.val() || {}) };
+        const record = { ...(child.val() || {}), id: child.key };
         // La ruta y la ficha deben coincidir en plaza antes de poder mostrarse.
         // Así, un índice histórico inconsistente no expone otra sucursal.
         if (normaliseActivityText(record.plaza) === plaza) page.push(record);
@@ -4743,10 +4761,10 @@
       page.sort((a, b) => String(b.id).localeCompare(String(a.id)));
       const nextRecords = page.slice(0, PROSPECT_SECTION_PAGE_SIZE);
       state.records = [...state.records, ...nextRecords];
-      // El cursor avanza con la ficha más antigua que se leyó, incluso si era
-      // inconsistente y se descartó. Esto evita repetir una página vacía.
-      state.cursor = scannedKeys.length ? scannedKeys[0] : state.cursor;
-      state.hasMore = scannedKeys.length > PROSPECT_SECTION_PAGE_SIZE;
+      // Con diez fichas visibles, conservar la undécima para la siguiente página.
+      // Si se descartaron fichas inconsistentes, avanzar por la última leída.
+      state.cursor = nextRecords.length === PROSPECT_SECTION_PAGE_SIZE ? nextRecords.at(-1).id : (scannedKeys[0] || state.cursor);
+      state.hasMore = fetchedCount > PROSPECT_SECTION_PAGE_SIZE;
       state.loaded = true;
       state.loading = false;
       _prospectSectionState.set(sectionKey, state);
@@ -4759,29 +4777,45 @@
     }
   };
 
+  function annualFeedbackPreview(record) {
+    return { ...activityPreview(record), estatus_alta: record.estatus_alta, estado_alta: record.estado_alta, status_alta: record.status_alta };
+  }
+
+  async function loadAnnualFeedbackActivities(plazas, start, end) {
+    const activities = [], payloads = [];
+    for (const plaza of plazas) {
+      const session = { start, end, sourcePath: `activity_summaries/plazas/${plaza}`, cursorKey: firebasePushIdBoundary(end, 'z'), seen: new Set(), pendingMatches: [], hasMore: false };
+      do {
+        const result = await loadActivityTextPage(session, annualFeedbackPreview);
+        payloads.push(result.payload);
+        result.page.forEach(record => {
+          const timestamp = Number(activityCreatedTimestamp(record) || 0);
+          if (timestamp >= start && timestamp <= end && normaliseActivityText(record.plaza) === plaza && isInManagerActivityScope(record)) activities.push(record);
+        });
+      } while (session.hasMore);
+    }
+    return { activities, payloads };
+  }
+
   window.loadAnnualFeedback = async function() {
     const container = document.getElementById('annualFeedbackContainer');
     const downloadActions = document.getElementById('annualFeedbackDownloads');
     const year = Number(document.getElementById('annualFeedbackYear').value);
-    const selectedPlaza = normaliseActivityText(document.getElementById('annualFeedbackPlaza').value);
+    const allowed = prospectSectionPlazas();
+    const selectedPlaza = normaliseActivityText(document.getElementById('annualFeedbackPlaza').value) || (activityIsManagerScope() ? allowed[0] : '');
     if (!Number.isInteger(year) || year < 2020 || year > 2099) { alert('Indica un año válido.'); return; }
+    if (selectedPlaza && !allowed.includes(selectedPlaza)) { alert('La sucursal seleccionada no pertenece a tu alcance.'); return; }
     _annualFeedbackExport = null;
     if (downloadActions) downloadActions.style.display = 'none';
     container.innerHTML = '<div style="padding:8px 0;color:#5B21B6">⏳ Generando retroalimentación anual...</div>';
     try {
       const start = new Date(year, 0, 1).getTime();
       const end = new Date(year + 1, 0, 1).getTime() - 1;
-      const activitySnap = await get(query(ref(database, 'gestor_activities'), orderByChild('created_at'), startAt(start), endAt(end)));
+      const { activities, payloads } = await loadAnnualFeedbackActivities(selectedPlaza ? [selectedPlaza] : allowed, start, end);
       const usersSnap = await get(ref(database, 'users'));
-      const activities = [];
-      if (activitySnap.exists()) activitySnap.forEach(child => {
-        const record = { id: child.key, ...(child.val() || {}) };
-        const timestamp = Number(record.created_at || record.timestamp || 0);
-        if (timestamp >= start && timestamp <= end) activities.push(record);
-      });
       recordPanelDataUsage('PANEL_ANNUAL_FEEDBACK', {
         records: activities.length,
-        payload: [activitySnap.val(), usersSnap.val()],
+        payload: [payloads, usersSnap.val()],
         scope: `${year}${selectedPlaza ? ` · ${selectedPlaza}` : ''}`,
       });
       const actualRoles = new Set(['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA']);
@@ -4790,8 +4824,8 @@
         const user = child.val() || {};
         const role = normaliseActivityText(user.rol);
         const plaza = normaliseActivityText(user.plaza);
-        const uid = String(user.uid || child.key || '');
-        if (uid && plaza && actualRoles.has(role) && (!selectedPlaza || plaza === selectedPlaza)) members.push({ uid, name: user.nombre_completo || user.nombre || user.correo || 'Sin nombre', role, plaza });
+        const uid = String(child.key || '');
+        if (uid && allowed.includes(plaza) && actualRoles.has(role) && (!selectedPlaza || plaza === selectedPlaza)) members.push({ uid, name: user.nombre_completo || user.nombre || user.correo || 'Sin nombre', role, plaza });
       });
       if (!members.length) {
         container.innerHTML = '<div style="background:#fff;border:1px solid #DDD6FE;border-radius:10px;padding:14px;color:#5B21B6">No hay usuarios operativos configurados para la sucursal seleccionada.</div>';
@@ -4811,7 +4845,7 @@
           stat.prospeccion += 1;
           const scheduled = record.se_agenda_cita === true || record.se_agenda_cita === 'SI';
           if (scheduled) {
-            const alta = normaliseActivityText(record.estatus_alta || record.estado_alta || record.status_alta) === 'ALTA';
+            const alta = normaliseActivityText(record.estatus_alta || record.estado_alta || record.status_alta) === 'ALTA' || prospectWorkflowStage(record) === 'ALTA';
             if (alta) stat.citasAlta += 1; else stat.citasSinAlta += 1;
           }
         }
@@ -5139,7 +5173,7 @@
     const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
     const plaza = _prospectCalendarPlaza;
     const grid = document.getElementById('prospectCalendarGrid');
-    if (!plaza) {
+    if (!plaza || !calendarAllowedPlazas().includes(plaza)) {
       grid.innerHTML = '<div style="grid-column:1/-1;background:#fff;padding:24px;border-radius:12px;color:#B91C1C">No se pudo determinar la sucursal del calendario.</div>';
       return;
     }
@@ -5154,11 +5188,11 @@
       _activityCalendarPromises = [];
       if (appointmentSnap?.exists()) appointmentSnap.forEach(child => {
         const record = { id: child.key, ...(child.val() || {}) };
-        if (normaliseActivityText(record.tipo) === 'PROSPECCION' && (record.se_agenda_cita === true || record.se_agenda_cita === 'SI') && normaliseActivityText(record.estado_cita) !== 'CANCELADA') _prospectCalendarAppointments.push(record);
+        if (normaliseActivityText(record.plaza) === plaza && normaliseActivityText(record.tipo) === 'PROSPECCION' && (record.se_agenda_cita === true || record.se_agenda_cita === 'SI') && normaliseActivityText(record.estado_cita) !== 'CANCELADA') _prospectCalendarAppointments.push(record);
       });
       if (promiseSnap?.exists()) promiseSnap.forEach(child => {
         const record = { id: child.key, ...(child.val() || {}) };
-        if (normaliseActivityText(record.tipo) === 'COBRANZA' && normaliseActivityText(record.gestion_realizada) === 'PROMESA DE PAGO' && normaliseActivityText(record.estado_seguimiento_pago) !== 'COMPROBADO') _activityCalendarPromises.push(record);
+        if (normaliseActivityText(record.plaza) === plaza && normaliseActivityText(record.tipo) === 'COBRANZA' && normaliseActivityText(record.gestion_realizada) === 'PROMESA DE PAGO' && normaliseActivityText(record.estado_seguimiento_pago) !== 'COMPROBADO') _activityCalendarPromises.push(record);
       });
       _prospectCalendarAppointments.sort((a, b) => Number(a.cita_timestamp) - Number(b.cita_timestamp));
       _activityCalendarPromises.sort((a, b) => Number(a.promesa_timestamp) - Number(b.promesa_timestamp));
@@ -6588,7 +6622,7 @@
     const buscar = document.getElementById('filtroUsuario').value.toLowerCase();
     const terminos = buscar ? buscar.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
     const filtroRol = document.getElementById('filtroRol').value.toUpperCase();
-    const filtroPlz = document.getElementById('filtroPlaza').value.toUpperCase();
+    const filtroPlz = branchKey(document.getElementById('filtroPlaza').value);
 
     let vSnap;
     try {
@@ -6604,7 +6638,7 @@
       const nombre = (user.nombre_completo || '').toLowerCase();
       const correo = (user.correo || '').toLowerCase();
       const userRol = (user.rol || '').toUpperCase();
-      const userPlaza = (user.plaza || '').toUpperCase();
+      const userPlaza = branchKey(user.plaza);
       const coincide = terminos.length === 0 || terminos.some(t => nombre.includes(t) || correo.includes(t));
       if (!coincide) return;
       if (filtroRol && userRol !== filtroRol) return;
@@ -7577,7 +7611,7 @@
     const tipo    = document.getElementById('vpTipo').value;
     const estado  = document.getElementById('vpEstado').value;
     const rol     = document.getElementById('vpRol').value.toUpperCase();
-    const plaza   = document.getElementById('vpPlaza').value.toUpperCase();
+    const plaza   = branchKey(document.getElementById('vpPlaza').value);
     const buscar  = document.getElementById('vpUsuario').value;
     const fechaIni = document.getElementById('vpFechaIni').value;
     const fechaFin = document.getElementById('vpFechaFin').value;
@@ -7600,7 +7634,7 @@
             if (estado && estado.startsWith('vac_') && estadoVac !== estado.replace('vac_','')) return;
             if (estado && estado.startsWith('perm_')) return;
             if (rol   && (s.rol  ||'').toUpperCase() !== rol)   return;
-            if (plaza && (s.plaza||'').toUpperCase() !== plaza) return;
+            if (plaza && branchKey(s.plaza) !== plaza) return;
             if (!coincideUsuario(s.nombre_solicitante, s.user_email)) return;
             if (!coincideFecha(s.timestamp_creacion || 0)) return;
             _vpData.push({ ...s, _estadoKey: estadoVac });
@@ -7620,7 +7654,7 @@
             if (estado && estado.startsWith('perm_') && estadoPerm !== estado.replace('perm_','')) return;
             if (estado && estado.startsWith('vac_')) return;
             if (rol   && (s.rol  ||'').toUpperCase() !== rol)   return;
-            if (plaza && (s.plaza||'').toUpperCase() !== plaza) return;
+            if (plaza && branchKey(s.plaza) !== plaza) return;
             if (!coincideUsuario(s.nombre_solicitante || s.nombre, s.correo || s.user_email)) return;
             // Permisos usan 'timestamp' (no 'timestamp_creacion')
             if (!coincideFecha(s.timestamp || s.timestamp_creacion || 0)) return;

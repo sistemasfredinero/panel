@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const ts = require('/tmp/FredineroOperativo-git/node_modules/typescript');
+const ts = require('./load-typescript.cjs');
 const root = path.resolve(__dirname, '..');
 const compiled = name => ts.transpileModule(fs.readFileSync(path.join(root, name), 'utf8'), { compilerOptions: { allowJs: true, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const modules = { 'notice-client.js': compiled('notice-client.js'), 'notice-contract.generated.js': compiled('notice-contract.generated.js') };
