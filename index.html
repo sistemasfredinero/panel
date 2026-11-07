@@ -750,13 +750,14 @@
       <div class="filter-group"><label>Plaza</label><select id="activityPlaza"><option value="">Todas</option><option value="TAMPICO">Tampico</option><option value="MADERO">Madero</option><option value="POZA">Poza</option><option value="TUXPAN">Tuxpan</option><option value="VALLES">Valles</option><option value="XALAPA">Xalapa</option><option value="MANTE">Mante</option><option value="PAPANTLA">Papantla</option><option value="SALTILLO">Saltillo</option><option value="CHIHUAHUA">Chihuahua</option><option value="ADMINISTRATIVO">Administrativo</option></select></div>
       <div class="filter-group"><label>Buscar usuario</label><input id="activityUser" placeholder="Nombre o correo..." style="min-width:210px" /></div>
       <button class="btn-search" style="background:#6D28D9" onclick="window.searchActivities()">Buscar</button>
-      <button class="btn-export" style="background:#7C3AED" onclick="window.exportActivitiesCsv('GENERAL')">⬇ Exportar General</button>
-      <button class="btn-export" style="background:#15803D" onclick="window.exportActivitiesCsv('COBRANZA')">⬇ Exportar Cobranza</button>
-      <button class="btn-export" style="background:#2563EB" onclick="window.exportActivitiesCsv('PROSPECCION')">⬇ Exportar Prospección</button>
+      <button id="activityExportGENERAL" class="btn-export" style="background:#7C3AED" onclick="window.exportActivitiesCsv('GENERAL')">⬇ Exportar General</button>
+      <button id="activityExportCOBRANZA" class="btn-export" style="background:#15803D" onclick="window.exportActivitiesCsv('COBRANZA')">⬇ Exportar Cobranza</button>
+      <button id="activityExportPROSPECCION" class="btn-export" style="background:#2563EB" onclick="window.exportActivitiesCsv('PROSPECCION')">⬇ Exportar Prospección</button>
       <button class="btn-download" style="background:#7C3AED" onclick="window.downloadFotosActividades()">📷 Fotos Actividades</button>
       <button id="prospectCalendarBtn" class="btn-export" style="background:#0F766E;display:none" onclick="window.openProspectAppointmentsCalendar()">🗓️ Calendario de Actividades</button>
       <button id="deleteActivitiesBtn" class="btn-export" style="background:#B91C1C;display:none" onclick="window.deleteActivitiesByRange()">🗑 Eliminar resultado</button>
     </div>
+    <div id="activityExportStatus" role="status" aria-live="polite" style="font-size:12px;color:#475569;margin-top:10px">Cada exportación incluye todo el rango y los filtros seleccionados, aunque sólo se vean 50 registros. No incluye fotos ni firmas.</div>
   </div>
 
   <div class="stats" style="margin-bottom:18px">
@@ -4263,6 +4264,7 @@
     while (canRead && rows.length < targetMatches && guard < 200) {
       guard += 1;
       const previousCursor = session.cursorKey;
+      session.ensureActive?.();
       const snap = await get(query(
         ref(database, session.sourcePath || 'gestor_activities'),
         orderByKey(),
@@ -4270,6 +4272,7 @@
         endAt(session.cursorKey),
         limitToLast(ACTIVITY_RESULTS_PAGE_SIZE + 1),
       ));
+      session.ensureActive?.();
       payloads.push(snap.val());
       const scannedKeys = [];
       let newKeys = 0;
@@ -5450,27 +5453,138 @@
 
   function activityExportValue(value) {
     if (value === undefined || value === null) return '';
-    if (Array.isArray(value)) return value.join(' | ');
+    if (Array.isArray(value)) return value.some(item => item && typeof item === 'object') ? JSON.stringify(value) : value.join(' | ');
     if (typeof value === 'boolean') return value ? 'Sí' : 'No';
     if (typeof value === 'object') return JSON.stringify(value);
     return String(value);
   }
 
-  window.exportActivitiesCsv = async function(type) {
-    const selectedPreviews = _activitiesFiltered.filter(record => activityCategory(record) === type);
-    const typeName = activityCategoryLabel(type);
-    if (!selectedPreviews.length) {
-      alert(`No hay registros de ${typeName} en el resultado actual. Ajusta los filtros y presiona Buscar.`);
-      return;
+  let _activityExportInFlight = false;
+
+  function activityExportContextKey() {
+    return JSON.stringify({ uid: auth.currentUser?.uid || '', email: auth.currentUser?.email || '',
+      profile: _activityProfile || null, filters: activityFilterSignature(currentActivityFilterCriteria()) });
+  }
+
+  function setActivityExportProgress(message) {
+    const status = document.getElementById('activityExportStatus');
+    if (status) status.textContent = message;
+  }
+
+  function setActivityExportBusy(busy) {
+    ['GENERAL', 'COBRANZA', 'PROSPECCION'].forEach(type => {
+      const button = document.getElementById(`activityExport${type}`);
+      if (button) { button.disabled = busy; button.setAttribute('aria-busy', String(busy)); }
+    });
+  }
+
+  // Se conserva el reporte textual completo. Nunca se consulta gestor_photos.
+  // Si un registro antiguo incluye medios inline, tampoco se vuelcan al CSV.
+  function activityExportTextRecord(value) {
+    if (typeof value === 'string' && /^data:(?:(?:image|audio|video)\/[^;,]+|application\/pdf)[;,]/i.test(value)) return '';
+    if (Array.isArray(value)) return value.map(activityExportTextRecord);
+    if (!value || typeof value !== 'object') return value;
+    const result = {};
+    Object.entries(value).forEach(([key, item]) => {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype' || /(?:base64|data_?url)$/i.test(key)) return;
+      result[key] = activityExportTextRecord(item);
+    });
+    return result;
+  }
+
+  function activityExportCsvQ(value) {
+    const text = String(value ?? '');
+    // Campos escritos por usuarios deben abrirse como texto, no como fórmulas.
+    const safeNumber = /^[+-]?\d+(?:\.\d+)?$/.test(text);
+    const safePushId = /^-[A-Za-z0-9_-]{19}$/.test(text);
+    return csvQ(!safeNumber && !safePushId && /^\s*[=+@-]/.test(text) ? `'${text}` : text);
+  }
+
+  function consolidateActivityExportProspects(records) {
+    const prepared = records.map(record => activityCategory(record) === 'PROSPECCION'
+      ? { ...record, tipo: 'PROSPECCION', expediente_prospeccion_id: record.expediente_prospeccion_id || record.prospecto_raiz_id || record.seguimiento_de || record.id }
+      : record);
+    // Las entradas de historia más recientes prevalecen si comparten una clave.
+    prepared.sort((a, b) => Number(a.actualizado_en || activityCreatedTimestamp(a) || 0) - Number(b.actualizado_en || activityCreatedTimestamp(b) || 0));
+    return consolidateProspectFiles(prepared).map(record => ({ ...record, _activity_path: `gestor_activities/${record.id}` }));
+  }
+
+  async function validateActivityExportProfile(ensureActive) {
+    ensureActive();
+    const uid = auth.currentUser.uid;
+    const [roleSnap, plazaSnap] = await Promise.all([
+      get(ref(database, `users/${uid}/rol`)), get(ref(database, `users/${uid}/plaza`)),
+    ]);
+    ensureActive();
+    const role = normaliseActivityText(roleSnap.val());
+    const plaza = normaliseActivityText(plazaSnap.val());
+    if (!role || role !== normaliseActivityText(_activityProfile?.rol) || plaza !== normaliseActivityText(_activityProfile?.plaza)) {
+      throw new Error('El perfil o su alcance cambió. Vuelve a abrir Actividades antes de exportar.');
     }
-    let selected;
-    try {
-      selected = await loadFullActivityRecords(selectedPreviews, 'PANEL_ACTIVITY_EXPORT');
-    } catch (error) {
-      alert(`No se pudieron cargar los datos completos para exportar: ${error.message || 'error desconocido'}`);
-      return;
+  }
+
+  async function loadActivityExportRecords(criteria, ensureActive) {
+    ensureActive();
+    const source = await resolveActivitySearchSource(criteria);
+    ensureActive();
+    const session = { start: criteria.start, end: criteria.end,
+      cursorKey: firebasePushIdBoundary(criteria.end, 'z'), sourcePath: source.path,
+      sourceLabel: source.label, indexed: source.indexed, seen: new Set(), pendingMatches: [],
+      hasMore: false, ensureActive };
+    const previews = new Map();
+    const directText = new Map();
+    const buildPreview = record => {
+      const canonical = { ...record, id: activityRecordPath(record).split('/').pop() };
+      const preview = activityAnalysisPreview(canonical);
+      if (!source.indexed && activityPageRecordMatches(preview, criteria)) {
+        directText.set(activityRecordPath(canonical), activityExportTextRecord(canonical));
+      }
+      return preview;
+    };
+    do {
+      ensureActive();
+      const next = await loadActivityTextPage(session, buildPreview, criteria);
+      ensureActive();
+      next.page.forEach(record => previews.set(activityRecordPath(record), record));
+      recordPanelDataUsage('PANEL_ACTIVITY_EXPORT_RANGE', { records: next.page.length,
+        payload: next.payload, scope: `${criteria.startValue} a ${criteria.endValue} · ${activityCategoryLabel(criteria.type)} · ${source.label} · sin fotos` });
+      setActivityExportProgress(`Buscando todo el rango: ${previews.size} coincidencia(s) de ${activityCategoryLabel(criteria.type)}...`);
+    } while (session.hasMore);
+    const selected = Array.from(previews.values())
+      .filter(record => isInManagerActivityScope(record) && activityMatchesCriteria(record, criteria));
+    const results = [];
+    // Lecturas individuales únicamente de coincidencias; ocho como máximo a la vez.
+    // Un fallo no se convierte en un CSV parcial que parezca completo.
+    for (let index = 0; index < selected.length; index += 8) {
+      ensureActive();
+      const records = await Promise.all(selected.slice(index, index + 8).map(async preview => {
+        ensureActive();
+        const canonical = { ...preview, _activity_path: `gestor_activities/${preview.id}` };
+        const path = activityRecordPath(canonical);
+        let complete = directText.get(path);
+        if (!complete) {
+          const snap = await get(ref(database, path));
+          ensureActive();
+          if (snap.exists()) complete = { ...(snap.val() || {}), id: preview.id, _activity_path: path };
+          recordPanelDataUsage('PANEL_ACTIVITY_EXPORT_TEXT', { records: snap.exists() ? 1 : 0,
+            payload: snap.val(), scope: `${criteria.startValue} a ${criteria.endValue} · registro coincidente · sin fotos` });
+        }
+        ensureActive();
+        if (!complete) throw new Error('Un registro ya no está disponible. Actualiza la búsqueda y exporta nuevamente; no se descargó un archivo parcial.');
+        const record = activityExportTextRecord({ ...preview, ...complete });
+        if (!isInManagerActivityScope(record) || !activityMatchesCriteria(record, criteria)) {
+          throw new Error('Un registro cambió y ya no coincide con la búsqueda. Actualiza y exporta nuevamente; no se descargó un archivo parcial.');
+        }
+        return record;
+      }));
+      results.push(...records);
+      setActivityExportProgress(`Preparando ${activityCategoryLabel(criteria.type)}: ${results.length} de ${selected.length} registro(s)...`);
     }
-    if (!selected.length) { alert('No fue posible recuperar registros para exportar.'); return; }
+    ensureActive();
+    return consolidateActivityExportProspects(results).filter(record => isInManagerActivityScope(record) && activityMatchesCriteria(record, criteria));
+  }
+
+  function downloadActivitiesCsv(selected, type, criteria) {
     const commonFields = [
       ['id', 'ID de actividad'], ['uid', 'UID'], ['user_uid', 'UID de usuario'], ['nombre_usuario', 'Nombre de usuario'], ['correo_usuario', 'Correo de usuario'], ['rol', 'Rol'], ['plaza', 'Plaza'],
       ['tipo', 'Tipo de actividad'], ['fecha_hora_registro', 'Fecha y hora de registro'], ['created_at', 'Marca de tiempo de creación'], ['timestamp', 'Marca de tiempo'],
@@ -5490,16 +5604,54 @@
       if (key === 'ruta_evidencia') return record.tiene_evidencia ? `gestor_photos/${record.id}/foto_base64` : '';
       return activityExportValue(record[key]);
     }));
-    const csv = [columns.map(([, label]) => csvQ(label)).join(','), ...rows.map(row => row.map(csvQ).join(','))].join('\n');
-    const start = document.getElementById('activityStartDate').value || 'sin-fecha-inicial';
-    const end = document.getElementById('activityEndDate').value || 'sin-fecha-final';
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const csv = [columns.map(([, label]) => activityExportCsvQ(label)).join(','), ...rows.map(row => row.map(activityExportCsvQ).join(','))].join('\n');
+    const start = criteria.startValue;
+    const end = criteria.endValue;
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `actividades_${type.toLowerCase()}_${start}_a_${end}.csv`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  window.exportActivitiesCsv = async function(type) {
+    if (_activityExportInFlight) return;
+    if (!['GENERAL', 'COBRANZA', 'PROSPECCION'].includes(type)) { alert('Selecciona un tipo válido para exportar.'); return; }
+    const current = currentActivityFilterCriteria();
+    if (!current.startValue || !current.endValue || !Number.isFinite(current.start) || !Number.isFinite(current.end) || current.start > current.end) {
+      alert('Selecciona un rango válido de fechas antes de exportar.'); return;
+    }
+    if (!auth.currentUser?.uid || !normaliseActivityText(_activityProfile?.rol)) { alert('Inicia sesión para exportar actividades.'); return; }
+    if (current.type && current.type !== type) {
+      alert(`El filtro Tipo no incluye ${activityCategoryLabel(type)}. Ajusta los filtros antes de exportar.`); return;
+    }
+    const contextKey = activityExportContextKey();
+    const ensureActive = () => {
+      if (contextKey !== activityExportContextKey()) throw new Error('La sesión o los filtros cambiaron. Exportación cancelada; vuelve a pulsar el botón con la búsqueda deseada.');
+    };
+    const criteria = { ...current, type, actions: new Set(current.actions) };
+    _activityExportInFlight = true;
+    setActivityExportBusy(true);
+    setActivityExportProgress(`Buscando todos los registros de ${activityCategoryLabel(type)} del rango seleccionado...`);
+    try {
+      await validateActivityExportProfile(ensureActive);
+      const selected = await loadActivityExportRecords(criteria, ensureActive);
+      ensureActive();
+      if (!selected.length) { setActivityExportProgress(`No hay registros de ${activityCategoryLabel(type)} con estos filtros.`); alert(`No hay registros de ${activityCategoryLabel(type)} en todo el rango y filtros seleccionados.`); return; }
+      downloadActivitiesCsv(selected, type, criteria);
+      setActivityExportProgress(`Exportación completa: ${selected.length} registro(s) de ${activityCategoryLabel(type)}, del ${criteria.startValue} al ${criteria.endValue}.`);
+    } catch (error) {
+      setActivityExportProgress('Exportación no completada. No se descargó un archivo parcial.');
+      alert(`No se pudo completar la exportación: ${error.message || 'error desconocido'}`);
+    } finally {
+      _activityExportInFlight = false;
+      setActivityExportBusy(false);
+    }
   };
 
   function activityRecordById(id) {
