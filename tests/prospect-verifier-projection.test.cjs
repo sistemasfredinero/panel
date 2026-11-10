@@ -45,7 +45,7 @@ function harness({ records = {}, users = {}, initial = {}, tamper, support = tru
   const reads = [];
   const alerts = [];
   const button = { disabled: false, textContent: 'Reconstruir Prospección' };
-  const state = { detail: null, fullRecords: [], filtered: [] };
+  const state = { detail: null, fullRecords: [], filtered: [], invalidations: 0 };
   const readPath = route => route.split('/').filter(Boolean).reduce((node, key) => node?.[key], store);
   function writePath(route, value) {
     const parts = route.split('/');
@@ -64,6 +64,7 @@ function harness({ records = {}, users = {}, initial = {}, tamper, support = tru
     activityCanManageAll: () => true,
     alert: message => alerts.push(message),
     confirm: () => confirm,
+    invalidateActivityQueryCache: () => { state.invalidations++; },
     recordPanelDataUsage: () => {},
     ref: (_database, route = '') => route,
     orderByChild: field => ({ type: 'orderByChild', field }),
@@ -104,7 +105,7 @@ function harness({ records = {}, users = {}, initial = {}, tamper, support = tru
     realConstant('PROSPECT_FINAL_STAGES'),
     realConstant('PROSPECT_VERIFICATION_STAGES'),
     realConstant('FIREBASE_PUSH_ID_CHARS'),
-    ...['normaliseActivityText', 'prospectWorkflowStage', 'prospectVerificationVisible', 'firebasePushIdTimestamp', 'activityCreatedTimestamp', 'isStoredActivityRecord'].map(realFunction),
+    ...['normaliseActivityText', 'prospectWorkflowStage', 'prospectVerificationVisible', 'firebasePushIdTimestamp', 'activityCreatedTimestamp', 'isStoredActivityRecord', 'activityRecordPath'].map(realFunction),
     realFunction('activitySummaryDeletionChanges'),
     realFunction('deleteActivityRecordAndIndexes'),
     realWindowFunction('rebuildActiveProspectCounters'),
@@ -405,12 +406,52 @@ test('borrado individual y por rango une rutas de ficha proyectada con expedient
       await h.window.deleteActivitiesByRange();
     } else await h.api.deleteActivityRecordAndIndexes(preview);
     assert.equal(h.writes.length, 1);
+    assert.equal(h.state.invalidations, 1, 'El commit confirmado invalida búsquedas y GPS');
     const changes = h.writes[0];
     assert.equal(changes['activity_summaries/active_prospects_by_verifier/verifier-current/case-1'], null);
     assert.equal(changes['activity_summaries/active_prospects_by_verifier/auth-deleted/case-1'], null);
     assert.equal(changes['activity_summaries/active_prospects_by_verifier_email/verifier_example_test/case-1'], null);
     assert.equal(changes['gestor_activities/case-1'], null);
     assert.equal(changes['gestor_photos/case-1'], null);
+  }
+});
+
+test('borrado fallido individual y por rango conserva la caché y muestra el error', async () => {
+  for (const bulk of [false, true]) {
+    const h = harness({ failWrite: 1 });
+    const source = prospect();
+    h.state.detail = source;
+    h.state.fullRecords = [source];
+    if (bulk) {
+      h.api.setFiltered([source]);
+      await h.window.deleteActivitiesByRange();
+      assert.match(h.alerts.at(-1), /No se pudieron eliminar/);
+    } else await assert.rejects(h.api.deleteActivityRecordAndIndexes(source), /Fallo sintético/);
+    assert.equal(h.writes.length, 1);
+    assert.equal(h.state.invalidations, 0);
+  }
+});
+
+test('borrado histórico individual y por resultado elimina sólo su ruta real, nunca la raíz homónima', async () => {
+  for (const bulk of [false, true]) {
+    const source = prospect('old-1', { _activity_path: 'gestor_activities/legacy/old-1' });
+    const h = harness({ records: { 'old-1': { protegido: true }, legacy: { 'old-1': source } } });
+    h.state.detail = source;
+    h.state.fullRecords = [source];
+    if (bulk) { h.api.setFiltered([source]); await h.window.deleteActivitiesByRange(); }
+    else await h.api.deleteActivityRecordAndIndexes(source);
+    assert.equal(h.writes[0]['gestor_activities/legacy/old-1'], null);
+    assert.ok(!Object.hasOwn(h.writes[0], 'gestor_activities/old-1'));
+    assert.deepEqual(h.readPath('gestor_activities/old-1'), { protegido: true });
+    assert.equal(h.state.invalidations, 1);
+  }
+});
+
+test('borrado con ruta arbitraria, raíz o ID distinto se rechaza antes de cualquier escritura', async () => {
+  for (const route of ['users/case-1', 'gestor_activities', 'gestor_activities/other-id', 'gestor_activities/a/b/case-1']) {
+    const h = harness();
+    await assert.rejects(h.api.deleteActivityRecordAndIndexes(prospect('case-1', { _activity_path: route })), /ruta/);
+    assert.equal(h.writes.length, 0); assert.equal(h.state.invalidations, 0);
   }
 });
 
