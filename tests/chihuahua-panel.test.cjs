@@ -31,7 +31,7 @@ function snapshot(value, key = '') {
 }
 function harness({ role = 'ADMINISTRATIVO', plaza = 'CHIHUAHUA', email = 'admin@example.test', store = {} } = {}) {
   const reads = [], usage = [], alerts = [], forbidden = [], nodes = {};
-  const node = id => nodes[id] ||= { value: '', textContent: '', innerHTML: '', style: {}, options: [], classList: { add() {}, remove() {} }, addEventListener() {} };
+  const node = id => nodes[id] ||= { value: '', textContent: '', innerHTML: '', style: {}, options: [], classList: { add() {}, remove() {} }, addEventListener() {}, querySelectorAll() { return []; } };
   for (const id of ['filtroPlaza', 'activityPlaza', 'annualFeedbackPlaza', 'vpPlaza']) {
     const el = node(id); el.options = optionsFor(id);
     let value = '';
@@ -71,8 +71,10 @@ function harness({ role = 'ADMINISTRATIVO', plaza = 'CHIHUAHUA', email = 'admin@
   });
   const names = ['normaliseActivityText', 'branchKey', 'activityText', 'activityCategory', 'activityCategoryLabel', 'activityCreatedTimestamp', 'firebasePushIdBoundary', 'firebasePushIdTimestamp', 'isStoredActivityRecord', 'matchesActivityUser', 'activityMatchesSelectedActions', 'activityFilterRecordAction', 'currentActivityFilterCriteria', 'activityMatchesCriteria', 'activityPageRecordMatches', 'activityPreview', 'activityRecordPath', 'loadFullActivityRecord', 'loadActivityTextPage', 'loadActivityUserDirectory', 'resolveActivitySearchSource', 'activityCanManageAll', 'activityIsManagerScope', 'activityIsAdministrative', 'isInManagerActivityScope', 'prospectSectionPlazas', 'prospectSectionIsPlazaSelector', 'calendarAllowedPlazas', 'activityCanUseProspectCalendar', 'renderProspectPlazaControls', 'renderProspectCalendarPlazaControls', 'loadProspectCalendar', 'activityCalendarEvents', 'prospectWorkflowStage', 'annualFeedbackPreview', 'loadAnnualFeedbackActivities', 'annualFeedbackWorksheet', 'annualFeedbackRole', 'renderStats', 'renderCards', 'filterAndRender', 'validCoordinates', 'renderTripRoutesReport', 'distanceInMeters', 'formatRecordDateTime', 'escapeMapHtml', 'renderOutsideBranchReport', 'supportNoticeProfile', 'supportNoticeKey', 'supportNoticeLabel', 'managerProfilePlazas', 'buildSupportNoticeDirectory', 'buildActivitySummary', 'cleanActivitySummaryValue'];
   const constants = ['PANEL_PLAZAS', 'TAMPICO_MADERO_MANAGER_EMAIL', 'ANNUAL_FEEDBACK_PLAZAS', 'ANNUAL_FEEDBACK_ROLES', 'ACTIVITY_RESULTS_PAGE_SIZE', 'PROSPECT_SECTION_PAGE_SIZE', 'PROSPECT_SECTION_DEFINITIONS', 'FIREBASE_PUSH_ID_CHARS', 'PROSPECT_CALENDAR_COLORS', 'PROSPECT_WORKFLOW_COLORS', 'PROSPECT_WORKFLOW_LABELS', 'BRANCH_MAP_COLORS', 'BRANCH_CENTERS', 'OUTSIDE_BRANCH_RADIUS_METERS', 'SUPPORT_NOTICE_FIELDS', 'ACTIVITY_SUMMARY_FIELDS'];
+  names.push('activityCopyDisplayMetadata', 'activityDisplayLinkedPath', 'buildActivityDisplayItems', 'activityQueryContextKey', 'activityFilterSignature', 'prospectColor', 'prospectWorkflowLabel', 'activityBoardAction', 'activityBoardDateLabel', 'activityBoardMovementLabel', 'activityBoardTimeline', 'renderActivityBoardCard', 'renderActivityBoard');
   vm.runInContext([
     ...constants.map(constant), ...names.map(fn),
+    'const _activityBoardItems = new Map(); let _activityBoardContext = "";',
     `let _activityProfile = ${JSON.stringify({ rol: role, plaza, managedPlazas: ['TAMPICO'] })};`,
     'let _activityUserDirectory = null, _selectedActivityActionFilters = new Set(), _annualFeedbackExport = null;',
     'let _prospectSectionsPlaza = "", _prospectCalendarPlaza = "", _prospectCalendarSelectedDate = "";',

@@ -307,32 +307,34 @@
   .alerts-section { margin-bottom: 24px; }
   .alerts-toggle { display: flex; align-items: center; justify-content: space-between;
     background: #fff; border: 1px solid #FDEBD0; border-radius: 12px;
-    padding: 14px 20px; cursor: pointer; margin-bottom: 0; }
+    padding: 14px 20px; cursor: pointer; margin-bottom: 0; gap: 12px; }
   .alerts-toggle:hover { background: #FEF9F0; }
-  .alerts-toggle h2 { margin: 0; font-size: 16px; color: #A04000; }
-  .alerts-toggle span { font-size: 20px; }
-  #alertsArrow { transition: transform 0.2s; display: inline-block; }
+  .alerts-toggle h2 { margin: 0; font-size: 16px; color: #A04000; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  #alertsArrow { font-size: 20px; transition: transform 0.2s; display: inline-block; flex-shrink: 0; }
   .alerts-toggle.open #alertsArrow { transform: rotate(180deg); }
-  .alerts-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;
+  .alerts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
     background: #fff; border: 1px solid #FDEBD0; border-top: none;
     border-radius: 0 0 12px 12px; padding: 20px; }
   @media (max-width: 900px) { .alerts-grid { grid-template-columns: 1fr; } }
   .alert-card { background: #FEF9F0; border-radius: 10px; padding: 16px; border: 1px solid #FDEBD0; }
   .alert-card h3 { margin: 0 0 12px 0; font-size: 13px; color: #A04000; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-  .alert-card.danger h3 { color: #922B21; }
-  .alert-card.danger { background: #FDEDEC; border-color: #F5B7B1; }
   .alert-card.info h3 { color: #1A5276; }
   .alert-card.info { background: #EAF2FF; border-color: #AED6F1; }
   .alert-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 13px; }
   .alert-item:last-child { border-bottom: none; }
   .alert-avatar { width: 32px; height: 32px; border-radius: 50%; background: #F0E6D3; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-  .alert-name { font-weight: 600; color: #333; }
-  .alert-detail { font-size: 11px; color: #888; }
-  .alert-empty { text-align: center; padding: 20px; color: #aaa; font-size: 13px; }
-  .alert-badge { display: inline-flex; align-items: center; justify-content: center;
-    background: #E74C3C; color: #fff; border-radius: 50%; width: 20px; height: 20px;
-    font-size: 11px; font-weight: 700; margin-left: 8px; flex-shrink: 0; }
-  .alert-badge.zero { background: #27AE60; }
+  .alert-name { font-weight: 600; color: #333; overflow-wrap: anywhere; }
+  .alert-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .alert-plaza { max-width: 100%; overflow-wrap: anywhere; }
+  .alert-plaza.unknown { background: #E2E8F0; color: #334155; }
+  .alert-detail { font-size: 11px; color: #596579; overflow-wrap: anywhere; }
+  .alert-empty { text-align: center; padding: 20px; color: #596579; font-size: 13px; }
+  .alerts-section .alert-badge { display: inline-flex; align-items: center; justify-content: center;
+    background: #B42318; color: #fff; border-radius: 999px; width: auto; min-width: 24px; min-height: 24px;
+    padding: 3px 8px; box-sizing: border-box; font-size: 12px; line-height: 1; font-weight: 700;
+    font-variant-numeric: tabular-nums; white-space: nowrap; margin-left: 8px; flex-shrink: 0; }
+  .alerts-toggle .alert-badge { margin-left: 0; }
+  .alerts-section .alert-badge.zero { background: #166534; }
 
   /* ── Gráficas ── */
   .charts-section { margin-bottom: 24px; }
@@ -407,6 +409,39 @@
     @media (max-width: 680px) { .header { padding:12px 18px; align-items:flex-start; } .header-brand-home { gap:10px; } .header-module-copy { display:none; } .header-module-title { font-size:12px; } #adminName { display:none; } }
     @media (max-width: 980px) { .module-grid { grid-template-columns: 1fr; max-width: 610px; } .module-card { min-height: 285px; } }
     @media (max-width: 560px) { .module-landing { padding: 30px 16px 36px; } .landing-subtitle { font-size: 14px; } .module-card { padding: 22px; min-height: 285px; } .module-card h2 { margin-top: 26px; } .module-cta { left: 22px; right: 22px; } }
+    .activity-board-note { color:#64748B; font-size:12px; line-height:1.6; margin:0 0 14px; }
+    .activity-board-plaza { margin:0 0 13px; border:1px solid #E2E8F0; border-left:5px solid var(--plaza-color,#64748B); border-radius:13px; overflow:hidden; background:#fff; }
+    .activity-board-plaza > summary, .activity-board-user > summary, .activity-board-card > summary { display:flex; align-items:center; gap:12px; cursor:pointer; list-style:none; }
+    .activity-board-plaza > summary::-webkit-details-marker, .activity-board-user > summary::-webkit-details-marker, .activity-board-card > summary::-webkit-details-marker { display:none; }
+    .activity-board-plaza > summary { padding:16px 18px; background:#F8FAFC; }
+    .activity-board-chevron { flex-shrink:0; width:18px; color:#64748B; font-size:16px; transition:transform .16s ease; }
+    details[open] > summary > .activity-board-chevron { transform:rotate(90deg); }
+    .activity-board-plaza > summary:focus-visible, .activity-board-user > summary:focus-visible, .activity-board-card > summary:focus-visible { outline:2px solid #6D28D9; outline-offset:-3px; }
+    .activity-board-heading { flex:1; min-width:0; font-weight:800; color:#172033; font-size:14px; overflow-wrap:anywhere; }
+    .activity-board-heading small { display:block; font-size:11px; font-weight:500; color:#64748B; margin-top:4px; line-height:1.5; }
+    .activity-board-count { flex-shrink:0; background:#EEF2F6; color:#334155; border-radius:20px; font-size:11px; font-weight:800; padding:6px 10px; white-space:nowrap; }
+    .activity-board-members { padding:4px 14px 14px; }
+    .activity-board-user { margin-top:10px; border:1px solid #E2E8F0; border-radius:10px; background:#fff; }
+    .activity-board-user > summary { padding:13px 14px; }
+    .activity-board-avatar { display:grid; place-items:center; width:34px; height:34px; flex-shrink:0; border-radius:10px; background:#F1F5F9; color:#334155; font-size:12px; font-weight:900; }
+    .activity-board-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr)); gap:12px; padding:0 12px 13px; align-items:start; }
+    .activity-board-card { min-width:0; border:1px solid #E2E8F0; border-top:3px solid var(--activity-color,#64748B); border-radius:10px; background:#fff; }
+    .activity-board-card > summary { align-items:flex-start; padding:13px 12px; gap:8px; }
+    .activity-board-card-title { color:#172033; font-size:13px; font-weight:800; margin:6px 0; line-height:1.5; overflow-wrap:anywhere; }
+    .activity-board-meta { color:#64748B; font-size:11px; line-height:1.55; overflow-wrap:anywhere; }
+    .activity-board-kind { display:inline-block; color:var(--activity-color,#475569); font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.04em; }
+    .activity-board-card-content { padding:0 14px 14px; }
+    .activity-board-actions { display:flex; gap:7px; flex-wrap:wrap; margin:12px 0 4px; }
+    .activity-board-actions button { border:1px solid #CBD5E1; background:#fff; color:#334155; border-radius:7px; padding:7px 9px; min-height:34px; font-size:11px; font-weight:700; cursor:pointer; }
+    .activity-board-actions button:focus-visible { outline:2px solid #6D28D9; outline-offset:2px; }
+    .activity-board-actions .activity-board-detail { background:#F5F3FF; color:#5B21B6; border-color:#DDD6FE; }
+    .activity-board-actions .activity-board-delete { color:#B91C1C; border-color:#FECACA; }
+    .activity-board-timeline { list-style:none; margin:12px 0 0; padding:0 0 0 12px; border-left:2px solid #E2E8F0; }
+    .activity-board-timeline li { position:relative; padding:0 0 13px 9px; }
+    .activity-board-timeline li::before { content:''; position:absolute; left:-17px; top:5px; width:7px; height:7px; border-radius:50%; background:#94A3B8; border:2px solid #fff; }
+    .activity-board-timeline strong { color:#334155; font-size:12px; }
+    @media (max-width:560px) { .activity-board-plaza > summary { padding:13px 11px; gap:8px; } .activity-board-members { padding:0 8px 10px; } .activity-board-user > summary { padding:11px 9px; gap:8px; } .activity-board-grid { padding:0 8px 10px; grid-template-columns:1fr; } .activity-board-count { padding:5px 7px; font-size:10px; } .activity-board-avatar { width:28px; height:28px; } }
+    @media (prefers-reduced-motion:reduce) { .activity-board-chevron { transition:none; } }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -675,17 +710,13 @@
     <!-- Alertas / Inconsistencias -->
     <div class="alerts-section" id="alertsSection" style="display:none">
       <div class="alerts-toggle" id="alertsToggle" onclick="window.toggleAlerts()">
-        <h2>⚠️ Inconsistencias del Período <span id="alertsTotalBadge"></span></h2>
+        <h2>⚠️ Inconsistencias del Período <span id="alertsTotalBadge" aria-live="polite" aria-atomic="true"></span></h2>
         <span id="alertsArrow">▼</span>
       </div>
       <div class="alerts-grid" id="alertsGrid" style="display:none">
         <div class="alert-card">
           <h3>🟡 Entrada sin Salida <span class="alert-badge" id="badgeEntradaSinSalida">0</span></h3>
           <div id="listEntradaSinSalida"><div class="alert-empty">Sin inconsistencias</div></div>
-        </div>
-        <div class="alert-card danger">
-          <h3>🔴 Salida sin Entrada <span class="alert-badge" id="badgeSalidaSinEntrada">0</span></h3>
-          <div id="listSalidaSinEntrada"><div class="alert-empty">Sin inconsistencias</div></div>
         </div>
         <div class="alert-card info">
           <h3>🚗 Viaje sin Fin Registrado <span class="alert-badge" id="badgeViajeSinFin">0</span></h3>
@@ -871,6 +902,8 @@
             <option value="perm_propuesta_intermedia">Propuesta de aprobador</option>
             <option value="perm_pendiente_vobo">Pendiente VoBo RH</option>
             <option value="perm_aprobado_final">Aprobado Final</option>
+            <option value="perm_activo">Activo</option>
+            <option value="perm_gozados">Gozado</option>
             <option value="perm_cancelado">Cancelado</option>
           </optgroup>
           <optgroup id="vpCleonStatusGroup" label="Vac. RH (Cleon)" style="display:none">
@@ -925,6 +958,16 @@
       <button data-request-management-only onclick="window.showEliminarPermisos()" style="padding:9px 16px;background:#B91C1C;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🗑 Eliminar Permisos</button>
     </div>
   </div>
+
+  <section id="boardAvailability" aria-label="Disponibilidad por vacaciones y permisos" style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:12px;padding:18px;margin-bottom:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <h2 style="margin:0;font-size:18px;color:#075E67">Disponibilidad programada</h2>
+      <button type="button" onclick="window.vpAvailabilityRefresh()" style="padding:8px 12px;border:1px solid #CBD5E1;border-radius:8px;background:#fff;color:#075E67;cursor:pointer">Recalcular sin descargar</button>
+    </div>
+    <p id="vpAvailabilityCoverage" style="font-size:12px;color:#475569;line-height:1.5;margin:10px 0">Presiona Buscar para utilizar las solicitudes que se descargan en este módulo. Todavía no hay cobertura cargada.</p>
+    <div id="vpAvailabilityCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px"></div>
+    <p style="font-size:12px;color:#475569;margin:12px 0 0">Sólo solicitudes con aprobación final y aceptación cuando corresponde. Ausencia y regreso según lo aprobado; no confirma que la persona ya checó asistencia. Se aplica plaza, rol, nombre y tipo; el rango de creación y el estado filtran únicamente la tabla inferior.</p>
+  </section>
 
   <!-- Tabla de resultados -->
   <div id="vacPermTableContainer">
@@ -4356,9 +4399,171 @@
     return record?._activity_path || `gestor_activities/${record?.id || ''}`;
   }
 
+  /** Proyección exclusiva de pantalla: conserva metadatos fuera de Object.keys/CSV. */
+  function activityCopyDisplayMetadata(source, target) {
+    const fields = ['_display_owner', '_display_related_records', '_display_root_id', '_display_root_path', '_display_root_identity', '_display_has_evidence'];
+    fields.forEach(field => {
+      if (source && Object.prototype.hasOwnProperty.call(source, field)) Object.defineProperty(target, field, { value: source[field], writable: true, configurable: true, enumerable: false });
+    });
+    return target;
+  }
+
+  /** Sólo enlaces explícitos; un ID histórico se resuelve junto a su registro, no en otra plaza/ruta. */
+  function activityDisplayLinkedPath(record, link) {
+    if (typeof link !== 'string' || !link.trim()) return '';
+    const value = link.trim();
+    const valid = path => /^gestor_activities\/(?:[^/.#$\[\]\x00-\x1f\x7f]+\/)?[^/.#$\[\]\x00-\x1f\x7f]+$/.test(path);
+    if (value.startsWith('gestor_activities/')) return valid(value) ? value : '';
+    if (/^(?:gestor_photos|users|activity_summaries|notice_directory)\//.test(value)) return '';
+    if (value.includes('/')) return valid(`gestor_activities/${value}`) ? `gestor_activities/${value}` : '';
+    const path = activityRecordPath(record);
+    const linked = `${path.substring(0, path.lastIndexOf('/'))}/${value}`;
+    return valid(linked) ? linked : '';
+  }
+
+  /** PURE. IDs explícitos para detalle bajo demanda; conserva las rutas históricas relativas. */
+  function activityDisplayPaymentLinks(record) {
+    const fields = ['promesa_pago_id', 'recepcion_pago_id', 'comprobacion_id', 'comprobacion_digital_id', 'renuencia_pago_id', 'ultima_llamada_control_id', 'origen_pago_id'];
+    return Array.from(new Set(fields.map(field => activityDisplayLinkedPath(record, record?.[field])).filter(Boolean).map(path => path.replace(/^gestor_activities\//, ''))));
+  }
+  window.activityDisplayPaymentLinks = activityDisplayPaymentLinks;
+
+  /** Lectura dirigida de hojas: nunca expediente, historia, foto ni enumeración adicional de raíces. */
+  async function activityReadDisplayRootIdentity(path, ensureActive = () => {}) {
+    if (!/^gestor_activities\/(?:[^/.#$\[\]\x00-\x1f\x7f]+\/)?[^/.#$\[\]\x00-\x1f\x7f]+$/.test(path)) return null;
+    const context = activityEnsureQueryContext();
+    const key = `${context}|display-root|${path}`;
+    let cached = _activityMetadataCache.get(key);
+    if (!cached || Date.now() - cached.at >= ACTIVITY_QUERY_TTL_MS) {
+      const generation = _activityQueryGeneration;
+      const active = () => { ensureActive(); if (generation !== _activityQueryGeneration || context !== activityQueryContextKey()) throw new Error('La sesión o la consulta cambió.'); };
+      const promise = (async () => {
+        const value = { id: path.split('/').pop(), _activity_path: path };
+        const readField = async field => {
+          const item = (await activityBoundedRead(() => get(ref(database, `${path}/${field}`)), active)).val();
+          if (item !== null && item !== undefined && ['string', 'number', 'boolean'].includes(typeof item)) value[field] = item;
+        };
+        // La plaza canónica se verifica ANTES de cualquier identidad/enlace si es gerente.
+        await readField('plaza');
+        if (!isInManagerActivityScope(value)) return null;
+        await Promise.all(['uid', 'user_uid', 'nombre_usuario', 'correo_usuario', 'rol', 'tipo', 'gestion_realizada', 'expediente_prospeccion_id', 'prospecto_raiz_id', 'seguimiento_de', 'es_expediente_prospeccion', 'promesa_pago_id', 'recepcion_pago_id', 'origen_pago_id', 'origen_pago_tipo', 'tiene_evidencia', 'has_evidence'].map(readField));
+        active();
+        recordPanelDataUsage('PANEL_ACTIVITY_LIGHT_ROOT_IDENTITY', { records: 1, payload: value, scope: 'Autor original y enlaces explícitos; sin expediente ni medios' });
+        return value;
+      })();
+      cached = { at: Date.now(), promise };
+      _activityMetadataCache.set(key, cached);
+      promise.catch(() => { if (_activityMetadataCache.get(key) === cached) _activityMetadataCache.delete(key); });
+    }
+    const result = await cached.promise;
+    ensureActive();
+    return result;
+  }
+
+  /** Anota sólo autor/raíz; las hojas fuera de rango NO entran en records ni relatedRecords. */
+  async function hydrateActivityDisplayMetadata(records, ensureActive = () => {}) {
+    const byPath = new Map(records.map(record => [activityRecordPath(record), record]));
+    const parentPath = record => {
+      if (activityCategory(record) === 'PROSPECCION') {
+        const link = record.expediente_prospeccion_id || record.prospecto_raiz_id || record.seguimiento_de;
+        const path = activityDisplayLinkedPath(record, link);
+        return path && path !== activityRecordPath(record) ? path : '';
+      }
+      const action = normaliseActivityText(record.gestion_realizada || record.gestion);
+      if (!['PROMESA DE PAGO', 'RECEPCION DE PAGO', 'COMPROBACION DE PAGO', 'LLAMADA DE CONTROL', 'RENUENCIA DE PAGO'].includes(action)) return '';
+      const link = record.promesa_pago_id || (action === 'COMPROBACION DE PAGO' ? record.recepcion_pago_id || record.origen_pago_id : '');
+      const path = activityDisplayLinkedPath(record, link);
+      return path && path !== activityRecordPath(record) ? path : '';
+    };
+    await Promise.all(records.map(async record => {
+      if (activityCategory(record) !== 'PROSPECCION' && !['PROMESA DE PAGO', 'RECEPCION DE PAGO', 'COMPROBACION DE PAGO', 'LLAMADA DE CONTROL', 'RENUENCIA DE PAGO'].includes(normaliseActivityText(record.gestion_realizada || record.gestion))) return;
+      let current = record, path = activityRecordPath(record), identity = record;
+      const visited = new Set([path]);
+      let next = parentPath(current);
+      while (next && !visited.has(next)) {
+        visited.add(next);
+        path = next;
+        current = byPath.get(path);
+        if (!current) {
+          try { current = await activityReadDisplayRootIdentity(path, ensureActive); }
+          catch (error) { ensureActive(); current = null; }
+        }
+        if (!current) { identity = null; break; }
+        identity = current;
+        next = parentPath(current);
+      }
+      if (next && visited.has(next)) identity = null;
+      ensureActive();
+      const metadata = { _display_root_id: path.split('/').pop(), _display_root_path: path, _display_root_identity: identity ? { id: identity.id, _activity_path: path, uid: identity.uid, user_uid: identity.user_uid, nombre_usuario: identity.nombre_usuario, correo_usuario: identity.correo_usuario, rol: identity.rol, plaza: identity.plaza, tiene_evidencia: identity.tiene_evidencia === true, has_evidence: identity.has_evidence === true } : null };
+      activityCopyDisplayMetadata(metadata, record);
+    }));
+    return records;
+  }
+
+  /** PURE. Agrupación de tarjetas únicamente; recibe coincidencias YA filtradas/autorizadas. */
+  function buildActivityDisplayItems(records) {
+    const pathOf = record => activityRecordPath(record);
+    const isProspect = record => activityCategory(record) === 'PROSPECCION';
+    const isPayment = record => !isProspect(record) && ['PROMESA DE PAGO', 'RECEPCION DE PAGO', 'COMPROBACION DE PAGO', 'LLAMADA DE CONTROL', 'RENUENCIA DE PAGO'].includes(normaliseActivityText(record.gestion_realizada || record.gestion));
+    const movement = record => Number(record._expediente_ultimo_movimiento || record.actualizado_en || activityCreatedTimestamp(record) || 0);
+    const evidence = record => record?.tiene_evidencia === true || record?.has_evidence === true || record?._display_has_evidence === true;
+    const ownerOf = record => ({ uid: String(record?.uid || record?.user_uid || ''), name: String(record?.nombre_usuario || 'Autor original no disponible'), email: String(record?.correo_usuario || ''), role: String(record?.rol || ''), plaza: String(record?.plaza || '') });
+    const visible = new Map();
+    (records || []).filter(Boolean).forEach(record => {
+      const related = record._display_related_records;
+      (Array.isArray(related) && related.length ? related : [record]).forEach(stage => { if (stage?.id) visible.set(pathOf(stage), stage); });
+    });
+    const parent = new Map();
+    const find = path => { if (!parent.has(path)) parent.set(path, path); let root = path; while (parent.get(root) !== root) root = parent.get(root); while (parent.get(path) !== path) { const next = parent.get(path); parent.set(path, root); path = next; } return root; };
+    const join = (a, b) => { if (a && b) { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra); } };
+    visible.forEach(record => {
+      const path = pathOf(record); find(path);
+      if (isProspect(record)) {
+        const root = record._display_root_path || activityDisplayLinkedPath(record, record.expediente_prospeccion_id || record.prospecto_raiz_id || record.seguimiento_de);
+        if (root && (!visible.has(root) || isProspect(visible.get(root)))) join(path, root);
+      } else if (isPayment(record)) {
+        ['promesa_pago_id', 'recepcion_pago_id', 'comprobacion_id', 'comprobacion_digital_id', 'renuencia_pago_id', 'ultima_llamada_control_id', 'origen_pago_id'].forEach(field => {
+          const linked = activityDisplayLinkedPath(record, record[field]);
+          if (linked && (!visible.has(linked) || isPayment(visible.get(linked)))) join(path, linked);
+        });
+        if (record._display_root_path && (!visible.has(record._display_root_path) || isPayment(visible.get(record._display_root_path)))) join(path, record._display_root_path);
+      }
+    });
+    const groups = new Map();
+    visible.forEach(record => { const path = pathOf(record), key = find(path); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(record); });
+    const sourceByPath = new Map((records || []).filter(Boolean).map(record => [pathOf(record), record]));
+    return Array.from(groups.values()).map(stages => {
+      const relatedRecords = [...stages].sort((a, b) => movement(a) - movement(b) || pathOf(a).localeCompare(pathOf(b)));
+      const latest = relatedRecords[relatedRecords.length - 1];
+      const kind = isProspect(latest) ? 'prospect' : isPayment(latest) ? 'payment' : 'activity';
+      let rootPath = '';
+      if (kind === 'prospect') rootPath = stages.map(stage => stage._display_root_path || activityDisplayLinkedPath(stage, stage.expediente_prospeccion_id || stage.prospecto_raiz_id || stage.seguimiento_de)).find(Boolean) || pathOf(relatedRecords[0]);
+      if (kind === 'payment') {
+        rootPath = stages.map(stage => activityDisplayLinkedPath(stage, stage.promesa_pago_id)).find(Boolean)
+          || stages.map(stage => stage._display_root_path).find(Boolean)
+          || pathOf(stages.find(stage => normaliseActivityText(stage.gestion_realizada || stage.gestion) === 'PROMESA DE PAGO') || stages.find(stage => normaliseActivityText(stage.gestion_realizada || stage.gestion) === 'RECEPCION DE PAGO') || relatedRecords[0]);
+        // Una comprobación puede apuntar a recepción y ésta a promesa.
+        const seen = new Set();
+        while (visible.has(rootPath) && !seen.has(rootPath)) {
+          seen.add(rootPath); const root = visible.get(rootPath);
+          const next = root._display_root_path || activityDisplayLinkedPath(root, root.promesa_pago_id || (normaliseActivityText(root.gestion_realizada || root.gestion) === 'COMPROBACION DE PAGO' ? root.recepcion_pago_id || root.origen_pago_id : ''));
+          if (!next || next === rootPath) break; rootPath = next;
+        }
+      }
+      if (!rootPath) rootPath = pathOf(latest);
+      const rootStage = visible.get(rootPath);
+      const projection = sourceByPath.get(rootPath);
+      const metadataStage = stages.find(stage => stage._display_root_path === rootPath && stage._display_root_identity);
+      const identity = projection?._display_owner || (projection?._display_root_identity && ownerOf(projection._display_root_identity)) || (rootStage && ownerOf(rootStage)) || (metadataStage && ownerOf(metadataStage._display_root_identity));
+      const record = projection || rootStage || latest;
+      return { key: `${kind}:${rootPath}`, kind, record, relatedRecords, owner: identity || ownerOf(null), hasEvidence: stages.some(evidence) || projection?._display_has_evidence === true || evidence(metadataStage?._display_root_identity), root_id: rootPath.split('/').pop(), root_path: rootPath, latestMovementAt: Math.max(...stages.map(movement)), loadedCount: relatedRecords.length };
+    }).sort((a, b) => b.latestMovementAt - a.latestMovementAt || a.key.localeCompare(b.key));
+  }
+  window.buildActivityDisplayItems = buildActivityDisplayItems;
+
   function activityPreview(record) {
     const source = record || {};
-    return {
+    const preview = {
       id: source.id,
       _activity_path: activityRecordPath(source),
       created_at: source.created_at,
@@ -4387,14 +4592,28 @@
       lider_asignado_uid: source.lider_asignado_uid,
       cierre_negativo_por_uid: source.cierre_negativo_por_uid,
       promesa_timestamp: source.promesa_timestamp,
+      expediente_prospeccion_id: source.expediente_prospeccion_id,
+      prospecto_raiz_id: source.prospecto_raiz_id,
+      seguimiento_de: source.seguimiento_de,
+      es_expediente_prospeccion: source.es_expediente_prospeccion,
+      promesa_pago_id: source.promesa_pago_id,
+      recepcion_pago_id: source.recepcion_pago_id,
+      comprobacion_id: source.comprobacion_id,
+      comprobacion_digital_id: source.comprobacion_digital_id,
+      renuencia_pago_id: source.renuencia_pago_id,
+      ultima_llamada_control_id: source.ultima_llamada_control_id,
+      origen_pago_id: source.origen_pago_id,
+      origen_pago_tipo: source.origen_pago_tipo,
+      has_evidence: source.has_evidence === true,
       tiene_evidencia: source.tiene_evidencia === true,
       tiene_firma_promesa: source.tiene_firma_promesa === true,
     };
+    return typeof activityCopyDisplayMetadata === 'function' ? activityCopyDisplayMetadata(source, preview) : preview;
   }
 
   function activityAnalysisPreview(record) {
     const source = record || {};
-    return {
+    const preview = {
       ...activityPreview(source),
       tipo_actividad: source.tipo_actividad,
       activity_category: source.activity_category,
@@ -4416,7 +4635,7 @@
       motivo: source.motivo,
       comentarios: source.comentarios,
       observaciones: source.observaciones,
-      has_evidence: Boolean(source.has_evidence || source.tiene_evidencia),
+      has_evidence: source.has_evidence === true || source.tiene_evidencia === true,
       estatus_alta: source.estatus_alta,
       estado_alta: source.estado_alta,
       status_alta: source.status_alta,
@@ -4425,6 +4644,7 @@
       seguimiento_de: source.seguimiento_de,
       es_expediente_prospeccion: source.es_expediente_prospeccion,
     };
+    return typeof activityCopyDisplayMetadata === 'function' ? activityCopyDisplayMetadata(source, preview) : preview;
   }
 
   async function loadFullActivityRecord(record, action = 'PANEL_ACTIVITY_DETAIL_VIEW') {
@@ -4458,7 +4678,7 @@
   let _activityUserDirectory = null;
 
   const ACTIVITY_QUERY_TTL_MS = 5 * 60 * 1000;
-  const ACTIVITY_LIGHT_FIELDS = ['created_at', 'timestamp', 'fecha_hora_registro', 'actualizado_en', 'tipo', 'activity_type', 'tipo_actividad', 'categoria_actividad', 'activity_category', 'categoria', 'uid', 'user_uid', 'nombre_usuario', 'correo_usuario', 'rol', 'plaza', 'se_visita_a', 'se_atiende_a', 'visitado_a', 'persona_atendida', 'numero_cliente', 'nombre_contacto', 'nombre_prospecto', 'gestion_realizada', 'gestion', 'tipo_accion', 'se_agenda_cita', 'fecha_cita', 'hora_cita', 'cita_timestamp', 'estado_expediente', 'lider_asignado_uid', 'cierre_negativo_por_uid', 'promesa_timestamp', 'tiene_evidencia', 'tiene_firma_promesa', 'accion_prospeccion', 'modalidad_prospeccion', 'tipo_prospeccion', 'tipo_prospeccion_otro', 'referido_interno', 'motivo_no_cita', 'motivo_no_agenda', 'motivo', 'comentarios', 'observaciones', 'has_evidence', 'estatus_alta', 'estado_alta', 'status_alta', 'expediente_prospeccion_id', 'prospecto_raiz_id', 'seguimiento_de', 'es_expediente_prospeccion'];
+  const ACTIVITY_LIGHT_FIELDS = ['created_at', 'timestamp', 'fecha_hora_registro', 'actualizado_en', 'tipo', 'activity_type', 'tipo_actividad', 'categoria_actividad', 'activity_category', 'categoria', 'uid', 'user_uid', 'nombre_usuario', 'correo_usuario', 'rol', 'plaza', 'se_visita_a', 'se_atiende_a', 'visitado_a', 'persona_atendida', 'numero_cliente', 'nombre_contacto', 'nombre_prospecto', 'gestion_realizada', 'gestion', 'tipo_accion', 'se_agenda_cita', 'fecha_cita', 'hora_cita', 'cita_timestamp', 'estado_expediente', 'lider_asignado_uid', 'cierre_negativo_por_uid', 'promesa_timestamp', 'promesa_pago_id', 'recepcion_pago_id', 'comprobacion_id', 'comprobacion_digital_id', 'renuencia_pago_id', 'ultima_llamada_control_id', 'origen_pago_id', 'origen_pago_tipo', 'tiene_evidencia', 'tiene_firma_promesa', 'accion_prospeccion', 'modalidad_prospeccion', 'tipo_prospeccion', 'tipo_prospeccion_otro', 'referido_interno', 'motivo_no_cita', 'motivo_no_agenda', 'motivo', 'comentarios', 'observaciones', 'has_evidence', 'estatus_alta', 'estado_alta', 'status_alta', 'expediente_prospeccion_id', 'prospecto_raiz_id', 'seguimiento_de', 'es_expediente_prospeccion'];
   const _activityQueryEntries = new Map();
   const _activityMetadataCache = new Map();
   let _activityQueryGeneration = 0;
@@ -4480,6 +4700,7 @@
     _activityAnalysisSignature = '';
     _activityAnalysisLoading = null;
     _activityDetailCache.clear();
+    if (typeof window.resetActivityBoard === 'function') window.resetActivityBoard();
     if (resetLocations && typeof resetActivityLocationCache === 'function') resetActivityLocationCache();
   }
   window.invalidateActivityQueryCache = invalidateActivityQueryCache;
@@ -4666,6 +4887,8 @@
     const records = (await Promise.all(ids.map(id => activityReadLightRecord(id, summaries.get(id), entry.ensureActive, payloads)))).flat();
     entry.ensureActive();
     entry.raw.push(...records.filter(record => isStoredActivityRecord(record) && activityPageRecordMatches(record, entry.criteria)));
+    if (typeof hydrateActivityDisplayMetadata === 'function') await hydrateActivityDisplayMetadata(entry.raw, entry.ensureActive);
+    entry.ensureActive();
     entry.offset += ids.length;
     entry.complete = entry.offset >= entry.keys.length;
     const paths = new Map();
@@ -4674,7 +4897,7 @@
       paths.set(record.id, activityRecordPath(record));
     });
     entry.records = consolidateActivityExportProspects(entry.raw).filter(record => activityPageRecordMatches(record, entry.criteria))
-      .map(record => ({ ...record, _activity_path: paths.get(record.id) || activityRecordPath(record) }))
+      .map(record => { const mapped = { ...record, _activity_path: paths.get(record.id) || activityRecordPath(record) }; return typeof activityCopyDisplayMetadata === 'function' ? activityCopyDisplayMetadata(record, mapped) : mapped; })
       .sort((a, b) => Number(b._expediente_ultimo_movimiento || activityCreatedTimestamp(b) || 0) - Number(a._expediente_ultimo_movimiento || activityCreatedTimestamp(a) || 0));
     return payloads;
   }
@@ -4837,7 +5060,7 @@
       const latest = ordered[0] || root;
       const history = {};
       items.forEach(item => Object.assign(history, item.historial_expediente || {}));
-      return {
+      const consolidated = {
         ...root,
         ...latest,
         id: root.id || rootId,
@@ -4847,6 +5070,23 @@
         _expediente_registros_consolidados: items.length,
         _expediente_ultimo_movimiento: Number(latest.actualizado_en || activityCreatedTimestamp(latest) || 0),
       };
+      // No cambiar las columnas/semántica CSV ni el autor de la última etapa.
+      // El autor ORIGINAL y la evidencia agregada son una proyección sólo de pantalla.
+      const original = items.find(item => String(item.id || '') === rootId);
+      const hydrated = items.find(item => item._display_root_identity && String(item._display_root_id || '') === rootId);
+      const identity = original && Object.prototype.hasOwnProperty.call(original, '_display_root_identity') ? original._display_root_identity : (original || hydrated?._display_root_identity);
+      const owner = original?._display_owner || { uid: String(identity?.uid || identity?.user_uid || ''), name: String(identity?.nombre_usuario || 'Autor original no disponible'), email: String(identity?.correo_usuario || ''), role: String(identity?.rol || ''), plaza: String(identity?.plaza || '') };
+      const related = items.flatMap(item => item._display_related_records || [item]);
+      const metadata = {
+        _display_owner: owner,
+        _display_related_records: Array.from(new Map(related.map(item => [activityRecordPath(item), item])).values()),
+        _display_root_id: rootId,
+        _display_root_path: original ? activityRecordPath(original) : (hydrated?._display_root_path || (typeof activityDisplayLinkedPath === 'function' ? activityDisplayLinkedPath(latest, rootId) : `gestor_activities/${rootId}`)),
+        _display_root_identity: identity || null,
+        _display_has_evidence: related.some(item => item.tiene_evidencia === true || item.has_evidence === true || item._display_has_evidence === true) || identity?.tiene_evidencia === true || identity?.has_evidence === true,
+      };
+      Object.entries(metadata).forEach(([field, value]) => Object.defineProperty(consolidated, field, { value, writable: true, configurable: true, enumerable: false }));
+      return consolidated;
     });
     return [...regular, ...consolidated].sort((a, b) => Number(b._expediente_ultimo_movimiento || activityCreatedTimestamp(b) || 0) - Number(a._expediente_ultimo_movimiento || activityCreatedTimestamp(a) || 0));
   }
@@ -5812,6 +6052,203 @@
 
   window.viewProspectCalendarAppointment = function(id) { return window.viewActivityCalendarRecord(id, 'CITA'); };
 
+  const _activityBoardItems = new Map();
+  let _activityBoardContext = '';
+
+  function resetActivityBoardState() {
+    _activityBoardItems.clear();
+    _activityBoardContext = '';
+  }
+  window.resetActivityBoard = resetActivityBoardState;
+
+  function activityBoardAction(name, key) {
+    return `window.${name}(${activityText(JSON.stringify(String(key)))})`;
+  }
+
+  function activityBoardDateLabel(record) {
+    const timestamp = Number(activityCreatedTimestamp(record) || record?.actualizado_en || 0);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return 'Fecha no disponible';
+    return new Date(timestamp).toLocaleString('es-MX', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function activityBoardMovementLabel(record) {
+    return String(record?.gestion_realizada || record?.gestion || record?.tipo_accion || record?.accion_prospeccion || activityCategoryLabel(activityCategory(record)) || 'Actividad');
+  }
+
+  function activityBoardTimeline(records, full = false) {
+    const ordered = [...records].sort((a, b) => Number(activityCreatedTimestamp(a) || a.actualizado_en || 0) - Number(activityCreatedTimestamp(b) || b.actualizado_en || 0));
+    return `<ol class="activity-board-timeline">${ordered.map(record => `<li><strong>${activityText(activityBoardMovementLabel(record))}</strong><div class="activity-board-meta">${activityText(activityBoardDateLabel(record))}<br>${activityText(record.nombre_usuario || 'Responsable no disponible')}${record.rol ? ` · ${activityText(record.rol)}` : ''}</div>${full && (record.comentarios || record.observaciones) ? `<div style="font-size:12px;color:#475569;margin-top:6px;white-space:pre-wrap">${activityText(record.comentarios || record.observaciones)}</div>` : ''}${full && record.monto !== undefined ? `<div class="activity-board-meta">Monto: ${activityText(record.monto)}</div>` : ''}</li>`).join('')}</ol>`;
+  }
+
+  function renderActivityBoardCard(item) {
+    const record = item.record;
+    const category = activityCategory(record);
+    const color = category === 'GENERAL' ? '#6D28D9' : category === 'COBRANZA' ? '#15803D' : '#2563EB';
+    const title = item.kind === 'prospect' ? record.nombre_prospecto || record.nombre_contacto || 'Prospecto' : record.nombre_contacto || record.nombre_prospecto || 'Actividad sin nombre';
+    const related = item.relatedRecords?.length ? item.relatedRecords : [record];
+    const label = item.kind === 'payment' ? 'Bitácora de pago' : item.kind === 'prospect' ? 'Expediente de prospección' : activityCategoryLabel(category);
+    const stage = item.kind === 'prospect' ? prospectWorkflowLabel(record) : activityBoardMovementLabel(record);
+    const photoButton = item.hasEvidence ? `<button type="button" class="btn-foto" title="Ver fotografías o evidencia disponible" onclick="${activityBoardAction('viewActivityBoardEvidence', item.key)}">🖼️ Foto</button>` : '';
+    const deleteButton = activityCanManageAll() && item.kind !== 'payment' ? `<button type="button" class="activity-board-delete" onclick="${activityBoardAction('deleteActivity', record.id)}">Eliminar</button>` : '';
+    const movements = item.kind === 'payment' ? `<div class="activity-board-meta">${related.length} movimiento(s) cargado(s) de este flujo.</div>${activityBoardTimeline(related)}<p class="activity-board-note" style="margin-top:5px">Se muestran los movimientos que cumplen la consulta y están cargados. Abre el detalle para consultar los registros vinculados.</p>` : `<div class="activity-board-meta">${activityText(record.se_visita_a || '')}${record.numero_cliente ? ` · Distribuidora ${activityText(record.numero_cliente)}` : ''}</div>`;
+    return `<details class="activity-board-card" data-board-key="${activityText(`card:${item.key}`)}" style="--activity-color:${color}"><summary><span class="activity-board-chevron" aria-hidden="true">›</span><div style="flex:1;min-width:0"><span class="activity-board-kind">${activityText(label)}</span><div class="activity-board-card-title">${activityText(title)}</div><div class="activity-board-meta">${activityText(stage)}<br>${activityText(activityBoardDateLabel(record))}</div></div>${item.hasEvidence ? '<span title="Tiene evidencia fotográfica" aria-label="Tiene evidencia">🖼️</span>' : ''}</summary><div class="activity-board-card-content">${movements}<div class="activity-board-actions"><button type="button" class="activity-board-detail" onclick="${activityBoardAction('viewActivityBoardDetail', item.key)}">Ver detalle${item.kind === 'payment' || item.kind === 'prospect' ? ' y bitácora' : ''}</button>${photoButton}<button type="button" onclick="${activityBoardAction('openActivityMap', record.id)}">📍 Ubicación</button>${deleteButton}</div>${item.kind === 'payment' && activityCanManageAll() ? `<details style="margin-top:10px"><summary style="font-size:11px;color:#64748B;cursor:pointer">Gestionar movimientos individuales</summary>${related.map(movement => `<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><span class="activity-board-meta" style="flex:1">${activityText(activityBoardMovementLabel(movement))}</span><button type="button" class="activity-board-delete" onclick="${activityBoardAction('deleteActivity', movement.id)}">Eliminar</button></div>`).join('')}</details>` : ''}</div></details>`;
+  }
+
+  function renderActivityBoard(container, visibleRecords, remainingRecords, serverHasMore) {
+    const context = activityQueryContextKey() + '|' + activityFilterSignature(currentActivityFilterCriteria());
+    const openKeys = new Set(_activityBoardContext === context ? Array.from(container.querySelectorAll('details[data-board-key][open]'), node => node.dataset.boardKey) : []);
+    _activityBoardContext = context;
+    _activityBoardItems.clear();
+    const items = buildActivityDisplayItems(visibleRecords);
+    const plazas = new Map();
+    items.forEach(item => {
+      _activityBoardItems.set(String(item.key), item);
+      const owner = item.owner || {};
+      const plaza = normaliseActivityText(owner.plaza || item.record.plaza) || 'SIN PLAZA';
+      const userKey = owner.uid ? `uid:${owner.uid}` : owner.email ? `email:${String(owner.email).toLowerCase()}` : `unknown:${item.key}`;
+      if (!plazas.has(plaza)) plazas.set(plaza, new Map());
+      const users = plazas.get(plaza);
+      if (!users.has(userKey)) users.set(userKey, { owner, items: [] });
+      users.get(userKey).items.push(item);
+    });
+    const groups = Array.from(plazas.entries()).sort(([a], [b]) => a.localeCompare(b, 'es-MX')).map(([plaza, users]) => {
+      const plazaCount = Array.from(users.values()).reduce((sum, group) => sum + group.items.length, 0);
+      const memberHtml = Array.from(users.entries()).sort(([, a], [, b]) => String(a.owner.name || '').localeCompare(String(b.owner.name || ''), 'es-MX')).map(([userKey, group]) => {
+        const owner = group.owner;
+        const name = owner.name || 'Autor original no disponible';
+        const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase();
+        return `<details class="activity-board-user" data-board-key="${activityText(`user:${plaza}:${userKey}`)}"><summary><span class="activity-board-chevron" aria-hidden="true">›</span><span class="activity-board-avatar" aria-hidden="true">${activityText(initials)}</span><span class="activity-board-heading">${activityText(name)}<small>${activityText([owner.role, owner.email].filter(Boolean).join(' · '))}</small></span><span class="activity-board-count">${group.items.length} tarjeta(s)</span></summary><div class="activity-board-grid">${group.items.map(renderActivityBoardCard).join('')}</div></details>`;
+      }).join('');
+      return `<details class="activity-board-plaza" data-board-key="${activityText(`plaza:${plaza}`)}" style="--plaza-color:${prospectColor(plaza)}"><summary><span class="activity-board-chevron" aria-hidden="true">›</span><span class="activity-board-heading"><span class="chip chip-${activityText(plaza)}">${activityText(plaza)}</span><small>${users.size} integrante(s) con actividades cargadas</small></span><span class="activity-board-count">${plazaCount} tarjeta(s)</span></summary><div class="activity-board-members">${memberHtml}</div></details>`;
+    }).join('');
+    const loadMore = remainingRecords || serverHasMore ? `<div style="padding:16px 0;text-align:center"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Cargar ${Math.min(ACTIVITY_RESULTS_PAGE_SIZE, remainingRecords || ACTIVITY_RESULTS_PAGE_SIZE)} coincidencias más${remainingRecords ? ` · quedan ${remainingRecords}` : ''}</button><div class="activity-board-meta" style="margin-top:8px">Se añadirán a su plaza e integrante, sin repetir la bitácora del mismo flujo.</div></div>` : '';
+    container.innerHTML = `<p class="activity-board-note">${visibleRecords.length} registro(s) cargado(s) · ${items.length} tarjeta(s) o flujo(s). Despliega plaza e integrante para revisar. Los expedientes se agrupan bajo su creador original; cada movimiento conserva quién lo realizó. Abrir estos bloques no descarga datos.</p>${groups}${loadMore}`;
+    container.querySelectorAll('details[data-board-key]').forEach(node => { node.open = openKeys.has(node.dataset.boardKey); });
+    return items;
+  }
+
+  function activityBoardSelectedItem(key) {
+    if (!auth.currentUser?.uid || _activityBoardContext !== activityQueryContextKey() + '|' + activityFilterSignature(currentActivityFilterCriteria())) throw new Error('La sesión o los filtros cambiaron. Actualiza la consulta.');
+    const item = _activityBoardItems.get(String(key));
+    if (!item || !isInManagerActivityScope(item.record)) throw new Error('La actividad no pertenece a la consulta vigente.');
+    return item;
+  }
+
+  window.viewActivityBoardEvidence = async function(key) {
+    try {
+      const item = activityBoardSelectedItem(key);
+      if (!item.hasEvidence) return;
+      const context = _activityBoardContext;
+      const ensureActive = () => { if (_activityBoardContext !== context) throw new Error('La consulta cambió.'); activityBoardSelectedItem(key); };
+      const stage = (item.relatedRecords || []).find(movement => movement.tiene_evidencia === true || movement.has_evidence === true);
+      const owner = item.owner || {};
+      const record = stage || { id: item.root_id || item.record.id, _activity_path: item.root_path || activityRecordPath(item.record), plaza: owner.plaza || item.record.plaza, nombre_usuario: owner.name, correo_usuario: owner.email, tiene_evidencia: true };
+      if (activityIsManagerScope()) {
+        const plaza = (await activityBoundedRead(() => get(ref(database, `${activityRecordPath(record)}/plaza`)), ensureActive)).val();
+        if (!isInManagerActivityScope({ plaza })) throw new Error('La evidencia está fuera de tu plaza. Actualiza la consulta.');
+      }
+      ensureActive();
+      _calendarDetailRecords.set(record.id, record);
+      return window.viewActivityAttachments(record.id);
+    } catch (error) { alert(error.message); }
+  };
+
+  async function loadActivityBoardPaymentDetail(item, ensureActive = () => {}) {
+    const queued = new Set();
+    const loaded = new Map();
+    const pending = [];
+    const addPath = path => {
+      if (!/^gestor_activities\/(?:[^/.#$\[\]\x00-\x1f\x7f]+\/)?[^/.#$\[\]\x00-\x1f\x7f]+$/.test(String(path || ''))) throw new Error('Un enlace de la bitácora no es válido. No se mostrará un detalle parcial.');
+      if (!queued.has(path)) {
+        if (queued.size >= 250) throw new Error('La bitácora supera el límite seguro de detalle. Acota el periodo para revisar los movimientos.');
+        queued.add(path); pending.push(path);
+      }
+    };
+    addPath(item.root_path || activityRecordPath(item.record));
+    (item.relatedRecords || [item.record]).forEach(record => addPath(activityRecordPath(record)));
+    while (pending.length) {
+      ensureActive();
+      const page = pending.splice(0, 6);
+      const records = await Promise.all(page.map(path => activityBoundedRead(async () => {
+        ensureActive();
+        if (activityIsManagerScope()) {
+          const plaza = (await get(ref(database, `${path}/plaza`))).val();
+          ensureActive();
+          if (!isInManagerActivityScope({ plaza })) throw new Error('Un movimiento vinculado está fuera de tu plaza. Actualiza la consulta.');
+        }
+        const record = await loadFullActivityRecord({ id: path.split('/').pop(), _activity_path: path }, 'PANEL_ACTIVITY_PAYMENT_DETAIL');
+        ensureActive();
+        if (!record) throw new Error('No se encontró un movimiento vinculado. Actualiza la consulta; no se mostrará una bitácora parcial.');
+        if (!isInManagerActivityScope(record) || activityCategory(record) !== 'COBRANZA') throw new Error('Un movimiento vinculado ya no pertenece al flujo o a tu plaza.');
+        return record;
+      }, ensureActive)));
+      records.forEach(record => {
+        const path = activityRecordPath(record);
+        loaded.set(path, record);
+        activityDisplayPaymentLinks(record).forEach(link => addPath(`gestor_activities/${link}`));
+      });
+    }
+    ensureActive();
+    const pathsById = new Map();
+    loaded.forEach((record, path) => {
+      if (pathsById.has(record.id) && pathsById.get(record.id) !== path) throw new Error('La bitácora contiene identificadores ambiguos en rutas distintas.');
+      pathsById.set(record.id, path);
+    });
+    loaded.forEach(record => _calendarDetailRecords.set(record.id, record));
+    return Array.from(loaded.values());
+  }
+
+  function renderActivityBoardPaymentDetail(item, records) {
+    const root = records.find(record => activityRecordPath(record) === item.root_path) || records[0];
+    const owner = item.owner || {};
+    const photoStages = records.filter(record => record.tiene_evidencia === true || record.has_evidence === true);
+    const photoActions = photoStages.map(record => `<button type="button" onclick="${activityBoardAction('viewActivityAttachments', record.id)}">🖼️ ${activityText(activityBoardMovementLabel(record))}</button>`).join('');
+    const history = records.flatMap(record => Object.values(record.historial_expediente || {}).filter(entry => entry && typeof entry === 'object').map(entry => ({ entry, record }))).sort((a, b) => Number(a.entry.fecha || 0) - Number(b.entry.fecha || 0));
+    const historyHtml = history.length ? `<h3 style="font-size:14px;margin:20px 0 8px">Anotaciones de los registros vinculados</h3><ol class="activity-board-timeline">${history.map(({ entry, record }) => `<li><strong>${activityText(entry.tipo || activityBoardMovementLabel(record))}</strong><div class="activity-board-meta">${entry.fecha ? activityText(new Date(Number(entry.fecha)).toLocaleString('es-MX')) : 'Fecha no disponible'} · ${activityText(entry.usuario_nombre || record.nombre_usuario || 'Responsable no disponible')}</div>${entry.comentario ? `<div style="font-size:12px;color:#475569;white-space:pre-wrap;margin-top:5px">${activityText(entry.comentario)}</div>` : ''}</li>`).join('')}</ol>` : '';
+    document.getElementById('modalTitle').textContent = 'Bitácora de pago';
+    document.getElementById('modalInfo').innerHTML = `<div class="activity-detail"><h2 style="margin:0 0 8px;font-size:18px">${activityText(root.nombre_contacto || item.record.nombre_contacto || 'Pago')}</h2><div class="activity-board-meta">Creado por: ${activityText(owner.name || 'Autor original no disponible')} · ${activityText(owner.plaza || root.plaza || 'Sin plaza')}<br>${records.length} registro(s) vinculado(s), cargados bajo demanda. Cada movimiento conserva su responsable.</div>${activityBoardTimeline(records, true)}${historyHtml}${photoActions ? `<h3 style="font-size:14px;margin-top:18px">Evidencia disponible por movimiento</h3><div class="activity-board-actions">${photoActions}</div>` : ''}</div>`;
+  }
+
+  window.viewActivityBoardDetail = async function(key) {
+    let item;
+    try { item = activityBoardSelectedItem(key); }
+    catch (error) { alert(error.message); return; }
+    if (item.kind === 'activity') return window.viewActivityDetail(item.record.id);
+    const context = _activityBoardContext;
+    const modal = document.getElementById('photoModal');
+    const image = document.getElementById('modalImg');
+    const info = document.getElementById('modalInfo');
+    const ensureActive = () => {
+      if (_activityBoardContext !== context || !modal.classList.contains('active')) throw new Error('El detalle se cerró o cambió la consulta.');
+      activityBoardSelectedItem(key);
+    };
+    document.getElementById('modalTitle').textContent = item.kind === 'payment' ? 'Bitácora de pago' : 'Expediente de prospección';
+    image.removeAttribute('src'); image.style.display = 'none';
+    info.textContent = item.kind === 'payment' ? 'Cargando únicamente los registros vinculados a este pago...' : 'Cargando la raíz y bitácora del expediente...';
+    modal.classList.add('active');
+    try {
+      if (item.kind === 'prospect') {
+        const path = activityDisplayLinkedPath(item.record, item.root_path || activityRecordPath(item.record));
+        if (!path) throw new Error('La ruta del expediente no es válida.');
+        if (activityIsManagerScope()) {
+          const plaza = (await activityBoundedRead(() => get(ref(database, `${path}/plaza`)), ensureActive)).val();
+          if (!isInManagerActivityScope({ plaza })) throw new Error('El expediente está fuera de tu plaza.');
+        }
+        const record = await activityBoundedRead(() => loadFullActivityRecord({ id: path.split('/').pop(), _activity_path: path }, 'PANEL_ACTIVITY_DETAIL_VIEW'), ensureActive);
+        ensureActive();
+        if (!record || !isInManagerActivityScope(record) || activityCategory(record) !== 'PROSPECCION') throw new Error('No se encontró el expediente vigente en tu alcance.');
+        _calendarDetailRecords.set(record.id, record);
+        renderFullActivityDetail(record);
+      } else {
+        const records = await loadActivityBoardPaymentDetail(item, ensureActive);
+        ensureActive();
+        renderActivityBoardPaymentDetail(item, records);
+      }
+    } catch (error) {
+      if (_activityBoardContext === context && modal.classList.contains('active')) info.innerHTML = `<div style="padding:18px;color:#B91C1C">${activityText(error.message || 'No se pudo cargar la bitácora.')} No se mostraron resultados parciales.</div>`;
+    }
+  };
+
   window.renderActivities = function() {
     const criteria = currentActivityFilterCriteria();
     _activitiesFiltered = _activitiesData.filter(record => activityMatchesCriteria(record, criteria));
@@ -5847,56 +6284,7 @@
       container.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No hay actividades que cumplan los filtros actuales.</div>${nextPage}</div>`;
       return;
     }
-    const renderActivityCard = (record) => {
-      const category = activityCategory(record);
-      const cobranza = category === 'COBRANZA';
-      const general = category === 'GENERAL';
-      const responsible = activityText(record.nombre_usuario || 'Sin nombre');
-      const counterpart = activityText(record.nombre_contacto || record.nombre_prospecto || 'Sin nombre');
-      const mainAction = activityText(record.gestion_realizada || record.tipo_accion || 'Sin detalle');
-      const typeColor = general ? '#6D28D9' : cobranza ? '#15803D' : '#2563EB';
-      const typeBg = general ? '#F3E8FF' : cobranza ? '#DCFCE7' : '#DBEAFE';
-      const stage = cobranza || general ? '' : prospectWorkflowStage(record);
-      const stageColors = PROSPECT_WORKFLOW_COLORS[stage] || ['#F3F4F6', '#374151'];
-      const stageChip = cobranza || general ? '' : `<span class="chip" title="Etapa actual del expediente" style="background:${stageColors[0]};color:${stageColors[1]};font-weight:800">${activityText(PROSPECT_WORKFLOW_LABELS[stage] || stage || 'Sin etapa')}</span>`;
-      const subDetail = cobranza || general
-        ? `${activityText(record.se_visita_a || '—')}${record.numero_cliente ? ` · Cliente ${activityText(record.numero_cliente)}` : ''}`
-        : record.se_agenda_cita ? `Cita: ${activityText(record.fecha_cita || '—')} ${activityText(record.hora_cita || '')}` : `Sin cita${record.motivos_no_cita?.length ? ` · ${activityText(record.motivos_no_cita.join(', '))}` : ''}`;
-      return `<div class="rec-card" style="border-left-color:${typeColor};align-items:flex-start">
-        <div class="tipo-badge" style="background:${typeBg};color:${typeColor}">${activityCategoryLabel(category)}</div>
-        <div class="rec-info"><div class="rec-nombre">${counterpart}</div><div class="rec-correo">${responsible} · ${activityText(record.correo_usuario || '—')}</div>
-          <div class="rec-meta"><span class="chip" style="background:#F3F4F6;color:#374151">${mainAction}</span>${stageChip}<span class="chip chip-${activityText(normaliseActivityText(record.rol).replace(/ /g, '-'))}">${activityText(record.rol || 'Sin rol')}</span><span class="chip chip-${activityText(normaliseActivityText(record.plaza))}">${activityText(record.plaza || 'Sin plaza')}</span></div>
-          <div style="font-size:12px;color:#667085;margin-top:7px">${subDetail}</div></div>
-        <div style="text-align:right;min-width:155px"><div class="rec-fecha">${formatDate(activityCreatedTimestamp(record) || record.actualizado_en)}</div>
-          <div class="rec-acciones" style="justify-content:flex-end;margin-top:8px"><button class="btn-accion btn-edit" title="Ver detalle" onclick="window.viewActivityDetail('${record.id}')">ℹ️</button><button class="btn-accion btn-foto" title="Ver fotos, evidencias y firma del registro" onclick="window.viewActivityAttachments('${record.id}')">🖼️</button><button class="btn-accion btn-maps" title="Consultar ubicación" onclick="window.openActivityMap('${record.id}')">📍</button>${activityCanManageAll() ? `<button class="btn-accion btn-del" title="Eliminar actividad y evidencia" onclick="window.deleteActivity('${record.id}')">🗑️</button>` : ''}</div></div>
-      </div>`;
-    };
-    const loadMore = (remainingRecords || serverHasMore)
-      ? `<div style="padding:16px 0;text-align:center"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Cargar ${Math.min(ACTIVITY_RESULTS_PAGE_SIZE, remainingRecords || ACTIVITY_RESULTS_PAGE_SIZE)} coincidencias más${remainingRecords ? ` · quedan ${remainingRecords}` : ''}</button></div>`
-      : '';
-    if (!activityIsManagerScope()) {
-      container.innerHTML = `<div class="record-list">${visibleRecords.map(renderActivityCard).join('')}</div>${loadMore}`;
-      return;
-    }
-    const groups = new Map();
-    visibleRecords.forEach(record => {
-      const date = new Date(Number(activityCreatedTimestamp(record) || 0));
-      const dayKey = Number.isNaN(date.getTime()) ? 'SIN_FECHA' : date.toISOString().slice(0, 10);
-      const userKey = String(record.user_uid || record.uid || record.correo_usuario || record.nombre_usuario || 'SIN_USUARIO');
-      const key = `${dayKey}|${userKey}`;
-      if (!groups.has(key)) groups.set(key, { dayKey, userKey, records: [] });
-      groups.get(key).records.push(record);
-    });
-    const groupHtml = Array.from(groups.values()).sort((a, b) => {
-      const timeA = Number(a.records[0]?.created_at || a.records[0]?.timestamp || 0);
-      const timeB = Number(b.records[0]?.created_at || b.records[0]?.timestamp || 0);
-      return timeB - timeA;
-    }).map(group => {
-      const lead = group.records[0] || {};
-      const dayLabel = group.dayKey === 'SIN_FECHA' ? 'Sin fecha' : new Date(`${group.dayKey}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-      return `<section style="margin-bottom:18px;border:1px solid #DCE7E0;border-radius:14px;overflow:hidden;background:#fff"><div style="padding:13px 15px;background:#F0FDF4;border-bottom:1px solid #D1FAE5;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><div style="font-size:14px;font-weight:900;color:#166534">${activityText(lead.nombre_usuario || 'Colaborador')}</div><div style="font-size:12px;color:#4B6B57;margin-top:2px">${activityText(lead.rol || 'Sin rol')} · ${activityText(lead.plaza || 'Sin plaza')} · ${dayLabel}</div></div><span style="background:#DCFCE7;color:#166534;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900">${group.records.length} actividad(es)</span></div><div class="record-list">${group.records.map(renderActivityCard).join('')}</div></section>`;
-    }).join('');
-    container.innerHTML = `<div style="padding:0 0 2px"><div style="font-size:13px;color:#475569;margin:0 0 12px">Vista agrupada por colaborador y día para facilitar la revisión de tu equipo.</div>${groupHtml}${loadMore}</div>`;
+    renderActivityBoard(container, visibleRecords, remainingRecords, serverHasMore);
   };
 
   window.loadMoreActivities = async function() {
@@ -6013,11 +6401,11 @@
       pathsById.set(record.id, path);
     });
     const prepared = records.map(record => activityCategory(record) === 'PROSPECCION'
-      ? { ...record, tipo: 'PROSPECCION', expediente_prospeccion_id: record.expediente_prospeccion_id || record.prospecto_raiz_id || record.seguimiento_de || record.id }
+      ? (typeof activityCopyDisplayMetadata === 'function' ? activityCopyDisplayMetadata(record, { ...record, tipo: 'PROSPECCION', expediente_prospeccion_id: record.expediente_prospeccion_id || record.prospecto_raiz_id || record.seguimiento_de || record.id }) : { ...record, tipo: 'PROSPECCION', expediente_prospeccion_id: record.expediente_prospeccion_id || record.prospecto_raiz_id || record.seguimiento_de || record.id })
       : record);
     // Las entradas de historia más recientes prevalecen si comparten una clave.
     prepared.sort((a, b) => Number(a.actualizado_en || activityCreatedTimestamp(a) || 0) - Number(b.actualizado_en || activityCreatedTimestamp(b) || 0));
-    return consolidateProspectFiles(prepared).map(record => ({ ...record, _activity_path: pathsById.get(record.id) || activityRecordPath(record) }));
+    return consolidateProspectFiles(prepared).map(record => { const mapped = { ...record, _activity_path: pathsById.get(record.id) || activityRecordPath(record) }; return typeof activityCopyDisplayMetadata === 'function' ? activityCopyDisplayMetadata(record, mapped) : mapped; });
   }
 
   async function validateActivityExportProfile(ensureActive) {
@@ -6285,8 +6673,8 @@
   }
 
   function paymentStepDetail(title, color, record, rows, emptyMessage) {
-    if (!record) return `<section style="margin-top:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-left:5px solid ${color};border-radius:10px;padding:12px 14px"><div style="font-weight:900;color:#334155">${title}</div><div style="font-size:13px;color:#64748B;margin-top:5px">${emptyMessage}</div></section>`;
-    const attachmentButton = `<button onclick="window.viewActivityAttachments('${record.id}')" style="margin-top:10px;padding:8px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver evidencia de esta etapa</button>`;
+    if (!record) return `<section style="margin-top:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-left:5px solid ${color};border-radius:10px;padding:12px 14px"><div style="font-weight:900;color:#334151">${title}</div><div style="font-size:13px;color:#64748B;margin-top:5px">${emptyMessage}</div></section>`;
+    const attachmentButton = record.tiene_evidencia === true ? `<button onclick="window.viewActivityAttachments('${record.id}')" style="margin-top:10px;padding:8px 10px;background:#1565C0;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver evidencia de esta etapa</button>` : '';
     return `<section style="margin-top:12px;background:#fff;border:1px solid #E2E8F0;border-left:5px solid ${color};border-radius:10px;padding:12px 14px"><div style="font-weight:900;color:#0F172A">${title}</div><div style="font-size:12px;color:#64748B;margin:3px 0 8px">Responsable: ${activityText(record.nombre_usuario || '—')} · ${activityText(detailDateTime(record, 'created_at', 'fecha_hora_registro', 'hora'))}</div>${detailRowsHtml(rows)}${attachmentButton}</section>`;
   }
 
@@ -6331,7 +6719,7 @@
     const prospectHeading = isProspeccion ? `<div class="activity-detail-prospect"><div class="activity-detail-name">${activityText(record.nombre_prospecto || record.nombre_contacto || 'Prospecto')}</div><span class="activity-detail-stage">${activityText(prospectWorkflowLabel(record))}</span></div>` : '';
     const closure = isProspeccion ? prospectClosureData(record) : null;
     const closureNotice = closure ? `<aside style="margin:0 0 14px;padding:12px 14px;border:1px solid #FCA5A5;border-left:5px solid #B91C1C;border-radius:10px;background:#FFF1F2;color:#7F1D1D"><div style="font-size:13px;font-weight:900">⛔ ${activityText(closure.label)}</div><div style="margin-top:6px;font-size:13px;line-height:1.5"><b>Comentario obligatorio:</b> ${activityText(closure.reason)}</div>${closure.actor ? `<div style="margin-top:5px;font-size:12px;color:#9F1239"><b>Registrado por:</b> ${activityText(closure.actor)}${closure.timestamp ? ` · ${activityText(formatDate(closure.timestamp))}` : ''}</div>` : ''}</aside>` : '';
-    const primaryAttachments = `<button onclick="window.viewActivityAttachments('${record.id}')" style="margin:14px 0 2px;padding:9px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver fotos, evidencias y firma</button>`;
+    const primaryAttachments = record.tiene_evidencia === true ? `<button onclick="window.viewActivityAttachments('${record.id}')" style="margin:14px 0 2px;padding:9px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:800">🖼️ Ver fotos, evidencias y firma</button>` : '';
     let paymentChain = '';
     if (isCobranza && options.paymentChain) {
       const chain = options.paymentChain;
@@ -7304,6 +7692,41 @@
     arrow.textContent = isOpen ? '\u25bc' : '\u25b2';
   };
 
+  // Fechas civiles del modelo: asistencia YYYY-MM-DD, viaje DD/MM/YYYY.
+  // Se admite también DD-MM-YYYY; nunca interpretar una fecha civil como UTC.
+  function alertDate(value) {
+    if (typeof value !== 'string') return null;
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    const dayFirst = /^(\d{2})([-/])(\d{2})\2(\d{4})$/.exec(value);
+    if (!iso && !dayFirst) return null;
+    const [year, month, day] = iso
+      ? [Number(iso[1]), Number(iso[2]), Number(iso[3])]
+      : [Number(dayFirst[4]), Number(dayFirst[3]), Number(dayFirst[1])];
+    if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+    const date = new Date(0);
+    date.setHours(12, 0, 0, 0);
+    date.setFullYear(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+    const key = String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    const weekday = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][date.getDay()];
+    return { key, label: value + ' · ' + weekday };
+  }
+
+  function alertTimestampDate(value) {
+    if (value === undefined || value === null || value === '' || typeof value === 'boolean') return null;
+    const date = new Date(Number(value));
+    if (!Number.isFinite(date.getTime())) return null;
+    return alertDate(String(date.getFullYear()).padStart(4, '0') + '-'
+      + String(date.getMonth() + 1).padStart(2, '0') + '-'
+      + String(date.getDate()).padStart(2, '0'));
+  }
+
+  function alertPlazaChip(plaza) {
+    const key = branchKey(plaza);
+    const className = PANEL_PLAZAS.includes(key) ? 'chip-' + key : 'unknown';
+    return '<span class="chip alert-plaza ' + className + '">' + activityText(key || 'Sin plaza') + '</span>';
+  }
+
   function renderAlerts(registros, viajes, tipoSeleccionado = '') {
     // Fecha de hoy en formato YYYY-MM-DD (hora local)
     const hoy = (() => {
@@ -7313,34 +7736,32 @@
         + String(d.getDate()).padStart(2,'0');
     })();
 
-    // Agrupar registros por usuario+fecha
-    const porUsuario = {};
+    // El callsite aporta ambos tipos del mismo rango/usuario/rol/plaza.
+    // Sin UID no es posible emparejar personas con certeza: omitir, no mezclar.
+    const porUsuario = new Map();
     registros.forEach(r => {
-      const key = r.uid + '|' + r.fecha;
-      if (!porUsuario[key]) porUsuario[key] = { nombre: r.nombre, fecha: r.fecha, uid: r.uid, plaza: r.plaza || '', puesto: r.puesto || '', entradas: 0, salidas: 0 };
-      if (r.tipo === 'ENTRADA') porUsuario[key].entradas++;
-      if (r.tipo === 'SALIDA')  porUsuario[key].salidas++;
+      const fecha = alertDate(r.fecha);
+      const uid = typeof r.uid === 'string' ? r.uid.trim() : '';
+      if (!uid || !fecha || (r.tipo !== 'ENTRADA' && r.tipo !== 'SALIDA')) return;
+      const key = JSON.stringify([uid, fecha.key]);
+      if (!porUsuario.has(key)) porUsuario.set(key, { nombre: r.nombre, fecha: r.fecha, fechaAlerta: fecha, uid, plaza: r.plaza || '', puesto: r.puesto || '', entradas: 0, salidas: 0 });
+      const usuario = porUsuario.get(key);
+      if (r.tipo === 'ENTRADA') usuario.entradas++;
+      if (r.tipo === 'SALIDA') usuario.salidas++;
     });
 
-    const entradaSinSalida = [];
-    const salidaSinEntrada = [];
-    Object.values(porUsuario).forEach(u => {
-      // Excluir registros del día de hoy (aún pueden checar salida)
-      if (u.fecha === hoy) return;
-      if (u.entradas > 0 && u.salidas === 0) entradaSinSalida.push(u);
-      if (u.salidas > 0 && u.entradas === 0) salidaSinEntrada.push(u);
-    });
+    const recientePrimero = (a, b) => b.fechaAlerta.key.localeCompare(a.fechaAlerta.key);
+    // Excluir hoy: aún pueden registrar la salida, también con fechas día/mes/año.
+    const entradaSinSalida = Array.from(porUsuario.values())
+      .filter(u => u.fechaAlerta.key !== hoy && u.entradas > 0 && u.salidas === 0)
+      .sort(recientePrimero);
 
     // Viajes sin fin (km_fin ausente o vacío), excluir los de hoy
-    const viajeSinFin = viajes.filter(v => {
+    const viajeSinFin = viajes.map(v => ({ ...v, fechaAlerta: alertTimestampDate(v.timestamp_inicio) || alertDate(v.fecha_viaje) })).filter(v => {
       if (!v.km_inicio && v.km_inicio !== 0) return false;
       if (v.km_fin !== undefined && v.km_fin !== null && v.km_fin !== '') return false;
-      // Calcular fecha del viaje
-      const fechaViaje = v.timestamp_inicio
-        ? (() => { const d = new Date(v.timestamp_inicio); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); })()
-        : null;
-      return fechaViaje !== hoy;
-    });
+      return v.fechaAlerta && v.fechaAlerta.key !== hoy;
+    }).sort(recientePrimero);
 
     // Helper para renderizar cada lista
     const renderList = (items, containerId, type) => {
@@ -7352,48 +7773,44 @@
       }
       el.innerHTML = items.map(item => {
         const nombre = item.nombre || item.uid || '?';
-        const partes = [item.plaza, item.puesto].filter(Boolean);
+        const fecha = type === 'viaje' ? alertDate(item.fecha_viaje) || item.fechaAlerta : item.fechaAlerta;
         const sufijo = type === 'viaje'
-          ? 'Inicio: ' + (item.fecha_viaje || '?') + ' ' + (item.hora_inicio || '?') + ' \u2014 Sin fin'
-          : 'Fecha: ' + item.fecha;
-        partes.push(sufijo);
-        const detalle = partes.join(' \u00b7 ');
+          ? 'Inicio: ' + fecha.label + ' · ' + (item.hora_inicio || '?') + ' \u2014 Sin fin'
+          : 'Fecha: ' + fecha.label;
         return '<div class="alert-item">'
-          + '<div class="alert-avatar">\ud83d\udc64</div>'
+          + '<div class="alert-avatar" aria-hidden="true">\ud83d\udc64</div>'
           + '<div style="flex:1;min-width:0">'
-          + '<div class="alert-name">' + nombre + '</div>'
-          + '<div class="alert-detail">' + detalle + '</div>'
+          + '<div class="alert-name">' + activityText(nombre) + '</div>'
+          + '<div class="alert-meta">' + alertPlazaChip(item.plaza)
+          + (item.puesto ? '<span class="alert-detail">' + activityText(item.puesto) + '</span>' : '') + '</div>'
+          + '<div class="alert-detail">' + activityText(sufijo) + '</div>'
           + '</div></div>';
       }).join('');
     };
 
     const mostrarEntradas = !tipoSeleccionado || tipoSeleccionado === 'ENTRADA';
-    const mostrarSalidas = !tipoSeleccionado || tipoSeleccionado === 'SALIDA';
     const alertasEntrada = mostrarEntradas ? entradaSinSalida : [];
-    const alertasSalida = mostrarSalidas ? salidaSinEntrada : [];
 
     renderList(alertasEntrada, 'listEntradaSinSalida', 'asistencia');
-    renderList(alertasSalida, 'listSalidaSinEntrada', 'asistencia');
-    renderList(viajeSinFin,      'listViajeSinFin',      'viaje');
+    renderList(viajeSinFin, 'listViajeSinFin', 'viaje');
 
     // Actualizar badges individuales
-    const setBadge = (id, count) => {
+    const setBadge = (id, count, label) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.textContent = count;
       el.className = 'alert-badge' + (count === 0 ? ' zero' : '');
+      el.setAttribute('aria-label', count + ' ' + label);
     };
-    setBadge('badgeEntradaSinSalida', alertasEntrada.length);
-    setBadge('badgeSalidaSinEntrada', alertasSalida.length);
-    setBadge('badgeViajeSinFin',      viajeSinFin.length);
+    setBadge('badgeEntradaSinSalida', alertasEntrada.length, 'entradas sin salida');
+    setBadge('badgeViajeSinFin', viajeSinFin.length, 'viajes sin fin registrado');
 
-    // Badge total en el encabezado
-    const total = alertasEntrada.length + alertasSalida.length + viajeSinFin.length;
+    // Sólo las dos categorías visibles contribuyen al contador total.
+    const total = alertasEntrada.length + viajeSinFin.length;
     const totalBadge = document.getElementById('alertsTotalBadge');
     if (totalBadge) {
-      totalBadge.innerHTML = total > 0
-        ? '<span class="alert-badge" style="margin-left:8px">' + total + '</span>'
-        : '<span class="alert-badge zero" style="margin-left:8px">\u2713</span>';
+      totalBadge.innerHTML = '<span class="alert-badge' + (total === 0 ? ' zero' : '')
+        + '" aria-label="' + total + ' inconsistencias del período">' + total + '</span>';
     }
 
     document.getElementById('alertsSection').style.display = 'block';
@@ -7790,14 +8207,21 @@
   };
 
   function vacGetEstado(sol) {
-    const hoy = new Date(); hoy.setHours(0,0,0,0);
     if (sol.cancelado) return 'cancelado';
+    const hasTemporalModel = typeof vpTemporalEstado === 'function';
+    if (hasTemporalModel) {
+      const temporal = vpTemporalEstado(sol, 'vacaciones', arguments[1] || new Date());
+      if (temporal) return temporal;
+    }
     if (sol.confirmada_empleado) {
+      // Una confirmación intermedia no prueba aprobación final de la ausencia.
+      if (hasTemporalModel) return 'confirmada';
+      const hoy = arguments[1] || new Date();
       const ini = vacParseFecha(sol.fecha_inicio_aprobada || sol.fecha_inicio);
       const fin = vacParseFecha(sol.fecha_fin_aprobada    || sol.fecha_fin);
       if (ini && fin) {
-        if (hoy >= ini && hoy <= fin) return 'activo';
-        if (hoy > fin) return 'gozados';
+        if (hoy >= fin) return 'gozados';
+        if (hoy >= ini && hoy < fin) return 'activo';
       }
       return 'confirmada';
     }
@@ -8196,38 +8620,18 @@
     }
   };
 
-  // Calcula el estado visible de un permiso igual que la app móvil (getEstado)
-  // NO usa el campo 'estado' guardado en Firebase, sino los flags booleanos
+  // Estado visual local: aprobación final + fecha/hora aprobadas de regreso.
+  // No persiste cambios temporales en Firebase ni cambia la gestión del flujo.
   function permGetEstado(p) {
     if (p.cancelado) return 'cancelado';
-    const hoy = new Date(); hoy.setHours(0,0,0,0);
-    function parseFechaPerm(str) {
-      if (!str) return null;
-      if (str.includes('-')) { const [y,m,d]=str.split('-').map(Number); return new Date(y,m-1,d); }
-      if (str.includes('/')) { const [d,m,y]=str.split('/').map(Number); return new Date(y,m-1,d); }
-      return null;
-    }
+    const now = arguments[1] || new Date();
+    const temporal = vpTemporalEstado(p, 'permisos', now);
+    if (temporal) return temporal;
     if (p.visto_bueno_cleon || p.estado === 'aprobado_final') {
-      const ini = parseFechaPerm(p.fecha_inicio_aprobada || p.fecha_inicio);
-      const fin = parseFechaPerm(p.fecha_regreso_aprobada || p.fecha_regreso);
-      if (ini && fin) {
-        if (hoy >= ini && hoy <= fin) return 'activo';
-        if (hoy > fin) return 'gozados';
-      } else if (ini && hoy >= ini) {
-        return p.dia_completo ? 'gozados' : 'activo';
-      }
       return 'aprobado_final';
     }
     if (p.confirmada_empleado) {
       if (!p.visto_bueno_cleon && p.rol !== 'ADMINISTRATIVO') return 'pendiente_vobo';
-      const ini = parseFechaPerm(p.fecha_inicio_aprobada || p.fecha_inicio);
-      const fin = parseFechaPerm(p.fecha_regreso_aprobada || p.fecha_regreso);
-      if (ini && fin) {
-        if (hoy >= ini && hoy <= fin) return 'activo';
-        if (hoy > fin) return 'gozados';
-      } else if (ini) {
-        if (hoy >= ini) return p.dia_completo ? 'gozados' : 'activo';
-      }
       return p.rol === 'ADMINISTRATIVO' ? 'confirmada_lgallegos' : 'pendiente_vobo';
     }
     if (p.aprobado_lgallegos && !p.confirmada_empleado) return 'confirmada_lgallegos';
@@ -8400,6 +8804,223 @@
 
   let _vpData = [];
 
+  // Disponibilidad: únicamente memoria de las lecturas manuales ya existentes.
+  let _vpAvailabilitySnapshot = null;
+  let _vpAvailabilityTimer = null;
+  let _vpAvailabilityGeneration = 0;
+
+  function vpTemporalFecha(value) {
+    if (typeof value !== 'string') return null;
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    const local = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
+    if (!iso && !local) return null;
+    const [y, m, d] = iso ? iso.slice(1).map(Number) : [Number(local[3]), Number(local[2]), Number(local[1])];
+    const date = new Date(y, m - 1, d);
+    return y >= 1900 && y <= 2200 && date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d ? date : null;
+  }
+
+  function vpTemporalHora(value) {
+    if (typeof value !== 'string') return null;
+    const text = value.trim().toLowerCase().replace(/^a\s+las\s+/, '').replace(/\s*(?:hrs?|h)$/, '').replace(/\s/g, '');
+    const match = /^(\d{1,2})(?:[:.](\d{2}))?(am|pm)?$/.exec(text);
+    if (!match) return null;
+    let hour = Number(match[1]); const minute = Number(match[2] || 0);
+    if (match[3]) {
+      if (hour < 1 || hour > 12) return null;
+      hour = hour % 12 + (match[3] === 'pm' ? 12 : 0);
+    }
+    if (hour > 23 || minute > 59) return null;
+    return { hour, minute, label: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}` };
+  }
+
+  function vpTemporalCampo(sol, approved, original) {
+    return sol[approved] !== null && sol[approved] !== undefined && sol[approved] !== '' ? sol[approved] : sol[original];
+  }
+
+  function vpAvailabilityFinal(sol, tipo = sol._tipo) {
+    const estado = String(sol.estado || '').trim().toLowerCase();
+    if (sol.cancelado || ['cancelado', 'cancelada', 'rechazada_alfredo'].includes(estado) || sol.devolucion_desde) return false;
+    if (tipo === 'vac_rh') return estado === 'aprobada_alfredo';
+    if (tipo === 'vacaciones') {
+      if (sol.confirmada_empleado !== true) return false;
+      if (sol.approval_stage === 'completado' || sol.visto_bueno_cleon === true || sol.tipo_respuesta === 'aceptada') return true;
+      if (sol.approval_stage && sol.approval_stage !== 'cleon') return false;
+      if (['jaguayo', 'gerente_plaza', 'lgallegos'].includes(sol.propuesta_por)) return false;
+      // RH móvil deja la etapa en cleon al aceptar o proponer; confirmar una
+      // propuesta RH sí cierra, pero un flag aislado en cleon no lo demuestra.
+      if (sol.approval_stage === 'cleon') return sol.respondida === true
+        && (sol.propuesta_por === 'cleon' || sol.tipo_respuesta === 'negociacion');
+      return true; // Solicitud heredada sin etapa: confirmación final empleada.
+    }
+    if (tipo !== 'permisos') return false;
+    if (vpIsCleonRequest(sol)) return sol.alfredo_estado === 'aprobada_alfredo'
+      && (!sol.alfredo_fecha_inicio_propuesta || sol.aceptada_propuesta_cleon === true);
+    if (sol.respondida_lgallegos && !sol.aprobado_lgallegos && !sol.confirmada_empleado) return false;
+    if (/propuesta|pendiente|sin_responder/.test(estado) && !sol.visto_bueno_cleon && sol.approval_stage !== 'completado') return false;
+    return sol.visto_bueno_cleon === true || estado === 'aprobado_final' || sol.approval_stage === 'completado';
+  }
+
+  function vpTemporalVentana(sol, tipo = sol._tipo) {
+    const permission = tipo === 'permisos';
+    const startDate = vpTemporalFecha(vpTemporalCampo(sol, 'fecha_inicio_aprobada', 'fecha_inicio'));
+    // En la app, fecha_fin de vacaciones ES regreso y no se descuenta ese día
+    // (VacacionesScreen/SolicitudesScreen: contarDiasHabiles... usa cur < end).
+    const returnDate = vpTemporalFecha(permission
+      ? vpTemporalCampo(sol, 'fecha_regreso_aprobada', 'fecha_regreso')
+      : vpTemporalCampo(sol, 'fecha_fin_aprobada', 'fecha_fin'));
+    const fullDay = typeof sol.dia_completo_aprobado === 'boolean' ? sol.dia_completo_aprobado : !!sol.dia_completo;
+    const departureTime = permission && !fullDay ? vpTemporalHora(vpTemporalCampo(sol, 'hora_salida_aprobada', 'hora_salida')) : null;
+    const returnTime = permission ? vpTemporalHora(vpTemporalCampo(sol, 'hora_regreso_aprobada', 'hora_regreso')) : null;
+    const start = startDate && (!permission || fullDay || departureTime) ? new Date(startDate) : null;
+    const end = returnDate && (!permission || returnTime) ? new Date(returnDate) : null;
+    if (start && departureTime) start.setHours(departureTime.hour, departureTime.minute, 0, 0);
+    if (end && returnTime) end.setHours(returnTime.hour, returnTime.minute, 0, 0);
+    return { start, end, startDate, returnDate, departureTime, returnTime, valid: !!(start && end && end >= start) };
+  }
+
+  function vpTemporalEstado(sol, tipo, now = new Date()) {
+    if (!vpAvailabilityFinal(sol, tipo)) return null;
+    const dates = vpTemporalVentana(sol, tipo);
+    if (dates.valid && now >= dates.end) return 'gozados';
+    if (dates.valid && now >= dates.start && now < dates.end) return 'activo';
+    return tipo === 'vacaciones' ? 'confirmada' : tipo === 'vac_rh' ? 'aprobada_alfredo' : vpIsCleonRequest(sol) ? 'aprobada_alfredo' : 'aprobado_final';
+  }
+
+  function vpAvailabilityEstadoKey(sol, now = new Date()) {
+    const temporal = vpTemporalEstado(sol, sol._tipo, now);
+    if (temporal) return temporal;
+    if (sol._tipo === 'vacaciones') return vacGetEstado(sol, now);
+    if (sol._tipo === 'permisos') return vpIsCleonRequest(sol)
+      ? (sol.alfredo_estado || sol.alfredo_visto || permGetEstado(sol, now)) : permGetEstado(sol, now);
+    return sol.estado === 'rechazada_alfredo' ? 'rechazada_alfredo' : 'pendiente_alfredo';
+  }
+
+  function vpAvailabilityAuthorized(sol) {
+    if (!auth.currentUser?.uid || !panelCanOpenModule('requests')) return false;
+    if (vpIsCleonRequest(sol) || sol._tipo === 'vac_rh') return vpIsAlfredo() || vpEsSoporte();
+    // Defensa adicional si en el futuro se habilita requests a roles de plaza.
+    const role = String(_panelProfile?.rol || _panelProfile?.role || '').trim().toUpperCase();
+    if (['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA'].includes(role)) {
+      const ownPlaza = branchKey(_panelProfile?.plaza);
+      return !!ownPlaza && branchKey(sol.plaza) === ownPlaza;
+    }
+    return true;
+  }
+
+  function vpAvailabilityFilters(sol) {
+    const val = id => document.getElementById(id)?.value || '';
+    if (val('vpTipo') && sol._tipo !== val('vpTipo')) return false;
+    if (val('vpRol') && String(sol.rol || '').trim().toUpperCase() !== val('vpRol').toUpperCase()) return false;
+    if (val('vpPlaza') && branchKey(sol.plaza) !== branchKey(val('vpPlaza'))) return false;
+    return vpCoincideUsuarioFlexible(val('vpUsuario'), sol.nombre_solicitante || sol.nombre, sol.user_email || sol.correo);
+  }
+
+  function vpAvailabilityBoard(records, now = new Date()) {
+    const absent = [], returningToday = [], future = [], incomplete = [];
+    const today = new Date(now); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    for (const sol of records) {
+      if (!vpAvailabilityAuthorized(sol) || !vpAvailabilityFilters(sol) || !vpAvailabilityFinal(sol)) continue;
+      const dates = vpTemporalVentana(sol);
+      const item = { sol, dates };
+      if (!dates.valid) { incomplete.push(item); continue; }
+      if (now >= dates.start && now < dates.end) absent.push(item);
+      if (dates.end >= today && dates.end < tomorrow) returningToday.push(item);
+      if (dates.start > now) future.push(item);
+    }
+    absent.sort((a, b) => a.dates.end - b.dates.end);
+    returningToday.sort((a, b) => a.dates.end - b.dates.end);
+    future.sort((a, b) => a.dates.start - b.dates.start);
+    return { absent, returningToday, future, incomplete, tomorrow };
+  }
+
+  function vpAvailabilityEscape(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+
+  function vpAvailabilityDateLabel(date, time = null) {
+    return date ? `${date.toLocaleDateString('es-MX')}${time ? ` ${time.label}` : ''}` : 'Fecha no disponible';
+  }
+
+  function vpAvailabilityStop() {
+    if (_vpAvailabilityTimer !== null) clearTimeout(_vpAvailabilityTimer);
+    _vpAvailabilityTimer = null;
+  }
+
+  function vpAvailabilityVisible() {
+    const section = document.getElementById('vacPermSection');
+    return !!section && !section.hidden && section.style.display !== 'none' && !document.hidden && !!auth.currentUser?.uid && panelCanOpenModule('requests');
+  }
+
+  function vpAvailabilitySchedule(board, now) {
+    vpAvailabilityStop();
+    if (!vpAvailabilityVisible() || !_vpAvailabilitySnapshot) return;
+    const times = [board.tomorrow.getTime()];
+    for (const item of [...board.absent, ...board.returningToday, ...board.future]) {
+      for (const date of [item.dates.start, item.dates.end]) if (date > now) times.push(date.getTime());
+    }
+    const generation = _vpAvailabilityGeneration;
+    const user = auth.currentUser;
+    const timer = setTimeout(() => {
+      if (_vpAvailabilityTimer !== timer) return;
+      _vpAvailabilityTimer = null;
+      if (generation === _vpAvailabilityGeneration && auth.currentUser === user && vpAvailabilityVisible()) window.vpAvailabilityRefresh();
+    }, Math.max(1, Math.min(...times) - now.getTime()));
+    _vpAvailabilityTimer = timer;
+  }
+
+  window.vpAvailabilityRefresh = function() {
+    window.renderVacPerm();
+  };
+
+  function vpAvailabilityRender(now = new Date()) {
+    vpAvailabilityStop();
+    const cards = document.getElementById('vpAvailabilityCards');
+    const coverage = document.getElementById('vpAvailabilityCoverage');
+    if (!cards || !coverage) return;
+    const snapshot = _vpAvailabilitySnapshot;
+    if (!snapshot || snapshot.user !== auth.currentUser || !panelCanOpenModule('requests')) {
+      cards.innerHTML = '';
+      coverage.textContent = 'Sin cobertura cargada para esta sesión. Presiona Buscar; no se descargan datos automáticamente.';
+      return;
+    }
+    const board = vpAvailabilityBoard(snapshot.records, now);
+    const types = snapshot.types.map(t => t === 'vacaciones' ? 'vacaciones' : t === 'permisos' ? 'permisos' : 'vacaciones RH').join(', ');
+    coverage.textContent = `Última carga por Buscar: ${snapshot.loadedAt.toLocaleString('es-MX')}. Cobertura: ${types}, sólo solicitudes autorizadas de esa carga, antes del rango de creación. Plaza, rol, nombre y tipo vigentes aplicados. Hora local del navegador: ${now.toLocaleString('es-MX')}. El reloj recalcula sin Firebase; cambios de aprobación requieren Buscar.${board.incomplete.length ? ` ${board.incomplete.length} solicitud(es) final(es) sin fecha/hora válida: no se clasifican como ausencia ni salida futura.` : ''}`;
+    const groups = [['Ausentes ahora', board.absent, '#9A3412'], ['Regreso programado HOY', board.returningToday, '#075E67'], ['Próximas salidas aprobadas', board.future, '#6B21A8']];
+    cards.innerHTML = groups.map(([title, items, color]) => `<article style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px;min-width:0"><h3 style="font-size:14px;margin:0 0 10px;color:${color}">${title} (${items.length})</h3>${items.length ? `<ul style="list-style:none;margin:0;padding:0;max-height:330px;overflow:auto">${items.map(({ sol, dates }) => {
+      const type = sol._tipo === 'permisos' ? 'Permiso' : sol._tipo === 'vac_rh' ? 'Vacaciones RH' : 'Vacaciones';
+      const start = vpAvailabilityDateLabel(dates.startDate, dates.departureTime);
+      const end = vpAvailabilityDateLabel(dates.returnDate, dates.returnTime);
+      return `<li style="padding:9px 0;border-bottom:1px solid #E2E8F0;overflow-wrap:anywhere"><strong>${vpAvailabilityEscape(sol.nombre_solicitante || sol.nombre || sol.user_email || sol.correo || 'Sin nombre')}</strong><div style="font-size:11px;color:#64748B">${vpAvailabilityEscape(sol.rol || 'Sin rol')} · ${vpAvailabilityEscape(sol.plaza || 'Sin plaza')} · ${type}</div><div style="font-size:12px;margin-top:4px">Salida: ${vpAvailabilityEscape(start)}<br>Regreso programado: ${vpAvailabilityEscape(end)}</div></li>`;
+    }).join('')}</ul>` : '<p style="font-size:12px;color:#64748B;margin:0">Sin solicitudes en la cobertura cargada y filtros actuales.</p>'}</article>`).join('');
+    vpAvailabilitySchedule(board, now);
+  }
+
+  // Eventos locales: no listener RTDB ni polling. Se eliminan datos al cambiar cuenta.
+  onAuthStateChanged(auth, () => {
+    vpAvailabilityStop();
+    _vpAvailabilityGeneration++;
+    _vpAvailabilitySnapshot = null;
+    _vpData = [];
+    document.getElementById('vpAvailabilityCards').innerHTML = '';
+    document.getElementById('vpAvailabilityCoverage').textContent = 'Sin cobertura cargada para esta sesión. Presiona Buscar.';
+    document.getElementById('vacPermTableContainer').innerHTML = '';
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) vpAvailabilityStop();
+    else if (vpAvailabilityVisible()) window.vpAvailabilityRefresh();
+  });
+  const vpAvailabilitySectionObserver = new MutationObserver(() => {
+    if (!vpAvailabilityVisible()) vpAvailabilityStop();
+  });
+  vpAvailabilitySectionObserver.observe(document.getElementById('vacPermSection'), { attributes: true, attributeFilter: ['style', 'hidden'] });
+  ['vpTipo', 'vpRol', 'vpPlaza', 'vpUsuario'].forEach(id => {
+    document.getElementById(id).addEventListener(id === 'vpUsuario' ? 'input' : 'change', () => {
+      if (vpAvailabilityVisible()) vpAvailabilityRender();
+    });
+  });
+
   function vpIsAlfredo() {
     return String(auth.currentUser?.email || '').trim().toLowerCase() === 'alfredo@fredinero.com';
   }
@@ -8444,9 +9065,11 @@
     const fmt = d => d.toISOString().slice(0,10);
     document.getElementById('vpFechaIni').value = fmt(lunes);
     document.getElementById('vpFechaFin').value = fmt(hoy);
+    window.vpAvailabilityRefresh();
   };
 
   window.volverDesdeVacPerm = function() {
+    vpAvailabilityStop();
     document.getElementById('vacPermSection').style.display = 'none';
     window.showPanelHome();
     if (_vacUnsub) { _vacUnsub(); _vacUnsub = null; }
@@ -8454,6 +9077,13 @@
   };
 
   window.buscarVacPerm = async function() {
+    if (!auth.currentUser?.uid || !panelCanOpenModule('requests')) { vpAvailabilityStop(); return; }
+    vpAvailabilityStop();
+    const sessionUser = auth.currentUser;
+    const generation = ++_vpAvailabilityGeneration;
+    _vpAvailabilitySnapshot = null;
+    document.getElementById('vpAvailabilityCards').innerHTML = '';
+    document.getElementById('vpAvailabilityCoverage').textContent = 'Cargando desde la búsqueda manual existente. El resumen no hace lecturas adicionales.';
     const container = document.getElementById('vacPermTableContainer');
     container.innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Buscando...</div>';
     const tipo    = document.getElementById('vpTipo').value;
@@ -8470,14 +9100,19 @@
     const canSeeCleon = vpIsAlfredo() || vpEsSoporte();
     _vpData = [];
     const usagePayload = [];
+    const vpAvailabilityRecords = [], vpAvailabilityTypes = [];
     try {
       if (tipo === '' || tipo === 'vacaciones') {
         const snapVac = await get(ref(database, 'vacation_requests'));
+        if (auth.currentUser !== sessionUser || generation !== _vpAvailabilityGeneration) return;
+        vpAvailabilityTypes.push('vacaciones');
         usagePayload.push(snapVac.val());
         if (snapVac.exists()) {
           snapVac.forEach(child => {
-            const s = { id: child.key, _tipo: 'vacaciones', ...child.val() };
+            const s = { ...child.val(), id: child.key, _tipo: 'vacaciones' };
             if (!canSeeCleon && vpIsCleonRequest(s)) return;
+            if (!vpAvailabilityAuthorized(s)) return;
+            vpAvailabilityRecords.push(s);
             const estadoVac = vacGetEstado(s);
             if (estado && estado.startsWith('vac_') && estadoVac !== estado.replace('vac_','')) return;
             if (estado && estado.startsWith('perm_')) return;
@@ -8491,14 +9126,18 @@
       }
       if (tipo === '' || tipo === 'permisos') {
         const snapPerm = await get(ref(database, 'permission_requests'));
+        if (auth.currentUser !== sessionUser || generation !== _vpAvailabilityGeneration) return;
+        vpAvailabilityTypes.push('permisos');
         usagePayload.push(snapPerm.val());
         if (snapPerm.exists()) {
           snapPerm.forEach(child => {
-            const s = { id: child.key, _tipo: 'permisos', ...child.val() };
+            const s = { ...child.val(), id: child.key, _tipo: 'permisos' };
             const isCleonForAlfredo = vpIsCleonRequest(s);
             if (!canSeeCleon && isCleonForAlfredo) return;
+            if (!vpAvailabilityAuthorized(s)) return;
+            vpAvailabilityRecords.push(s);
             // Usar permGetEstado (igual que la app móvil) para estado calculado correcto
-            const estadoPerm = isCleonForAlfredo ? (s.alfredo_estado || s.alfredo_visto || permGetEstado(s)) : permGetEstado(s);
+            const estadoPerm = vpAvailabilityEstadoKey(s);
             if (estado && estado.startsWith('perm_') && estadoPerm !== estado.replace('perm_','')) return;
             if (estado && estado.startsWith('vac_')) return;
             if (rol   && (s.rol  ||'').toUpperCase() !== rol)   return;
@@ -8513,29 +9152,15 @@
       // ── Cargar Vac. RH de Cleon (cleon_solicitudes/vacaciones) ──
       if (canSeeCleon && (tipo === '' || tipo === 'vac_rh')) {
         const snapRH = await get(ref(database, 'cleon_solicitudes/vacaciones'));
+        if (auth.currentUser !== sessionUser || generation !== _vpAvailabilityGeneration) return;
+        vpAvailabilityTypes.push('vac_rh');
         usagePayload.push(snapRH.val());
         if (snapRH.exists()) {
           snapRH.forEach(child => {
-            const s = { id: child.key, _tipo: 'vac_rh', ...child.val() };
-            // Calcular estado igual que la app móvil
-            let estadoRH = 'pendiente_alfredo';
-            if (s.estado === 'rechazada_alfredo') {
-              estadoRH = 'rechazada_alfredo';
-            } else if (s.estado === 'aprobada_alfredo') {
-              const hoy = new Date(); hoy.setHours(0,0,0,0);
-              const parseFechaRH = str => {
-                if (!str) return null;
-                if (str.includes('/')) { const [d,m,y]=str.split('/').map(Number); return new Date(y,m-1,d); }
-                if (str.includes('-')) { const [y,m,d]=str.split('-').map(Number); return new Date(y,m-1,d); }
-                return null;
-              };
-              const ini = parseFechaRH(s.fecha_inicio), fin = parseFechaRH(s.fecha_fin);
-              if (ini && fin) {
-                if (hoy >= ini && hoy <= fin) estadoRH = 'activo';
-                else if (hoy > fin) estadoRH = 'gozados';
-                else estadoRH = 'aprobada_alfredo';
-              } else estadoRH = 'aprobada_alfredo';
-            }
+            const s = { ...child.val(), id: child.key, _tipo: 'vac_rh' };
+            if (!vpAvailabilityAuthorized(s)) return;
+            vpAvailabilityRecords.push(s);
+            const estadoRH = vpAvailabilityEstadoKey(s);
             if (estado && estado.startsWith('vacrh_') && estadoRH !== estado.replace('vacrh_','')) return;
             if (estado && (estado.startsWith('vac_') || estado.startsWith('perm_'))) return;
             // Vac. RH no tiene rol/plaza propios (cleon no tiene plaza asignada en el formulario)
@@ -8545,6 +9170,8 @@
           });
         }
       }
+      if (auth.currentUser !== sessionUser || generation !== _vpAvailabilityGeneration) return;
+      _vpAvailabilitySnapshot = { user: sessionUser, records: vpAvailabilityRecords, types: vpAvailabilityTypes, loadedAt: new Date() };
       recordPanelDataUsage('PANEL_REQUEST_SEARCH', {
         records: _vpData.length,
         payload: usagePayload,
@@ -8557,11 +9184,32 @@
       });
       window.renderVacPerm();
     } catch(e) {
+      if (auth.currentUser !== sessionUser || generation !== _vpAvailabilityGeneration) return;
+      _vpAvailabilitySnapshot = null;
+      vpAvailabilityRender();
       container.innerHTML = '<div style="color:#D32F2F;padding:20px">❌ Error al buscar: ' + e.message + '</div>';
     }
   };
 
   window.renderVacPerm = function() {
+    const now = new Date();
+    vpAvailabilityRender(now);
+    if (_vpAvailabilitySnapshot?.user === auth.currentUser && panelCanOpenModule('requests')) {
+      const estado = document.getElementById('vpEstado').value;
+      const ini = vpTemporalFecha(document.getElementById('vpFechaIni').value);
+      const fin = vpTemporalFecha(document.getElementById('vpFechaFin').value);
+      if (fin) fin.setHours(23, 59, 59, 999);
+      _vpData = _vpAvailabilitySnapshot.records.filter(s => {
+        if (!vpAvailabilityAuthorized(s) || !vpAvailabilityFilters(s)) return false;
+        const prefix = s._tipo === 'vacaciones' ? 'vac_' : s._tipo === 'vac_rh' ? 'vacrh_' : 'perm_';
+        if (estado && estado !== prefix + vpAvailabilityEstadoKey(s, now)) return false;
+        const timestamp = s._tipo === 'vacaciones' ? (s.timestamp_creacion || 0) : (s.timestamp || s.timestamp_creacion || 0);
+        return (!ini || timestamp >= ini.getTime()) && (!fin || timestamp <= fin.getTime());
+      }).map(s => ({ ...s, _cleonForAlfredo: s._tipo === 'permisos' && vpIsCleonRequest(s), _estadoKey: vpAvailabilityEstadoKey(s, now) }));
+      _vpData.sort((a, b) => (b.timestamp || b.timestamp_creacion || 0) - (a.timestamp || a.timestamp_creacion || 0));
+    } else {
+      _vpData = _vpData.filter(vpAvailabilityAuthorized).map(s => ({ ...s, _estadoKey: vpAvailabilityEstadoKey(s, now) }));
+    }
     const container = document.getElementById('vacPermTableContainer');
     if (_vpData.length === 0) {
       container.innerHTML = '<div style="text-align:center;padding:48px;color:#7A8C7A">💭 No se encontraron registros con los filtros seleccionados.</div>';
@@ -8626,8 +9274,10 @@
         const dias = s.dias_solicitados || '—';
         fechas = `${fi} → ${ff}<br><span style="font-size:11px;color:#7A8C7A">${dias} día(s)</span>`;
       } else {
-        const fi = s.fecha_inicio || '—', fr = s.fecha_regreso || '—';
-        fechas = `${fi} → ${fr}<br><span style="font-size:11px;color:#7A8C7A">${s.dia_completo ? 'Día completo' : 'Parcial'}</span>`;
+        const fi = vpTemporalCampo(s, 'fecha_inicio_aprobada', 'fecha_inicio') || '—';
+        const fr = vpTemporalCampo(s, 'fecha_regreso_aprobada', 'fecha_regreso') || '—';
+        const fullDay = typeof s.dia_completo_aprobado === 'boolean' ? s.dia_completo_aprobado : !!s.dia_completo;
+        fechas = `${vpAvailabilityEscape(fi)} → ${vpAvailabilityEscape(fr)}<br><span style="font-size:11px;color:#7A8C7A">${fullDay ? 'Día completo' : 'Parcial'} · regreso programado</span>`;
       }
       let detalle = '';
       if (esVac) {
@@ -8640,8 +9290,12 @@
           : '<span style="color:#bbb">Sin motivo</span>';
         if (s.nota_alfredo) detalle += `<div style="font-size:11px;color:#7A8C7A;margin-top:3px">💬 ${s.respondido_por_nombre || 'Alfredo'}: ${s.nota_alfredo}</div>`;
       } else {
-        const horario = s.dia_completo ? '—' : `${s.hora_inicio||'?'} - ${s.hora_salida||'?'}`;
-        detalle = `<div style="font-size:12px">${horario}</div><div style="font-size:11px;color:#7A8C7A;max-width:180px;word-break:break-word">${s.motivo||'—'}</div>`;
+        const fullDay = typeof s.dia_completo_aprobado === 'boolean' ? s.dia_completo_aprobado : !!s.dia_completo;
+        const entrada = vpTemporalHora(vpTemporalCampo(s, 'hora_inicio_aprobada', 'hora_inicio'));
+        const salida = vpTemporalHora(vpTemporalCampo(s, 'hora_salida_aprobada', 'hora_salida'));
+        const horario = fullDay ? 'Día completo' : `Entrada: ${entrada ? entrada.label : '—'} · Salida: ${salida ? salida.label : '—'}`;
+        const regreso = vpTemporalHora(vpTemporalCampo(s, 'hora_regreso_aprobada', 'hora_regreso'));
+        detalle = `<div style="font-size:12px">${horario}</div><div style="font-size:11px;color:#075E67">Regreso programado: ${regreso ? regreso.label : 'hora no disponible'}</div><div style="font-size:11px;color:#7A8C7A;max-width:180px;word-break:break-word">${s.motivo||'—'}</div>`;
       }
       const esFinalizada = ['aprobado_final', 'confirmada', 'activo', 'gozados'].includes(s._estadoKey) || s.visto_bueno_cleon || s.approval_stage === 'completado';
       const accionesFlujo = (esVac || esPerm) && !esCleonForAlfredo && vpPuedeGestionarFlujo(s) && !esFinalizada
