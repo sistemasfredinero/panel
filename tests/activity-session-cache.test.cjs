@@ -1,5 +1,5 @@
 'use strict';
-// Callback real del panel, perfiles ficticios y ningún acceso a red.
+// Callback real del panel y helpers escalares reales; ninguna conexión externa.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
@@ -8,7 +8,8 @@ const vm = require('node:vm');
 const html = readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const callback = html.match(/^  onAuthStateChanged\(auth, async \(user\) => \{\n[\s\S]*?^  \}\);/m);
 assert.ok(callback, 'Callback de sesión productivo');
-function harness(read = async () => ({ val: () => ({ rol: 'ADMINISTRATIVO' }) })) {
+function fn(name) { const match = html.match(new RegExp(`^  (?:async )?function ${name}\\([^\\n]*\\) \\{(?:[^\\n]*\\}$|\\n[\\s\\S]*?^  \\})`, 'm')); assert.ok(match, name); return match[0]; }
+function harness(read = async route => ({ val: () => route.endsWith('/rol') ? 'ADMINISTRATIVO' : 'CHIHUAHUA' })) {
   const nodes = new Map(), reads = [], rendered = [];
   let authCallback, invalidations = 0;
   const node = id => {
@@ -17,17 +18,18 @@ function harness(read = async () => ({ val: () => ({ rol: 'ADMINISTRATIVO' }) })
   };
   const context = vm.createContext({
     auth: { currentUser: null }, window: { resetSupportProfileCheck() {}, __activityRouteGroups: ['old'] },
-    database: {}, ref: (_, route) => route, get: async route => { reads.push(route); return read(route); },
+    database: {}, ref: (_, route) => route, get: async route => { reads.push(route); assert.match(route, /^users\/[^/]+\/(rol|role|plaza)$/); return read(route); },
     document: { getElementById: node }, onAuthStateChanged: (_, cb) => { authCallback = cb; },
     invalidateActivityQueryCache: () => { invalidations++; },
     _activityQueryContext: 'old', _activityProfile: { rol: 'GERENTE' }, _activitiesData: ['old'], _activitiesFiltered: ['old'],
-    _prospectAdminData: ['old'], _calendarDetailRecords: new Map([['old', { nombre: 'Anterior' }]]), _panelProfile: {},
+    _prospectAdminData: ['old'], _calendarDetailRecords: new Map([['old', { nombre: 'Anterior' }]]), _panelProfile: { rol: 'ADMINISTRATIVO' },
     resetSupportWorkerDiagnostic() {}, resetSupportEmailTest() {}, resetSupportFcmDiagnostic() {},
     resetSupportNoticeDirectory() {}, resetSupportNoticeSetup() {}, panelNotices: { flush: async () => {} },
+    recordPanelDataUsage() {},
     applyPanelRoleAccess() {}, applyRequestManagementAccess() {}, applyPrivacyAdminAccess() {}, setDefaultDates() {},
     setPanelHeader: name => rendered.push({ name, user: context.auth.currentUser.uid, profile: context._panelProfile }),
   });
-  vm.runInContext(callback[0], context);
+  vm.runInContext('const PANEL_SESSION_PROFILE_TTL_MS=300000;let _panelSessionProfileCache=null;let _panelSessionProfileGeneration=0;\n' + ['normaliseActivityText', 'resetPanelSessionProfile', 'loadPanelSessionProfile'].map(fn).join('\n') + '\n' + callback[0], context);
   return { context, node, reads, rendered, invalidations: () => invalidations, change: async user => { context.auth.currentUser = user; return authCallback(user); } };
 }
 const user = uid => ({ uid, email: `${uid}@example.test` });
@@ -40,27 +42,36 @@ test('logout limpia resultados, metadatos visuales y ventanas de la cuenta anter
   for (const id of ['activitiesSection', 'activityResponseChartsModal', 'prospectCalendarModal', 'pendingProspectsModal']) assert.equal(h.node(id).style.display, 'none');
   assert.equal(h.node('activityRoutesMapModal').removed, 'active');
   assert.equal(h.node('app').style.display, 'none');
+  assert.equal(Object.keys(h.context._panelProfile).length, 0);
 });
 test('cambio rápido de cuentas descarta el perfil tardío y no repinta la sesión anterior', async () => {
   let release;
   const waiting = new Promise(resolve => { release = resolve; });
   const h = harness(async route => {
-    if (route === 'users/first') await waiting;
-    return { val: () => ({ rol: 'ADMINISTRATIVO', nombre: route }) };
+    if (route.startsWith('users/first/')) await waiting;
+    return { val: () => route.endsWith('/plaza') ? 'CHIHUAHUA' : route.startsWith('users/first/') ? 'GERENTE' : 'ADMINISTRATIVO' };
   });
   const first = h.change(user('first'));
   await h.change(user('second'));
   release(); await first;
   assert.equal(h.invalidations(), 2); assert.equal(h.rendered.length, 1);
-  assert.equal(h.rendered[0].user, 'second'); assert.equal(h.context._panelProfile.nombre, 'users/second');
+  assert.equal(h.rendered[0].user, 'second'); assert.equal(h.context._panelProfile.rol, 'ADMINISTRATIVO');
   assert.equal(h.node('adminName').textContent, 'second@example.test');
+  assert.equal(h.reads.length, 4);
 });
 test('logout mientras llega perfil no reabre el panel ni restaura privilegios', async () => {
   let release;
   const waiting = new Promise(resolve => { release = resolve; });
-  const h = harness(async () => { await waiting; return { val: () => ({ rol: 'GERENTE' }) }; });
+  const h = harness(async route => { await waiting; return { val: () => route.endsWith('/rol') ? 'GERENTE' : 'CHIHUAHUA' }; });
   const entering = h.change(user('first'));
   await h.change(null); release(); await entering;
   assert.equal(h.rendered.length, 0); assert.equal(Object.keys(h.context._panelProfile).length, 0);
   assert.equal(h.node('app').style.display, 'none'); assert.equal(h.node('loginOverlay').style.display, 'flex');
+});
+test('lectura de perfil denegada mantiene el panel cerrado y muestra error, sin reintento ni descarga integral', async () => {
+  const h = harness(async () => { throw new Error('Permission denied'); });
+  await h.change(user('first'));
+  assert.equal(h.rendered.length, 0); assert.equal(Object.keys(h.context._panelProfile).length, 0);
+  assert.equal(h.node('app').style.display, 'none'); assert.equal(h.node('loginOverlay').style.display, 'flex');
+  assert.match(h.node('loginError').textContent, /validar el rol/); assert.equal(h.reads.length, 2);
 });

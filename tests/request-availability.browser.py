@@ -30,7 +30,7 @@ def extract(pattern, label):
 
 
 def function(name):
-    return extract(r'^  function ' + re.escape(name) + r'\([^\n]*\) \{\n[\s\S]*?^  \}', name)
+    return extract(r'^  (?:async )?function ' + re.escape(name) + r'\([^\n]*\) \{\n[\s\S]*?^  \}', name)
 
 
 def action(name):
@@ -42,14 +42,14 @@ def constant(name, object_value=False):
     return extract(r'^  const ' + re.escape(name) + r' = ' + suffix, name)
 
 
-CSS = re.search(r'<style>([\s\S]*?)</style>', HTML).group(1)
+CSS = '\n'.join(re.findall(r'<style>([\s\S]*?)</style>', HTML))
 section_start = HTML.index('<div id="vacPermSection"')
 section_end = HTML.index('\n<!-- IDs legacy mantenidos', section_start)
 SECTION = HTML[section_start:section_end]
 assert SECTION.count('id="boardAvailability"') == 1
 assert '<script' not in SECTION.lower(), 'La fixture no debe ejecutar imports de la aplicación'
 
-HELPERS = re.findall(r'^  function (vpAvailability\w+|vpTemporal\w+)\(', HTML, re.M)
+HELPERS = re.findall(r'^  (?:async )?function (vpAvailability\w+|vpTemporal\w+)\(', HTML, re.M)
 DEPENDENCIES = [
     'normaliseActivityText', 'branchKey', 'panelRole', 'panelIsActivityOnlyUser',
     'panelCanOpenModule', 'vacGetEstado', 'vacParseFecha', 'permGetEstado',
@@ -99,8 +99,7 @@ window.alert = forbidden('notices', 'alert');
 const recordPanelDataUsage = forbidden('writes', 'recordPanelDataUsage');
 const auth = {currentUser: {uid: 'administrativo-sintetico', email: 'admin@example.test'}};
 let _panelProfile = {rol: 'ADMINISTRATIVO', plaza: 'CHIHUAHUA'};
-let _vpData = [], _vpAvailabilitySnapshot = null, _vpAvailabilityTimer = null,
-    _vpAvailabilityGeneration = 0;
+__AVAILABILITY_STATE__
 const authCallbacks = [];
 function onAuthStateChanged(unused, callback) { authCallbacks.push(callback); }
 '''
@@ -151,6 +150,7 @@ const fixtureRecords = [
 function seed(records = fixtureRecords, types = ['vacaciones', 'permisos']) {
   _vpAvailabilitySnapshot = {user: auth.currentUser, records, types,
     loadedAt: new Date(2026, 10, 10, 10, 45)};
+  _vpAvailabilityBoardSnapshot = {..._vpAvailabilitySnapshot, context: vpAvailabilityContext()};
 }
 window.availabilityTest = {
   calls,
@@ -173,12 +173,12 @@ seed();
 window.renderVacPerm();
 '''
 SCRIPT = '\n\n'.join([
-    STUBS,
+    STUBS.replace("__AVAILABILITY_STATE__", HTML[HTML.index("  let _vpData = [];"):HTML.index("  function vpAvailabilityContext()")]),
     constant('PANEL_ACTIVITY_ONLY_ROLES'),
     constant('VP_SOPORTE_EMAIL'), constant('VP_CLEON_EMAIL'),
     constant('VAC_ESTADO_CFG', True), constant('PERM_ESTADO_CFG', True),
     *(function(name) for name in dict.fromkeys(HELPERS + DEPENDENCIES)),
-    action('vpAvailabilityRefresh'), action('renderVacPerm'), HOOKS, FIXTURES,
+    action('vpAvailabilityRefresh'), action('vpAvailabilityLoad'), action('vpAvailabilityInvalidate'), action('renderVacPerm'), HOOKS, FIXTURES,
 ])
 
 LABELS = ['Ausentes ahora', 'Regreso programado HOY', 'Próximas salidas aprobadas']
@@ -382,7 +382,7 @@ def test_viewport(browser, width):
     def manager_scope():
         # GERENTE/LIDER/GESTOR son activity-only según la política real vigente.
         # No se fuerza allow=true para fabricar acceso a requests.
-        for role in ['GERENTE', 'LIDER A', 'GESTOR']:
+        for role in ['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA']:
             page.evaluate('(role) => {availabilityTest.login(role); availabilityTest.seed(); window.renderVacPerm();}', role)
             check(page.locator('#vpAvailabilityCards > article').count() == 0,
                   f'{role} obtuvo acceso directo al resumen de management')
@@ -438,6 +438,94 @@ def test_viewport(browser, width):
     return result
 
 
+AUTO_IO = r'''
+let autoReads = 0, autoMaximum = 0;
+const autoCalls = [];
+let autoStore = {};
+function autoValue(route) {
+  const root = route.startsWith('cleon_solicitudes/vacaciones') ? 'cleon_solicitudes/vacaciones' : route.split('/')[0];
+  let value = autoStore[root] || null;
+  for (const part of route.slice(root.length + 1).split('/').filter(Boolean)) value = value?.[part] ?? null;
+  return value;
+}
+async function autoRead(route, kind) {
+  autoReads++; autoMaximum = Math.max(autoMaximum, autoReads);
+  try {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    let value = autoValue(route);
+    if (kind === 'REST_SHALLOW') value = value && Object.fromEntries(Object.keys(value).map(key => [key, true]));
+    autoCalls.push({kind, path: route, payload: value}); return value;
+  } finally {autoReads--;}
+}
+const get = async route => {const value = await autoRead(route, 'SDK_SCALAR'); return {val: () => value};};
+const ref = (db, route) => route === undefined ? {toString: () => 'https://offline.example.test'} : route;
+window.fetch = async (url, options) => {
+  const parsed = new URL(url);
+  if (parsed.origin !== 'https://offline.example.test' || parsed.searchParams.get('auth') !== 'OFFLINE_FAKE_ID_TOKEN' || parsed.searchParams.get('shallow') !== 'true' || [...parsed.searchParams.keys()].length !== 2 || options.credentials !== 'omit') throw Error('REST no autorizado');
+  const value = await autoRead(decodeURIComponent(parsed.pathname.slice(1, -5)), 'REST_SHALLOW');
+  return {ok: true, json: async () => value};
+};
+function setPanelHeader() {}
+function showPanelModuleDenied() {}
+'''
+AUTO_STUBS = STUBS.replace("const get = forbidden('get', 'get');", '').replace("const ref = forbidden('ref', 'ref');", '').replace("window.fetch = forbidden('network', 'fetch');", '').replace("email: 'admin@example.test'}", "email: 'admin@example.test', getIdToken: async () => 'OFFLINE_FAKE_ID_TOKEN'}")
+AUTO_FIXTURE = FIXTURES[:FIXTURES.index("document.getElementById('vacPermSection').style.display = 'block';")] + r'''
+autoStore = {
+  vacation_requests: Object.fromEntries(fixtureRecords.filter(row => row._tipo === 'vacaciones').map(row => [row.id, {...row, motivo: 'NO DESCARGAR', fotos: ['PRIVADO']} ])),
+  permission_requests: Object.fromEntries(fixtureRecords.filter(row => row._tipo === 'permisos').map(row => [row.id, {...row, bitacora: 'PRIVADO'}])),
+};
+document.getElementById('vacPermSection').style.display = 'none';
+document.getElementById('vpPlaza').value = 'CHIHUAHUA';
+window.autoTest = {calls: autoCalls, maximum: () => autoMaximum, board: () => _vpAvailabilityBoardSnapshot, table: () => _vpAvailabilitySnapshot};
+'''
+AUTO_SCRIPT = SCRIPT.replace(STUBS.replace("__AVAILABILITY_STATE__", HTML[HTML.index("  let _vpData = [];"):HTML.index("  function vpAvailabilityContext()")]), AUTO_STUBS.replace("__AVAILABILITY_STATE__", HTML[HTML.index("  let _vpData = [];"):HTML.index("  function vpAvailabilityContext()")]) + '\n' + AUTO_IO).replace(FIXTURES, action('showVacPerm') + '\n' + AUTO_FIXTURE)
+
+
+def test_auto_viewport(browser, width):
+    context = browser.new_context(viewport={'width': width, 'height': 1100}, locale='es-MX', timezone_id='America/Chihuahua', offline=True)
+    context.route('**/*', lambda route: route.abort())
+    requests, errors = [], []
+    context.on('request', lambda request: requests.append(request.url))
+    page = context.new_page()
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    result = {'width': width, 'mode': 'apertura automática real; SDK/REST/token fake offline', 'failures': []}
+    try:
+        extras = ''.join(f'<div id="{id}"></div>' for id in ['app', 'moduleLanding', 'attendanceWorkspace', 'activitiesSection', 'alfredoSection'])
+        page.set_content('<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>' + CSS + '</style></head><body>' + extras + SECTION + '</body></html>')
+        page.add_script_tag(content=AUTO_SCRIPT)
+        check(page.evaluate('autoTest.calls.length') == 0, 'Se descargó antes de abrir el módulo')
+        page.evaluate('async () => {await window.showVacPerm();}')
+        assert_groups(page, INITIAL_NAMES)
+        check(page.evaluate('autoTest.table()') is None, 'Auto cargó snapshot completo para tabla')
+        check(page.locator('#vacPermTableContainer tbody tr').count() == 0, 'Auto creó acciones/filas de tabla')
+        colors = page.evaluate('''() => ({departure: getComputedStyle(document.querySelector('.vp-av-departure')).color, returning: getComputedStyle(document.querySelector('.vp-av-return')).color, chips: [...document.querySelectorAll('.vp-av-chip')].map(el => ({text: el.textContent, color: getComputedStyle(el).backgroundColor}))})''')
+        check(colors['departure'] == 'rgb(185, 28, 28)' and colors['returning'] == 'rgb(21, 128, 61)', 'Salida/regreso no son rojo/verde')
+        check(len({c['color'] for c in colors['chips']}) >= 3, 'Burbujas de plaza, rol y tipo no diferenciadas')
+        before = page.evaluate('autoTest.calls.length')
+        page.get_by_role('button', name='Recalcular sin descargar', exact=True).click()
+        page.locator('#vpTipo').select_option('permisos')
+        page.locator('#vpTipo').select_option('')
+        page.evaluate('async () => {document.getElementById("vacPermSection").style.display="none"; await Promise.resolve(); await window.showVacPerm();}')
+        check(page.evaluate('autoTest.calls.length') == before, 'Reabrir/filtros/recalcular no reutilizó caché')
+        page.get_by_role('button', name='Actualizar disponibilidad', exact=True).click()
+        page.wait_for_function('autoTest.board() !== null')
+        check(page.evaluate('autoTest.calls.length') == before * 2, 'Actualización mínima no hizo una sola recarga')
+        result['requests'] = page.evaluate('autoTest.calls')
+        result['maxConcurrent'] = page.evaluate('autoTest.maximum()')
+        check(result['maxConcurrent'] <= 6, 'Concurrencia superó seis')
+        check('NO DESCARGAR' not in json.dumps(result['requests']) and 'PRIVADO' not in json.dumps(result['requests']), 'Auto descargó detalles/fotos')
+        check(not requests and not errors, f'Red real o errores: {requests} {errors}')
+        result['requestCounts'] = {kind: sum(c['kind'] == kind for c in result['requests']) for kind in ['REST_SHALLOW', 'SDK_SCALAR']}
+        result['colors'] = colors
+        result['screenshot'] = f'/tmp/request-availability-auto-ui-{width}.png'
+        page.screenshot(path=result['screenshot'], full_page=True)
+    except Exception as error:
+        result['failures'].append({'error': str(error), 'traceback': traceback.format_exc()})
+    result['passed'] = not result['failures']
+    context.close()
+    return result
+
+
 def main():
     report = {'boundary': 'CSS/DOM/helpers/access policy/render real; sesión y carga en memoria sintéticas',
               'network': 'Playwright offline + route abort; ejecutar dentro de unshare --net',
@@ -448,6 +536,7 @@ def main():
                                              headless=True, args=['--no-sandbox'])
         for width in WIDTHS:
             report['results'].append(test_viewport(browser, width))
+            report['results'].append(test_auto_viewport(browser, width))
         browser.close()
     report['passed'] = all(result['passed'] for result in report['results'])
     REPORT_PATH.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

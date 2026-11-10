@@ -20,6 +20,7 @@ const declaration = name => {
   assert.ok(match, name); return match[0];
 };
 const NAMES = ['normaliseActivityText', 'activityText', 'activityCategory', 'activityCreatedTimestamp', 'firebasePushIdBoundary', 'firebasePushIdTimestamp', 'isStoredActivityRecord', 'matchesActivityUser', 'activityMatchesSelectedActions', 'activityFilterRecordAction', 'currentActivityFilterCriteria', 'activityFilterSignature', 'activityMatchesCriteria', 'activityPageRecordMatches', 'activityPreview', 'activityAnalysisPreview', 'activityRecordPath', 'loadActivityTextPage', 'loadActivityUserDirectory', 'resolveActivitySearchSource', 'activityCanManageAll', 'activityIsManagerScope', 'activityIsAdministrative', 'isInManagerActivityScope', 'prospectSectionPlazas', 'consolidateProspectFiles', 'consolidateActivityExportProspects', 'activityQueryContextKey', 'invalidateActivityQueryCache', 'activityEnsureQueryContext', 'activityBoundedRead', 'activityReadShallowKeys', 'activityCachedKeys', 'activityReadLightRecord', 'activityInitLightEntry', 'activityScanLightBatch', 'activityGetLightEntry', 'activityEnsureLightRecords', 'loadActivityAnalysisData'];
+NAMES.push('activityCopyDisplayMetadata', 'activityDisplayLinkedPath', 'activityDisplayPaymentLinks', 'activityReadDisplayRootIdentity', 'hydrateActivityDisplayMetadata', 'buildActivityDisplayItems');
 const STATES = ['ACTIVITY_RESULTS_PAGE_SIZE', 'FIREBASE_PUSH_ID_CHARS', 'PANEL_PLAZAS', 'TAMPICO_MADERO_MANAGER_EMAIL', 'ACTIVITY_QUERY_TTL_MS', 'ACTIVITY_LIGHT_FIELDS', '_activityQueryEntries', '_activityMetadataCache', '_activityQueryGeneration', '_activityQueryContext', '_activityLightReads', '_activityLightWaiters', '_activitySearchRun', '_activityUserDirectory', '_activityPageSession', '_activityAnalysisData', '_activityAnalysisSignature', '_activityAnalysisLoading', '_activityDetailCache', '_activitiesData', '_activitiesFiltered', '_activitiesVisibleCount'];
 const DAY = '2026-11-06', BASE = new Date(`${DAY}T10:00:00`).getTime();
 function snapshot(value, key = '') {
@@ -82,7 +83,7 @@ function harness({ store = {}, role = 'ADMINISTRATIVO', plaza = 'CHIHUAHUA', bef
     action('searchActivities'), action('loadMoreActivities'),
     `globalThis.api = { ${NAMES.join(', ')}, data: () => _activitiesData, analysis: () => _activityAnalysisData, visible: () => _activitiesVisibleCount, page: () => _activityPageSession, profile: () => _activityProfile, actions: values => { _selectedActivityActionFilters = new Set(values); } };`,
   ].join('\n\n'), context);
-  return { api: context.api, window: context.window, node, auth, store, reads, restReads, payloads, usage, alerts, forbidden, maxInFlight: () => maxInFlight, gpsResets: () => gpsResets, renders: () => renders, advance: ms => { time += ms; } };
+  return { context, api: context.api, window: context.window, node, auth, store, reads, restReads, payloads, usage, alerts, forbidden, maxInFlight: () => maxInFlight, gpsResets: () => gpsResets, renders: () => renders, advance: ms => { time += ms; } };
 }
 function fixture(h, count = 240, { missing = false, prospects = false } = {}) {
   h.store.gestor_activities = {}; h.store.activity_summaries = { plazas: {}, users: {} };
@@ -102,6 +103,8 @@ function fixture(h, count = 240, { missing = false, prospects = false } = {}) {
 }
 function ids(rows) { return Array.from(rows, row => row.id).sort(); }
 
+module.exports = { harness, fixture, ids, DAY, BASE, plain };
+if (require.main === module) {
 test('general: 240 registros, plaza fuera catálogo/sin plaza e índice parcial; tabla50 y gráficos todo el rango sin fullcanónicos', async () => {
   const h = harness(); const rows = fixture(h, 240, { missing: true });
   assert.equal(await h.window.searchActivities(), true);
@@ -168,7 +171,7 @@ test('índice ausente completo y ausencia de permisos shallow producen cobertura
   await assert.rejects(denied.api.loadActivityAnalysisData(), /verificar la cobertura histórica/);
 });
 
-test('expedientes raíz/seguimiento_de y aliasPROSPECTO consolidan como export, sin cortar al50', async () => {
+test('expedientes raíz/seguimiento_de y aliasPROSPECTO: Buscar pagina50 y gráficos consolidan completo como export', async () => {
   const h = harness(); const rows = fixture(h, 220);
   const root = rows[0], child = rows[219];
   Object.assign(root, { tipo: 'PROSPECTO', nombre_prospecto: 'Raíz', estado_expediente: 'CITA_PROGRAMADA', actualizado_en: BASE + 1000 });
@@ -361,3 +364,4 @@ test('IDs históricos duplicados en dos rutas: error visible en vez de consolida
   assert.match(h.node('activitiesTableContainer').innerHTML, /IDs históricos ambiguos/);
   assert.equal(h.renders(), 0);
 });
+}

@@ -30,7 +30,7 @@ function initial(tipo = 'permisos') { return { id: 'source-1', _tipo: tipo, uid:
   motivo: 'canonical-original', nota_cleon: 'NOTA OPACA', metadata: { untouched: true, opaque: { number: 1 } }, approved_by_names: { jaguayo: 'Viejo', cleon: 'RH' } }; }
 function harness(options = {}) {
   let tree = {}, uuid = 0;
-  const calls = { get: [], update: [], remove: [], http: [], alerts: [], refresh: 0, tokens: 0 };
+  const calls = { get: [], update: [], remove: [], http: [], alerts: [], availability: [], refresh: 0, tokens: 0 };
   const auth = { currentUser: { uid: 'actor', email: options.email || 'soporte@fredinero.com', getIdToken: async () => { calls.tokens++; return 'FAKE_JWT'; } } };
   function valueAt(p) { return p ? p.split('/').reduce((node, key) => node?.[key], tree) : tree; }
   function setAt(target, p, value) { const parts = p.split('/'); let cursor = target; for (const key of parts.slice(0, -1)) cursor = cursor[key] ??= {}; if (value === null) delete cursor[parts.at(-1)]; else cursor[parts.at(-1)] = structuredClone(value); }
@@ -49,6 +49,7 @@ function harness(options = {}) {
       assert.ok(valueAt(`notice_events/${eventId}`) && valueAt(`notice_pending/actor/${eventId}`)); calls.http.push({ url, ...request });
       const status = options.httpStatus || 200; return { status, ok: status === 200, text: async () => JSON.stringify({ ok: true, event_committed: true, accepted: 1 }) }; } });
   const window = { buscarVacPerm: () => { calls.refresh++; }, loadVacaciones: () => { calls.refresh++; }, loadAlfredoSolicitudes: () => { calls.refresh++; } };
+  window.vpAvailabilityCommitRecord = (tipo, id, confirmed) => { assert.equal(calls.update.length, 1, 'Resumen sólo después de la escritura confirmada'); calls.availability.push({ tipo, id, confirmed: structuredClone(confirmed) }); };
   const doc = { getElementById: id => { assert.ok(ids[id], `DOM desconocido ${id}`); return ids[id]; } };
   const script = `const VP_SOPORTE_EMAIL='soporte@fredinero.com',VP_CLEON_EMAIL='cleon@fredinero.com';
     const panelNoticeBusy=new Set();let _vpData=[],vacData=[],_alfredoSolActiva=null;
@@ -66,6 +67,7 @@ function assertCommit(h, kind, source) {
   assert.equal(h.valueAt(`${source}/last_notice_id`), event.id); assert.equal(h.valueAt(`${source}/notice_validation/${kind.replace(/[.-]/g, '_')}`), event.id);
   assert.deepEqual(h.calls.get.filter(r => r.path.startsWith('notice_pending/')).map(r => r.path), [`notice_pending/actor/${event.id}`]);
   assert.equal(h.api.busy(), 0); assert.equal(h.valueAt(`${source}/metadata/untouched`), true);
+  assert.equal(h.calls.availability.length, 1, 'Una actualización local, sin reconsulta de disponibilidad');
   return event;
 }
 

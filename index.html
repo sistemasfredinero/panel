@@ -959,13 +959,23 @@
     </div>
   </div>
 
+  <style>
+    #boardAvailability .vp-av-chips { display:flex;flex-wrap:wrap;gap:5px;margin:7px 0; }
+    #boardAvailability .vp-av-chip { color:#fff;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;max-width:100%;overflow-wrap:anywhere; }
+    #boardAvailability li { padding:9px 0;border-bottom:1px solid #E2E8F0;overflow-wrap:anywhere; }
+    #boardAvailability .vp-av-dates { font-size:12px;margin-top:4px; }
+    #boardAvailability .vp-av-departure { color:#B91C1C;font-weight:600; }
+    #boardAvailability .vp-av-return { color:#15803D;font-weight:600; }
+    #boardAvailability #vpAvailabilityCards { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:12px; }
+  </style>
   <section id="boardAvailability" aria-label="Disponibilidad por vacaciones y permisos" style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:12px;padding:18px;margin-bottom:18px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <h2 style="margin:0;font-size:18px;color:#075E67">Disponibilidad programada</h2>
+      <button id="vpAvailabilityUpdate" type="button" onclick="window.vpAvailabilityLoad(true)" style="padding:8px 12px;border:1px solid #075E67;border-radius:8px;background:#075E67;color:#fff;cursor:pointer">Actualizar disponibilidad</button>
       <button type="button" onclick="window.vpAvailabilityRefresh()" style="padding:8px 12px;border:1px solid #CBD5E1;border-radius:8px;background:#fff;color:#075E67;cursor:pointer">Recalcular sin descargar</button>
     </div>
-    <p id="vpAvailabilityCoverage" style="font-size:12px;color:#475569;line-height:1.5;margin:10px 0">Presiona Buscar para utilizar las solicitudes que se descargan en este módulo. Todavía no hay cobertura cargada.</p>
-    <div id="vpAvailabilityCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px"></div>
+    <p id="vpAvailabilityCoverage" style="font-size:12px;color:#475569;line-height:1.5;margin:10px 0">Se carga automáticamente al abrir el módulo: sólo campos mínimos de solicitudes aprobadas vigentes o futuras. Buscar carga únicamente la tabla.</p>
+    <div id="vpAvailabilityCards" aria-live="polite"></div>
     <p style="font-size:12px;color:#475569;margin:12px 0 0">Sólo solicitudes con aprobación final y aceptación cuando corresponde. Ausencia y regreso según lo aprobado; no confirma que la persona ya checó asistencia. Se aplica plaza, rol, nombre y tipo; el rango de creación y el estado filtran únicamente la tabla inferior.</p>
   </section>
 
@@ -1192,6 +1202,44 @@
   let allRecords = [];
   let usersMap   = {};
   let _panelProfile = {};
+  const PANEL_SESSION_PROFILE_TTL_MS = 5 * 60 * 1000;
+  let _panelSessionProfileCache = null;
+  let _panelSessionProfileGeneration = 0;
+
+  function resetPanelSessionProfile() {
+    _panelSessionProfileGeneration += 1;
+    _panelSessionProfileCache = null;
+  }
+
+  async function loadPanelSessionProfile(user = auth.currentUser) {
+    if (!user?.uid || auth.currentUser !== user || /[/.#$\[\]\x00-\x1f\x7f]/.test(user.uid)) throw new Error('No se pudo validar la sesión del panel.');
+    const generation = _panelSessionProfileGeneration;
+    const active = () => { if (auth.currentUser !== user || generation !== _panelSessionProfileGeneration) throw new Error('La sesión cambió al consultar el perfil.'); };
+    const cached = _panelSessionProfileCache;
+    if (cached?.user === user && Date.now() - cached.at < PANEL_SESSION_PROFILE_TTL_MS) {
+      const profile = await cached.promise; active(); return profile;
+    }
+    const promise = (async () => {
+      active();
+      const [roleSnap, plazaSnap] = await Promise.all(['rol', 'plaza'].map(field => get(ref(database, `users/${user.uid}/${field}`))));
+      active();
+      let rol = roleSnap.val();
+      const plaza = plazaSnap.val();
+      if (typeof rol !== 'string' || !rol.trim()) {
+        rol = (await get(ref(database, `users/${user.uid}/role`))).val();
+        active();
+      }
+      const profile = { rol: typeof rol === 'string' && rol.length <= 80 ? rol.trim() : '', plaza: typeof plaza === 'string' && plaza.length <= 80 ? plaza.trim() : '' };
+      if (!profile.rol || normaliseActivityText(profile.rol) === 'GERENTE' && !profile.plaza) throw new Error('El rol o la plaza de tu perfil están incompletos.');
+      recordPanelDataUsage('PANEL_SESSION_PROFILE_SCALARS', { records: 1, payload: profile, scope: 'Rol y plaza de la sesión; sin métricas, expediente ni medios' });
+      return profile;
+    })();
+    const entry = { user, at: Date.now(), promise };
+    _panelSessionProfileCache = entry;
+    try { const profile = await promise; active(); return profile; }
+    catch (error) { if (_panelSessionProfileCache === entry) _panelSessionProfileCache = null; throw error; }
+  }
+
   const DATA_USAGE_COOLDOWN_MS = 45_000;
   const DATA_USAGE_RETENTION_DAYS = 31;
   const _panelDataUsageCooldown = new Map();
@@ -2045,6 +2093,9 @@
       PANEL_ACTIVITY_LOCATION_VIEW: 'Panel · Ver ubicación de una actividad',
       PANEL_ACTIVITY_LOCATION_SCALARS: 'Panel · GPS puntual (sólo coordenadas y plaza)',
       PANEL_ACTIVITY_DETAIL_VIEW: 'Panel · Ver detalle de una actividad',
+      PANEL_ACTIVITY_PAYMENT_DETAIL: 'Panel · Bitácora de pago bajo demanda',
+      PANEL_ACTIVITY_LIGHT_ROOT_IDENTITY: 'Panel · Autor original y enlaces mínimos',
+      PANEL_SESSION_PROFILE_SCALARS: 'Panel · Perfil de sesión (sólo rol y plaza)',
       PANEL_ACTIVITY_EXPORT: 'Panel · Exportar actividades',
       PANEL_ACTIVITY_EXPORT_RANGE: 'Panel · Exportación de actividades por período',
       PANEL_ACTIVITY_EXPORT_TEXT: 'Panel · Texto para exportar actividades',
@@ -3098,8 +3149,10 @@
     resetSupportFcmDiagnostic();
     resetSupportNoticeDirectory();
     resetSupportNoticeSetup();
+    resetPanelSessionProfile();
     invalidateActivityQueryCache();
     _activityQueryContext = '';
+    _panelProfile = {};
     _activityProfile = null;
     _activitiesData = [];
     _activitiesFiltered = [];
@@ -3111,13 +3164,16 @@
       if (section) section.style.display = 'none';
     });
     document.getElementById('activityRoutesMapModal')?.classList.remove('active');
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('loginOverlay').style.display = 'flex';
     if (user) {
       void panelNotices.flush().catch(()=>{});
       let profile = {};
-      try {
-        const profileSnap = await get(ref(database, `users/${user.uid}`));
-        profile = profileSnap.val() || {};
-      } catch { /* El acceso falla cerrado con un perfil vacío. */ }
+      try { profile = await loadPanelSessionProfile(user); }
+      catch {
+        if (auth.currentUser === user) document.getElementById('loginError').textContent = 'No se pudo validar el rol y la plaza de tu perfil. Recarga para intentar nuevamente.';
+        return;
+      }
       if (auth.currentUser !== user) return;
       _panelProfile = profile;
       document.getElementById('loginOverlay').style.display = 'none';
@@ -4708,6 +4764,7 @@
   function activityEnsureQueryContext() {
     const context = activityQueryContextKey();
     if (!auth.currentUser?.uid) { invalidateActivityQueryCache(); throw new Error('Inicia sesión antes de consultar actividades.'); }
+    if (!normaliseActivityText(_activityProfile?.rol) || activityIsManagerScope() && !prospectSectionPlazas().length) { invalidateActivityQueryCache(); throw new Error('No se pudo validar el rol o la plaza de tu sesión. Vuelve a abrir Actividades.'); }
     if (_activityQueryContext !== context) { invalidateActivityQueryCache(Boolean(_activityQueryContext)); _activityQueryContext = context; }
     return context;
   }
@@ -4757,7 +4814,11 @@
       const generation = _activityQueryGeneration;
       const active = () => { ensureActive?.(); if (generation !== _activityQueryGeneration || context !== activityQueryContextKey()) throw new Error('La sesión o la consulta cambió.'); };
       cached = { at: Date.now(), promise: activityReadShallowKeys(path, active) };
-      if (!fresh) _activityMetadataCache.set(key, cached);
+      if (!fresh) {
+        for (const [oldKey, item] of _activityMetadataCache) if (Date.now() - item.at >= ACTIVITY_QUERY_TTL_MS) _activityMetadataCache.delete(oldKey);
+        _activityMetadataCache.set(key, cached);
+        while (_activityMetadataCache.size > 2048) _activityMetadataCache.delete(_activityMetadataCache.keys().next().value);
+      }
       cached.promise.catch(() => { if (_activityMetadataCache.get(key) === cached) _activityMetadataCache.delete(key); });
     }
     const result = await cached.promise;
@@ -4815,9 +4876,9 @@
     return isInManagerActivityScope(record) && activityMatchesCriteria(record, criteria);
   }
 
-  async function activityReadLightRecord(id, summary, ensureActive, payloads) {
+  async function activityReadLightRecord(id, summary, ensureActive, payloads, criteria = null, mode = 'table', onContainer = null) {
     const path = `gestor_activities/${id}`;
-    const fields = await activityReadShallowKeys(path, ensureActive);
+    const fields = await activityCachedKeys(path, ensureActive);
     if (!fields.length) throw new Error('Un registro cambió o desapareció. Usa Actualizar; no se mostrarán resultados parciales.');
     const typeFields = ['tipo', 'activity_type', 'tipo_actividad', 'categoria_actividad', 'activity_category', 'categoria'];
     const detailFields = ['gestion_realizada', 'gestion', 'tipo_accion', 'nombre_contacto', 'nombre_prospecto', 'se_visita_a'];
@@ -4825,7 +4886,8 @@
     if (!hasRecordFields) {
       // Sólo un contenedor histórico con actividades directamente debajo; no más niveles.
       if (id.includes('/') || fields.some(field => ACTIVITY_LIGHT_FIELDS.includes(field) || /^(?:id|_activity_path|historial_expediente|latitud|longitud)$|(?:base64|data_?url)$/i.test(field))) throw new Error('Estructura histórica de actividades no soportada; no se mostrarán resultados parciales. Usa Actualizar.');
-      const records = await Promise.all(fields.sort().reverse().map(key => activityReadLightRecord(`${id}/${key}`, null, ensureActive, payloads)));
+      if (onContainer) { onContainer(fields.sort().reverse().map(key => `${id}/${key}`)); return []; }
+      const records = await Promise.all(fields.sort().reverse().map(key => activityReadLightRecord(`${id}/${key}`, null, ensureActive, payloads, criteria, mode)));
       ensureActive();
       return records.flat();
     }
@@ -4833,29 +4895,73 @@
     // Shallow es autoritativo para ausencias: una ficha vieja no revive hojas borradas.
     const value = { id: recordId, _activity_path: path };
     ACTIVITY_LIGHT_FIELDS.forEach(field => { if (fields.includes(field) && summary?.[field] !== undefined) value[field] = summary[field]; });
-    if (activityIsManagerScope()) {
-      value.plaza = (await activityBoundedRead(() => get(ref(database, `${path}/plaza`)), ensureActive)).val();
-      payloads.push({ plaza: value.plaza });
-      if (!isInManagerActivityScope(value)) return value;
+    const context = activityEnsureQueryContext();
+    const metadataKey = `${context}|light-meta|${path}`;
+    let metadata = _activityMetadataCache.get(metadataKey);
+    if (!metadata || Date.now() - metadata.at >= ACTIVITY_QUERY_TTL_MS) {
+      // Sólo fechas/alcance escalares; nunca identidad, comentarios, historia ni medios.
+      metadata = { at: Date.now(), values: Object.create(null) };
+      _activityMetadataCache.set(metadataKey, metadata);
+      while (_activityMetadataCache.size > 2048) _activityMetadataCache.delete(_activityMetadataCache.keys().next().value);
     }
-    const missing = ACTIVITY_LIGHT_FIELDS.filter(field => fields.includes(field) && (value[field] === undefined || typeof value[field] === 'string' && value[field].length >= 1200));
-    await Promise.all(missing.map(async field => {
-      const snap = await activityBoundedRead(() => get(ref(database, `${path}/${field}`)), ensureActive);
-      value[field] = snap.val();
-      payloads.push({ [field]: snap.val() });
-    }));
-    if (!isStoredActivityRecord(value)) throw new Error('Registro histórico de actividad inválido; no se mostrarán resultados parciales. Usa Actualizar.');
-    // Una clave no push puede usar fechas históricas sin descargar la bitácora.
-    const dateValue = /^[A-Za-z0-9_-]{20}$/.test(recordId) ? value : { ...value, id: undefined };
-    if (!activityCreatedTimestamp(dateValue) && fields.includes('historial_expediente')) {
+    const metadataFields = ['plaza', 'rol', 'created_at', 'timestamp', 'fecha_hora_registro', 'actualizado_en'];
+    const loadedFields = new Set();
+    const readField = async (field, canonical = false) => {
+      ensureActive();
+      if (loadedFields.has(field)) return;
+      if (!canonical && value[field] !== undefined && !(typeof value[field] === 'string' && value[field].length >= 1200)) return;
+      const cacheable = metadataFields.includes(field);
+      if (cacheable && Object.prototype.hasOwnProperty.call(metadata.values, field)) { value[field] = metadata.values[field]; return; }
+      const item = (await activityBoundedRead(() => get(ref(database, `${path}/${field}`)), ensureActive)).val();
+      value[field] = item;
+      loadedFields.add(field);
+      if (cacheable && (item === null || ['number', 'boolean'].includes(typeof item) || typeof item === 'string' && item.length <= 160)) metadata.values[field] = item;
+      payloads.push({ [field]: item });
+    };
+    const readPresent = names => Promise.all(names.filter(field => fields.includes(field)).map(field => readField(field)));
+    // Gerentes: plaza CANÓNICA primero, incluso cuando la ficha trae otra plaza.
+    if (activityIsManagerScope()) {
+      await readField('plaza', true);
+      if (!isInManagerActivityScope(value)) return [];
+    }
+    if (criteria?.plaza) { await readPresent(['plaza']); if (normaliseActivityText(value.plaza) !== criteria.plaza) return []; }
+    if (criteria?.role) { await readPresent(['rol']); if (normaliseActivityText(value.rol) !== criteria.role) return []; }
+    // Fechas antes de nombres, enlaces o texto. El push key conserva su contrato actual.
+    const isPush = /^[A-Za-z0-9_-]{20}$/.test(recordId);
+    const dateValue = () => isPush ? value : { ...value, id: undefined };
+    for (const field of ['created_at', 'timestamp', 'fecha_hora_registro']) {
+      if (fields.includes(field)) await readField(field);
+      // No usar la fecha del push ID hasta agotar las hojas presentes de mayor prioridad.
+      if (activityCreatedTimestamp({ ...value, id: undefined })) break;
+    }
+    let createdAt = activityCreatedTimestamp(dateValue());
+    if (!createdAt && metadata.historyCreatedAt) value.created_at = createdAt = metadata.historyCreatedAt;
+    if (!createdAt && fields.includes('historial_expediente')) {
       const historyBase = `${path}/historial_expediente`;
-      const historyKeys = await activityReadShallowKeys(historyBase, ensureActive);
+      const historyKeys = await activityCachedKeys(historyBase, ensureActive);
       const dates = await Promise.all(historyKeys.sort().map(async key => ({ fecha: (await activityBoundedRead(() => get(ref(database, `${historyBase}/${key}/fecha`)), ensureActive)).val() })));
-      value.created_at = activityCreatedTimestamp({ historial_expediente: dates });
+      value.created_at = createdAt = activityCreatedTimestamp({ historial_expediente: dates });
+      if (createdAt) metadata.historyCreatedAt = createdAt;
       payloads.push(dates);
     }
+    await readPresent(['actualizado_en']);
+    const inRange = timestamp => timestamp >= criteria.start && timestamp <= criteria.end;
+    if (criteria && !inRange(Number(createdAt || 0)) && !inRange(Number(value.actualizado_en || createdAt || 0))) return [];
+    // Clasificación completa para aliases/expedientes, pero sin comentarios ni payload analítico.
+    await readPresent([...typeFields, 'es_expediente_prospeccion', 'nombre_prospecto', 'estado_expediente']);
+    if (criteria?.type && activityCategory(value) !== criteria.type) return [];
+    await readPresent(detailFields);
+    if (!isStoredActivityRecord(value)) throw new Error('Registro histórico de actividad inválido; no se mostrarán resultados parciales. Usa Actualizar.');
+    if (criteria?.actions?.size) await readPresent(['accion_prospeccion']);
+    if (criteria?.userSearch) await readPresent(['nombre_usuario', 'correo_usuario']);
+    if (criteria && !activityPageRecordMatches(value, criteria)) return [];
+    const tableFields = ['created_at', 'timestamp', 'fecha_hora_registro', 'actualizado_en', ...typeFields, 'uid', 'user_uid', 'nombre_usuario', 'correo_usuario', 'rol', 'plaza', ...detailFields, 'numero_cliente', 'accion_prospeccion', 'se_agenda_cita', 'estado_expediente', 'expediente_prospeccion_id', 'prospecto_raiz_id', 'seguimiento_de', 'es_expediente_prospeccion', 'promesa_pago_id', 'recepcion_pago_id', 'comprobacion_id', 'comprobacion_digital_id', 'renuencia_pago_id', 'ultima_llamada_control_id', 'origen_pago_id', 'origen_pago_tipo', 'tiene_evidencia', 'has_evidence', 'tiene_firma_promesa'];
+    await readPresent(Array.from(new Set(mode === 'analysis' ? ACTIVITY_LIGHT_FIELDS : tableFields)));
+    // Se reutilizan campos analíticos que ya venían en la ficha; los ausentes sólo se leen para Infinity.
     // Nunca conservar historial ni medios en la caché compartida.
-    return Object.fromEntries(['id', '_activity_path', ...ACTIVITY_LIGHT_FIELDS].filter(field => value[field] !== undefined).map(field => [field, value[field]]));
+    const projected = Object.fromEntries(['id', '_activity_path', ...ACTIVITY_LIGHT_FIELDS].filter(field => value[field] !== undefined).map(field => [field, value[field]]));
+    if (mode === 'analysis') Object.defineProperty(projected, '_activity_analysis_loaded', { value: true });
+    return projected;
   }
 
   async function activityInitLightEntry(entry) {
@@ -4870,6 +4976,16 @@
     }).sort().reverse();
     entry.offset = 0;
     entry.raw = [];
+    entry.rebuild = () => {
+      const paths = new Map();
+      entry.raw.forEach(record => {
+        if (paths.has(record.id) && paths.get(record.id) !== activityRecordPath(record)) throw new Error('IDs históricos ambiguos; no se mostrarán resultados parciales.');
+        paths.set(record.id, activityRecordPath(record));
+      });
+      entry.records = consolidateActivityExportProspects(entry.raw).filter(record => activityPageRecordMatches(record, entry.criteria))
+        .map(record => { const mapped = { ...record, _activity_path: paths.get(record.id) || activityRecordPath(record) }; return typeof activityCopyDisplayMetadata === 'function' ? activityCopyDisplayMetadata(record, mapped) : mapped; })
+        .sort((a, b) => Number(b._expediente_ultimo_movimiento || activityCreatedTimestamp(b) || 0) - Number(a._expediente_ultimo_movimiento || activityCreatedTimestamp(a) || 0));
+    };
     entry.complete = entry.keys.length === 0;
   }
   async function activityScanLightBatch(entry) {
@@ -4884,21 +5000,19 @@
       payloads.push(snap.val());
       if (snap.exists()) snap.forEach(child => { if (ids.includes(String(child.key))) summaries.set(String(child.key), child.val() || {}); });
     }));
-    const records = (await Promise.all(ids.map(id => activityReadLightRecord(id, summaries.get(id), entry.ensureActive, payloads)))).flat();
+    const expanded = [];
+    const records = (await Promise.all(ids.map(id => activityReadLightRecord(id, summaries.get(id), entry.ensureActive, payloads, entry.criteria, entry.analysisRequested ? 'analysis' : 'table', children => expanded.push(...children))))).flat();
     entry.ensureActive();
-    entry.raw.push(...records.filter(record => isStoredActivityRecord(record) && activityPageRecordMatches(record, entry.criteria)));
-    if (typeof hydrateActivityDisplayMetadata === 'function') await hydrateActivityDisplayMetadata(entry.raw, entry.ensureActive);
+    const newMatches = records.filter(record => isStoredActivityRecord(record) && activityPageRecordMatches(record, entry.criteria));
+    if (typeof hydrateActivityDisplayMetadata === 'function') await hydrateActivityDisplayMetadata(newMatches, entry.ensureActive);
+    while (_activityMetadataCache.size > 2048) _activityMetadataCache.delete(_activityMetadataCache.keys().next().value);
+    entry.raw.push(...newMatches);
     entry.ensureActive();
     entry.offset += ids.length;
+    // Un contenedor histórico se expande en candidatos: nunca hidratar todo el usuario de golpe.
+    if (expanded.length) entry.keys.splice(entry.offset, 0, ...expanded.sort().reverse());
     entry.complete = entry.offset >= entry.keys.length;
-    const paths = new Map();
-    entry.raw.forEach(record => {
-      if (paths.has(record.id) && paths.get(record.id) !== activityRecordPath(record)) throw new Error('IDs históricos ambiguos; no se mostrarán resultados parciales.');
-      paths.set(record.id, activityRecordPath(record));
-    });
-    entry.records = consolidateActivityExportProspects(entry.raw).filter(record => activityPageRecordMatches(record, entry.criteria))
-      .map(record => { const mapped = { ...record, _activity_path: paths.get(record.id) || activityRecordPath(record) }; return typeof activityCopyDisplayMetadata === 'function' ? activityCopyDisplayMetadata(record, mapped) : mapped; })
-      .sort((a, b) => Number(b._expediente_ultimo_movimiento || activityCreatedTimestamp(b) || 0) - Number(a._expediente_ultimo_movimiento || activityCreatedTimestamp(a) || 0));
+    entry.rebuild();
     return payloads;
   }
   async function activityGetLightEntry(criteria, ensureActive = () => {}) {
@@ -4931,7 +5045,8 @@
     await entry.initialized;
     const payloads = [];
     let scannedBatches = 0;
-    while (!entry.complete && (entry.records.length < target || entry.raw.some(record => activityCategory(record) === 'PROSPECCION'))) {
+    if (target === Infinity) entry.analysisRequested = true;
+    while (!entry.complete && entry.records.length < target) {
       entry.ensureActive();
       if (!entry.loading) {
         const promise = activityScanLightBatch(entry);
@@ -4941,6 +5056,29 @@
         payloads.push(...await promise);
         scannedBatches += 1;
       } else await entry.loading;
+    }
+    if (target === Infinity && !entry.analysisComplete) {
+      // Completar sólo coincidencias ya verificadas. CSV sigue siendo canónico fresco e independiente.
+      if (!entry.loading) {
+        const promise = (async () => {
+          for (let index = 0; index < entry.raw.length; index += ACTIVITY_RESULTS_PAGE_SIZE) {
+            await Promise.all(entry.raw.slice(index, index + ACTIVITY_RESULTS_PAGE_SIZE).map(async record => {
+              if (record._activity_analysis_loaded) return;
+              const upgraded = await activityReadLightRecord(activityRecordPath(record).replace(/^gestor_activities\//, ''), record, entry.ensureActive, payloads, entry.criteria, 'analysis');
+              if (!upgraded || Array.isArray(upgraded) || !activityPageRecordMatches(upgraded, entry.criteria)) throw new Error('Un registro cambió durante el análisis. Usa Actualizar; no se mostrarán resultados parciales.');
+              Object.assign(record, upgraded);
+              Object.defineProperty(record, '_activity_analysis_loaded', { value: true });
+            }));
+          }
+          entry.ensureActive();
+          entry.rebuild();
+          entry.analysisComplete = true;
+        })();
+        entry.loading = promise;
+        promise.catch(() => { if (_activityQueryEntries.get(entry.signature) === entry) _activityQueryEntries.delete(entry.signature); });
+        promise.finally(() => { if (entry.loading === promise) entry.loading = null; }).catch(() => {});
+        await promise;
+      } else { await entry.loading; if (!entry.analysisComplete) return activityEnsureLightRecords(entry, target); }
     }
     entry.ensureActive();
     return { payload: payloads, scannedBatches };
@@ -5197,11 +5335,17 @@
     updateActivityActionFilterLabel();
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">Usa los filtros y presiona <strong>Buscar</strong>.</div>';
     document.getElementById('activityRoutesReport').style.display = 'none';
+    const sessionUser = auth.currentUser;
     try {
-      const profileSnap = await get(ref(database, `users/${auth.currentUser.uid}`));
-      _activityProfile = profileSnap.val() || {};
-      _panelProfile = _activityProfile;
-    } catch { _activityProfile = {}; }
+      const profile = await loadPanelSessionProfile(sessionUser);
+      if (auth.currentUser !== sessionUser) return;
+      _activityProfile = profile;
+      _panelProfile = profile;
+    } catch {
+      _activityProfile = null;
+      document.getElementById('activitiesTableContainer').innerHTML = '<div class="empty" style="color:#B91C1C">No se pudo validar el rol y la plaza de tu sesión. Recarga el panel; no se consultarán actividades con un alcance desconocido.</div>';
+      return;
+    }
     applyPanelRoleAccess();
     const scopeNote = document.getElementById('headerModuleCopy');
     if (activityIsManagerScope()) {
@@ -5429,7 +5573,7 @@
 
   window.openPendingProspectsModal = async function() {
     if (!_activityProfile) {
-      try { _activityProfile = (await get(ref(database, `users/${auth.currentUser.uid}`))).val() || {}; } catch { _activityProfile = {}; }
+      try { _activityProfile = await loadPanelSessionProfile(); } catch { alert('No se pudo validar tu perfil para abrir el calendario.'); return; }
     }
     _prospectSectionState.clear();
     renderProspectPlazaControls();
@@ -8145,6 +8289,7 @@
       const before=await panelNoticeCanonical(path);
       if(!vpPuedeGestionarFlujo({...before,id,_tipo:tipo}))throw new Error('La etapa cambió. Actualiza la búsqueda.');
       await panelNotices.save({kind:(tipo==='vacaciones'?'vacation':'permission')+(siguiente==='completado'?'.panel_final_approved':'.panel_stage_approved'),sourceId:id,before,patch:base});
+      window.vpAvailabilityCommitRecord(tipo, id, { ...before, ...base });
       alert(siguiente === 'completado' ? '✅ Solicitud aprobada de forma final.' : `✅ Solicitud enviada a ${approvalStageLabel(siguiente)}.`);
       window.buscarVacPerm();
     } catch (e) { alert('❌ No se pudo aprobar la etapa: ' + e.message); } finally { panelNoticeBusy.delete(noticeLock); }
@@ -8177,6 +8322,7 @@
       const before=await panelNoticeCanonical(path);
       if(!vpPuedeGestionarFlujo({...before,id,_tipo:tipo}))throw new Error('La etapa cambió. Actualiza la búsqueda.');
       await panelNotices.save({kind:(tipo==='vacaciones'?'vacation':'permission')+'.panel_returned',sourceId:id,before,patch:base,createdAt:base.devolucion_timestamp});
+      window.vpAvailabilityCommitRecord(tipo, id, { ...before, ...base });
       alert(indice > 0 ? `↩️ Solicitud devuelta a ${approvalStageLabel(etapaAnterior)}.` : '↩️ Solicitud devuelta a la persona solicitante.');
       window.buscarVacPerm();
     } catch (e) { alert('❌ No se pudo devolver la solicitud: ' + e.message); } finally { panelNoticeBusy.delete(noticeLock); }
@@ -8447,6 +8593,7 @@
       const before=await panelNoticeCanonical('vacation_requests/'+id);
       if(!vpPuedeEditarVacacion({...before,id}))throw new Error('La solicitud ya no admite edición.');
       await panelNotices.save({kind:'vacation.panel_edited',sourceId:id,before,patch:updates});
+      window.vpAvailabilityCommitRecord('vacaciones', id, { ...before, ...updates });
       document.getElementById('vacEditModal').style.display = 'none';
       alert('✅ Solicitud actualizada correctamente.');
       // Recargar la vista que esté activa
@@ -8804,10 +8951,215 @@
 
   let _vpData = [];
 
-  // Disponibilidad: únicamente memoria de las lecturas manuales ya existentes.
+  // Snapshot completo reservado a Buscar y a la tabla; nunca a la carga automática.
   let _vpAvailabilitySnapshot = null;
   let _vpAvailabilityTimer = null;
   let _vpAvailabilityGeneration = 0;
+
+  // Disponibilidad independiente: proyección escalar, nunca alimenta la tabla.
+  let _vpAvailabilityBoardSnapshot = null;
+  let _vpAvailabilityInFlight = null;
+  let _vpAvailabilityLoadGeneration = 0;
+  let _vpAvailabilityLoadError = '';
+  let _vpAvailabilityReads = 0;
+  const _vpAvailabilityWaiters = [];
+  const VP_AVAILABILITY_TTL = 5 * 60 * 1000;
+
+  function vpAvailabilityContext() {
+    return JSON.stringify([auth.currentUser?.uid || '', String(auth.currentUser?.email || '').trim().toLowerCase(), String(_panelProfile?.rol || _panelProfile?.role || '').trim().toUpperCase(), branchKey(_panelProfile?.plaza), panelCanOpenModule('requests')]);
+  }
+
+  async function vpAvailabilityBoundedRead(reader, active) {
+    active();
+    if (_vpAvailabilityReads >= 6) await new Promise(resolve => _vpAvailabilityWaiters.push(resolve));
+    else _vpAvailabilityReads++;
+    try { active(); const value = await reader(); active(); return value; }
+    finally { const next = _vpAvailabilityWaiters.shift(); if (next) next(); else _vpAvailabilityReads--; }
+  }
+
+  function vpAvailabilityRootAllowed(path) {
+    return !!auth.currentUser?.uid && panelCanOpenModule('requests')
+      && /^(vacation_requests|permission_requests|cleon_solicitudes\/vacaciones)$/.test(path)
+      && (path !== 'cleon_solicitudes/vacaciones' || vpIsAlfredo() || vpEsSoporte());
+  }
+
+  async function vpAvailabilityKeys(path, active, signal) {
+    if (!vpAvailabilityRootAllowed(path)) throw new Error('Ruta de disponibilidad no permitida.');
+    return vpAvailabilityBoundedRead(async () => {
+      const operator = auth.currentUser;
+      let token = '';
+      try {
+        token = await operator.getIdToken(); active();
+        const base = ref(database).toString().replace(/\/$/, '');
+        if (!/^https:\/\//.test(base)) throw new Error('Base RTDB inválida.');
+        const route = path.split('/').map(encodeURIComponent).join('/');
+        // Sólo autenticación + shallow: sin filtros, rangos, límites ni token en logs.
+        const response = await fetch(`${base}/${route}.json?shallow=true&auth=${encodeURIComponent(token)}`, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', signal });
+        active();
+        if (!response.ok) throw new Error('No se pudieron verificar todas las claves autorizadas.');
+        const value = await response.json(); active();
+        if (value === null) return [];
+        if (!value || typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([key, item]) => !key || /[.#$\[\]\/\x00-\x1f\x7f]/.test(key) || item !== true)) throw new Error('Claves de disponibilidad inválidas.');
+        return Object.keys(value);
+      } finally { token = ''; }
+    }, active);
+  }
+
+  async function vpAvailabilityScalar(root, id, field, active) {
+    const fields = /^(fecha_(inicio|fin|regreso)(_aprobada)?|hora_(salida|regreso)(_aprobada)?|dia_completo(_aprobado)?|estado|cancelado|devolucion_desde|confirmada_empleado|approval_stage|visto_bueno_cleon|tipo_respuesta|propuesta_por|respondida|respondida_lgallegos|aprobado_lgallegos|alfredo_estado|alfredo_fecha_inicio_propuesta|aceptada_propuesta_cleon|nombre_solicitante|nombre|user_email|correo|rol|plaza)$/;
+    if (!vpAvailabilityRootAllowed(root) || typeof id !== 'string' || !id || /[.#$\[\]\/\x00-\x1f\x7f]/.test(id) || !fields.test(field)) throw new Error('Campo de disponibilidad no permitido.');
+    return vpAvailabilityBoundedRead(async () => {
+      const snapshot = await get(ref(database, `${root}/${id}/${field}`));
+      const value = snapshot.val();
+      if (value !== null && !['string', 'boolean', 'number'].includes(typeof value)) throw new Error('Campo de disponibilidad no escalar.');
+      return value;
+    }, active);
+  }
+
+  async function vpAvailabilityProjection(root, id, tipo, today, active) {
+    const sol = { id, _tipo: tipo };
+    const read = async field => { sol[field] = await vpAvailabilityScalar(root, id, field, active); return sol[field]; };
+    const pair = async (approved, original) => {
+      const value = await read(approved);
+      if (value === null || value === undefined || value === '') await read(original);
+      return vpTemporalCampo(sol, approved, original);
+    };
+    // Regreso aprobado primero: no descargar aprobación/identidad de históricos.
+    const returnDate = vpTemporalFecha(await pair(tipo === 'permisos' ? 'fecha_regreso_aprobada' : 'fecha_fin_aprobada', tipo === 'permisos' ? 'fecha_regreso' : 'fecha_fin'));
+    if (returnDate && returnDate < today) return null;
+    await Promise.all(['estado', 'cancelado', 'devolucion_desde'].map(read));
+    if (sol.cancelado || sol.devolucion_desde || ['cancelado', 'cancelada', 'rechazada_alfredo'].includes(String(sol.estado || '').trim().toLowerCase())) return null;
+    if (tipo === 'vac_rh') {
+      if (!vpAvailabilityFinal(sol)) return null;
+    } else if (tipo === 'vacaciones') {
+      if (await read('confirmada_empleado') !== true) return null;
+      await read('approval_stage');
+      if (sol.approval_stage !== 'completado') {
+        await Promise.all(['visto_bueno_cleon', 'tipo_respuesta'].map(read));
+        if (sol.visto_bueno_cleon !== true && sol.tipo_respuesta !== 'aceptada') {
+          if (sol.approval_stage && sol.approval_stage !== 'cleon') return null;
+          await read('propuesta_por');
+          if (sol.approval_stage === 'cleon') await read('respondida');
+        }
+      }
+      if (!vpAvailabilityFinal(sol)) return null;
+    } else {
+      await pair('correo', 'user_email');
+      if (vpIsCleonRequest(sol)) {
+        if (!vpIsAlfredo() && !vpEsSoporte()) return null;
+        await read('alfredo_estado');
+        if (sol.alfredo_estado !== 'aprobada_alfredo') return null;
+        if (await read('alfredo_fecha_inicio_propuesta')) await read('aceptada_propuesta_cleon');
+      } else {
+        await read('respondida_lgallegos');
+        if (sol.respondida_lgallegos) {
+          await read('aprobado_lgallegos');
+          if (!sol.aprobado_lgallegos) await read('confirmada_empleado');
+        }
+        await Promise.all(['approval_stage', 'visto_bueno_cleon'].map(read));
+      }
+      if (!vpAvailabilityFinal(sol)) return null;
+    }
+    if (tipo !== 'permisos') await pair('correo', 'user_email');
+    if (!vpAvailabilityAuthorized(sol)) return null;
+    await pair('fecha_inicio_aprobada', 'fecha_inicio');
+    if (tipo === 'permisos') {
+      await read('dia_completo_aprobado');
+      if (typeof sol.dia_completo_aprobado !== 'boolean') await read('dia_completo');
+      const fullDay = typeof sol.dia_completo_aprobado === 'boolean' ? sol.dia_completo_aprobado : !!sol.dia_completo;
+      if (!fullDay) await pair('hora_salida_aprobada', 'hora_salida');
+      await pair('hora_regreso_aprobada', 'hora_regreso');
+    }
+    await pair(tipo === 'permisos' ? 'nombre' : 'nombre_solicitante', tipo === 'permisos' ? 'nombre_solicitante' : 'nombre');
+    await Promise.all(['rol', 'plaza'].map(read));
+    return vpAvailabilityAuthorized(sol) ? sol : null;
+  }
+
+  function vpAvailabilityCancelLoad() {
+    _vpAvailabilityLoadGeneration++;
+    _vpAvailabilityInFlight?.controller.abort();
+    _vpAvailabilityInFlight = null;
+    vpAvailabilityStop();
+  }
+
+  window.vpAvailabilityLoad = async function(force = false) {
+    if (!vpAvailabilityVisible()) return;
+    const context = vpAvailabilityContext(), user = auth.currentUser;
+    if (_vpAvailabilityInFlight?.context === context) return _vpAvailabilityInFlight.promise;
+    if (!force && _vpAvailabilityBoardSnapshot?.context === context && Date.now() - _vpAvailabilityBoardSnapshot.loadedAt.getTime() < VP_AVAILABILITY_TTL) {
+      vpAvailabilityRender(); return;
+    }
+    vpAvailabilityCancelLoad();
+    const generation = _vpAvailabilityLoadGeneration;
+    const controller = new AbortController();
+    const job = { context, controller, promise: null };
+    _vpAvailabilityInFlight = job;
+    _vpAvailabilityLoadError = '';
+    _vpAvailabilityBoardSnapshot = null;
+    vpAvailabilityRender();
+    const active = () => {
+      if (controller.signal.aborted || generation !== _vpAvailabilityLoadGeneration || auth.currentUser !== user || context !== vpAvailabilityContext() || !vpAvailabilityVisible()) throw new Error('Consulta de disponibilidad cancelada.');
+    };
+    job.promise = (async () => {
+      try {
+        const roots = [['vacation_requests', 'vacaciones'], ['permission_requests', 'permisos']];
+        if (vpIsAlfredo() || vpEsSoporte()) roots.push(['cleon_solicitudes/vacaciones', 'vac_rh']);
+        const records = [], today = new Date(); today.setHours(0, 0, 0, 0);
+        for (const [root, tipo] of roots) {
+          const ids = await vpAvailabilityKeys(root, active, controller.signal);
+          // Seis trabajadores; sin límite de registros ni promesas masivas por todo el historial.
+          let cursor = 0;
+          await Promise.all(Array.from({ length: Math.min(6, ids.length) }, async () => {
+            while (cursor < ids.length) {
+              active(); const id = ids[cursor++];
+              const sol = await vpAvailabilityProjection(root, id, tipo, today, active);
+              if (sol) records.push(sol);
+            }
+          }));
+        }
+        active();
+        _vpAvailabilityBoardSnapshot = { user, context, records, types: roots.map(([, tipo]) => tipo), loadedAt: new Date() };
+      } catch (error) {
+        if (generation === _vpAvailabilityLoadGeneration && auth.currentUser === user && context === vpAvailabilityContext() && vpAvailabilityVisible()) {
+          controller.abort();
+          _vpAvailabilityLoadError = 'Disponibilidad no verificada: no se pudo completar la cobertura autorizada. Revisa permisos/conexión y pulsa Actualizar disponibilidad. No se muestran conteos parciales.';
+        }
+      } finally {
+        if (_vpAvailabilityInFlight === job) {
+          _vpAvailabilityInFlight = null;
+          if (vpAvailabilityVisible() && auth.currentUser === user && context === vpAvailabilityContext()) vpAvailabilityRender();
+        }
+      }
+    })();
+    return job.promise;
+  };
+
+  window.vpAvailabilityInvalidate = function() {
+    vpAvailabilityCancelLoad();
+    _vpAvailabilityBoardSnapshot = null;
+    _vpAvailabilityLoadError = '';
+    if (vpAvailabilityVisible()) return window.vpAvailabilityLoad(true);
+  };
+
+  window.vpAvailabilityCommitRecord = function(tipo, id, confirmed = null) {
+    const roots = { vacaciones: 'vacation_requests', permisos: 'permission_requests', vac_rh: 'cleon_solicitudes/vacaciones' };
+    if (!roots[tipo] || !vpAvailabilityRootAllowed(roots[tipo]) || typeof id !== 'string' || !id || /[.#$\[\]\/\x00-\x1f\x7f]/.test(id)) return;
+    const snapshot = _vpAvailabilityBoardSnapshot;
+    if (!snapshot || snapshot.user !== auth.currentUser || snapshot.context !== vpAvailabilityContext()) return window.vpAvailabilityInvalidate();
+    const fields = /^(fecha_(inicio|fin|regreso)(_aprobada)?|hora_(salida|regreso)(_aprobada)?|dia_completo(_aprobado)?|estado|cancelado|devolucion_desde|confirmada_empleado|approval_stage|visto_bueno_cleon|tipo_respuesta|propuesta_por|respondida|respondida_lgallegos|aprobado_lgallegos|alfredo_estado|alfredo_fecha_inicio_propuesta|aceptada_propuesta_cleon|nombre_solicitante|nombre|user_email|correo|rol|plaza)$/;
+    const record = { id, _tipo: tipo };
+    if (confirmed && typeof confirmed === 'object') Object.entries(confirmed).forEach(([field, value]) => {
+      if (fields.test(field) && value !== null && ['string', 'number', 'boolean'].includes(typeof value)) record[field] = value;
+    });
+    const records = snapshot.records.filter(sol => sol._tipo !== tipo || sol.id !== id);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const returnDate = vpTemporalVentana(record, tipo).returnDate;
+    if (confirmed && vpAvailabilityAuthorized(record) && vpAvailabilityFinal(record, tipo) && (!returnDate || returnDate >= today)) records.push(record);
+    snapshot.records = records;
+    // La cobertura completa y su TTL se mantienen: sólo cambia la fila canónica
+    // que la acción ya confirmó, no se renueva la antigüedad del resto.
+    vpAvailabilityRender();
+  };
 
   function vpTemporalFecha(value) {
     if (typeof value !== 'string') return null;
@@ -8954,17 +9306,17 @@
 
   function vpAvailabilitySchedule(board, now) {
     vpAvailabilityStop();
-    if (!vpAvailabilityVisible() || !_vpAvailabilitySnapshot) return;
+    if (!vpAvailabilityVisible() || !_vpAvailabilityBoardSnapshot) return;
     const times = [board.tomorrow.getTime()];
     for (const item of [...board.absent, ...board.returningToday, ...board.future]) {
       for (const date of [item.dates.start, item.dates.end]) if (date > now) times.push(date.getTime());
     }
-    const generation = _vpAvailabilityGeneration;
+    const generation = _vpAvailabilityLoadGeneration;
     const user = auth.currentUser;
     const timer = setTimeout(() => {
       if (_vpAvailabilityTimer !== timer) return;
       _vpAvailabilityTimer = null;
-      if (generation === _vpAvailabilityGeneration && auth.currentUser === user && vpAvailabilityVisible()) window.vpAvailabilityRefresh();
+      if (generation === _vpAvailabilityLoadGeneration && auth.currentUser === user && vpAvailabilityVisible()) window.vpAvailabilityRefresh();
     }, Math.max(1, Math.min(...times) - now.getTime()));
     _vpAvailabilityTimer = timer;
   }
@@ -8978,21 +9330,25 @@
     const cards = document.getElementById('vpAvailabilityCards');
     const coverage = document.getElementById('vpAvailabilityCoverage');
     if (!cards || !coverage) return;
-    const snapshot = _vpAvailabilitySnapshot;
-    if (!snapshot || snapshot.user !== auth.currentUser || !panelCanOpenModule('requests')) {
+    const snapshot = _vpAvailabilityBoardSnapshot;
+    if (!snapshot || snapshot.user !== auth.currentUser || snapshot.context !== vpAvailabilityContext() || !panelCanOpenModule('requests')) {
       cards.innerHTML = '';
-      coverage.textContent = 'Sin cobertura cargada para esta sesión. Presiona Buscar; no se descargan datos automáticamente.';
+      coverage.textContent = _vpAvailabilityLoadError || (_vpAvailabilityInFlight ? 'Cargando disponibilidad: sólo claves y campos escalares necesarios; la tabla no se descarga.' : 'Sin cobertura verificada para esta sesión. Abre el módulo o pulsa Actualizar disponibilidad.');
       return;
     }
     const board = vpAvailabilityBoard(snapshot.records, now);
     const types = snapshot.types.map(t => t === 'vacaciones' ? 'vacaciones' : t === 'permisos' ? 'permisos' : 'vacaciones RH').join(', ');
-    coverage.textContent = `Última carga por Buscar: ${snapshot.loadedAt.toLocaleString('es-MX')}. Cobertura: ${types}, sólo solicitudes autorizadas de esa carga, antes del rango de creación. Plaza, rol, nombre y tipo vigentes aplicados. Hora local del navegador: ${now.toLocaleString('es-MX')}. El reloj recalcula sin Firebase; cambios de aprobación requieren Buscar.${board.incomplete.length ? ` ${board.incomplete.length} solicitud(es) final(es) sin fecha/hora válida: no se clasifican como ausencia ni salida futura.` : ''}`;
+    coverage.textContent = `Última carga mínima: ${snapshot.loadedAt.toLocaleString('es-MX')}. Cobertura: ${types}, sólo solicitudes autorizadas con aprobación final y regreso hoy o posterior, antes del rango de creación. Plaza, rol, nombre y tipo vigentes aplicados. Hora local del navegador: ${now.toLocaleString('es-MX')}. El reloj recalcula sin Firebase; caché de 5 minutos al reabrir. Cambios externos de aprobación requieren Actualizar disponibilidad.${board.incomplete.length ? ` ${board.incomplete.length} solicitud(es) final(es) sin fecha/hora válida: no se clasifican como ausencia ni salida futura.` : ''}`;
     const groups = [['Ausentes ahora', board.absent, '#9A3412'], ['Regreso programado HOY', board.returningToday, '#075E67'], ['Próximas salidas aprobadas', board.future, '#6B21A8']];
     cards.innerHTML = groups.map(([title, items, color]) => `<article style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px;min-width:0"><h3 style="font-size:14px;margin:0 0 10px;color:${color}">${title} (${items.length})</h3>${items.length ? `<ul style="list-style:none;margin:0;padding:0;max-height:330px;overflow:auto">${items.map(({ sol, dates }) => {
       const type = sol._tipo === 'permisos' ? 'Permiso' : sol._tipo === 'vac_rh' ? 'Vacaciones RH' : 'Vacaciones';
       const start = vpAvailabilityDateLabel(dates.startDate, dates.departureTime);
       const end = vpAvailabilityDateLabel(dates.returnDate, dates.returnTime);
-      return `<li style="padding:9px 0;border-bottom:1px solid #E2E8F0;overflow-wrap:anywhere"><strong>${vpAvailabilityEscape(sol.nombre_solicitante || sol.nombre || sol.user_email || sol.correo || 'Sin nombre')}</strong><div style="font-size:11px;color:#64748B">${vpAvailabilityEscape(sol.rol || 'Sin rol')} · ${vpAvailabilityEscape(sol.plaza || 'Sin plaza')} · ${type}</div><div style="font-size:12px;margin-top:4px">Salida: ${vpAvailabilityEscape(start)}<br>Regreso programado: ${vpAvailabilityEscape(end)}</div></li>`;
+      const plazaColor = typeof BRANCH_MAP_COLORS !== 'undefined' ? (BRANCH_MAP_COLORS[branchKey(sol.plaza)] || '#475569') : '#475569';
+      const roles = { ADMINISTRATIVO: '#475569', GERENTE: '#7C3AED', 'LIDER A': '#2563EB', 'LIDER B': '#0369A1', 'LIDER C': '#0F766E', CANJES: '#B45309', GESTOR: '#BE123C', 'GESTOR DE COBRANZA': '#BE123C' };
+      const roleColor = roles[String(sol.rol || '').trim().toUpperCase()] || '#475569';
+      const typeColor = sol._tipo === 'permisos' ? '#1D4ED8' : '#7B1FA2';
+      return `<li><strong>${vpAvailabilityEscape(sol.nombre_solicitante || sol.nombre || sol.user_email || sol.correo || 'Sin nombre')}</strong><div class="vp-av-chips"><span class="vp-av-chip" style="background:${plazaColor}">${vpAvailabilityEscape(sol.plaza || 'Sin plaza')}</span><span class="vp-av-chip" style="background:${roleColor}">${vpAvailabilityEscape(sol.rol || 'Sin rol')}</span><span class="vp-av-chip" style="background:${typeColor}">${type}</span></div><div class="vp-av-dates"><span class="vp-av-departure">Salida: ${vpAvailabilityEscape(start)}</span><br><span class="vp-av-return">Regreso programado: ${vpAvailabilityEscape(end)}</span></div></li>`;
     }).join('')}</ul>` : '<p style="font-size:12px;color:#64748B;margin:0">Sin solicitudes en la cobertura cargada y filtros actuales.</p>'}</article>`).join('');
     vpAvailabilitySchedule(board, now);
   }
@@ -9001,18 +9357,21 @@
   onAuthStateChanged(auth, () => {
     vpAvailabilityStop();
     _vpAvailabilityGeneration++;
+    vpAvailabilityCancelLoad();
+    _vpAvailabilityBoardSnapshot = null;
+    _vpAvailabilityLoadError = '';
     _vpAvailabilitySnapshot = null;
     _vpData = [];
     document.getElementById('vpAvailabilityCards').innerHTML = '';
-    document.getElementById('vpAvailabilityCoverage').textContent = 'Sin cobertura cargada para esta sesión. Presiona Buscar.';
+    document.getElementById('vpAvailabilityCoverage').textContent = 'Sin cobertura cargada para esta sesión. Abre el módulo para consultar disponibilidad.';
     document.getElementById('vacPermTableContainer').innerHTML = '';
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) vpAvailabilityStop();
+    if (document.hidden) vpAvailabilityCancelLoad();
     else if (vpAvailabilityVisible()) window.vpAvailabilityRefresh();
   });
   const vpAvailabilitySectionObserver = new MutationObserver(() => {
-    if (!vpAvailabilityVisible()) vpAvailabilityStop();
+    if (!vpAvailabilityVisible()) vpAvailabilityCancelLoad();
   });
   vpAvailabilitySectionObserver.observe(document.getElementById('vacPermSection'), { attributes: true, attributeFilter: ['style', 'hidden'] });
   ['vpTipo', 'vpRol', 'vpPlaza', 'vpUsuario'].forEach(id => {
@@ -9065,11 +9424,12 @@
     const fmt = d => d.toISOString().slice(0,10);
     document.getElementById('vpFechaIni').value = fmt(lunes);
     document.getElementById('vpFechaFin').value = fmt(hoy);
-    window.vpAvailabilityRefresh();
+    vpAvailabilityRender();
+    return window.vpAvailabilityLoad();
   };
 
   window.volverDesdeVacPerm = function() {
-    vpAvailabilityStop();
+    vpAvailabilityCancelLoad();
     document.getElementById('vacPermSection').style.display = 'none';
     window.showPanelHome();
     if (_vacUnsub) { _vacUnsub(); _vacUnsub = null; }
@@ -9078,12 +9438,9 @@
 
   window.buscarVacPerm = async function() {
     if (!auth.currentUser?.uid || !panelCanOpenModule('requests')) { vpAvailabilityStop(); return; }
-    vpAvailabilityStop();
     const sessionUser = auth.currentUser;
     const generation = ++_vpAvailabilityGeneration;
     _vpAvailabilitySnapshot = null;
-    document.getElementById('vpAvailabilityCards').innerHTML = '';
-    document.getElementById('vpAvailabilityCoverage').textContent = 'Cargando desde la búsqueda manual existente. El resumen no hace lecturas adicionales.';
     const container = document.getElementById('vacPermTableContainer');
     container.innerHTML = '<div style="text-align:center;padding:40px;color:#7A8C7A">⏳ Buscando...</div>';
     const tipo    = document.getElementById('vpTipo').value;
@@ -9212,7 +9569,9 @@
     }
     const container = document.getElementById('vacPermTableContainer');
     if (_vpData.length === 0) {
-      container.innerHTML = '<div style="text-align:center;padding:48px;color:#7A8C7A">💭 No se encontraron registros con los filtros seleccionados.</div>';
+      container.innerHTML = _vpAvailabilitySnapshot
+        ? '<div style="text-align:center;padding:48px;color:#7A8C7A">No se encontraron registros con los filtros seleccionados.</div>'
+        : '<div style="text-align:center;padding:36px;color:#64748B">La disponibilidad se carga automáticamente arriba. La tabla detallada aún no se ha consultado; usa <strong>Buscar</strong> sólo si necesitas revisar solicitudes.</div>';
       return;
     }
     let html = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -9339,6 +9698,7 @@
       if (!confirm('¿Eliminar la vacación de ' + (sol ? sol.nombre_solicitante||'este empleado' : 'este empleado') + '? Esta acción no se puede deshacer.')) return;
       try {
         await remove(ref(database, 'vacation_requests/' + id));
+        window.vpAvailabilityCommitRecord('vacaciones', id);
         const ns = await get(ref(database, 'vacation_notifications'));
         if (ns.exists()) {
           const d = [];
@@ -9361,6 +9721,7 @@
       if (!confirm('¿Eliminar la solicitud de vacaciones de RH de ' + (sol ? sol.nombre_solicitante||'este empleado' : 'este empleado') + '? Esta acción no se puede deshacer.')) return;
       try {
         await remove(ref(database, 'cleon_solicitudes/vacaciones/' + id));
+        window.vpAvailabilityCommitRecord('vac_rh', id);
         alert('✅ Solicitud de vacaciones RH eliminada.');
         window.buscarVacPerm();
       } catch(e) { alert('❌ Error: ' + e.message); }
@@ -9371,6 +9732,7 @@
       if (!confirm('¿Eliminar el permiso de ' + (sol ? sol.nombre_solicitante||sol.nombre||'este empleado' : 'este empleado') + '? Esta acción no se puede deshacer.')) return;
       try {
         await remove(ref(database, 'permission_requests/' + id));
+        window.vpAvailabilityCommitRecord('permisos', id);
         const ns = await get(ref(database, 'permission_notifications'));
         if (ns.exists()) {
           const d = [];
@@ -9751,6 +10113,7 @@
       const timestamp=Date.now();
       await panelNotices.save({kind:'cleon-vacation.'+(esAprobada?'approved':'rejected'),sourceId:sol.id,before,
         patch:{estado:nuevoEstado,nota_alfredo:nota||null,timestamp_respuesta:timestamp,respondido_por:correoResponsable,respondido_por_nombre:responsableRespuesta},createdAt:timestamp});
+      window.vpAvailabilityCommitRecord('vac_rh', sol.id, { ...before, estado: nuevoEstado });
       document.getElementById('alfredoModal').style.display = 'none';
       alert(esAprobada ? `✅ Solicitud aprobada por ${responsableRespuesta}. El aviso quedó registrado para su entrega.` : `❌ Solicitud rechazada por ${responsableRespuesta}. El aviso quedó registrado para su entrega.`);
       window.loadAlfredoSolicitudes();

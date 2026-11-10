@@ -9,7 +9,7 @@ const vm = require('node:vm');
 const html = readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const plain = value => JSON.parse(JSON.stringify(value));
 function fn(name) {
-  const match = html.match(new RegExp(`^  function ${name}\\([^\\n]*\\) \\{\\n[\\s\\S]*?^  \\}`, 'm'));
+  const match = html.match(new RegExp(`^  (?:async )?function ${name}\\([^\\n]*\\) \\{\\n[\\s\\S]*?^  \\}`, 'm'));
   assert.ok(match, `Helper real ${name}`); return match[0];
 }
 function action(name) {
@@ -20,7 +20,7 @@ function constant(name) {
   const match = html.match(new RegExp(`^  const ${name} = \\{\\n[\\s\\S]*?^  \\};`, 'm'));
   assert.ok(match, `Config real ${name}`); return match[0];
 }
-const helperNames = [...html.matchAll(/^  function (vpAvailability\w+|vpTemporal\w+)\(/gm)].map(m => m[1]);
+const helperNames = [...html.matchAll(/^  (?:async )?function (vpAvailability\w+|vpTemporal\w+)\(/gm)].map(m => m[1]);
 const legacyNames = ['vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
 function snapshot(value, key = '') {
   return { key, val: () => value, exists: () => value != null && Object.keys(value).length > 0, forEach: cb => Object.entries(value || {}).forEach(([id, row]) => cb(snapshot(row, id))) };
@@ -37,7 +37,7 @@ function harness({ email = 'admin@example.test', role = 'ADMINISTRATIVO', plaza 
   const auth = { currentUser: { uid: 'actor', email } };
   const document = { getElementById: node, hidden: false, addEventListener: (name, callback) => { documentListeners[name] = callback; } };
   const context = vm.createContext({
-    window: {}, document, auth, Date: ClockDate, console, database: {},
+    window: {}, document, auth, Date: ClockDate, console, AbortController, database: {},
     onAuthStateChanged: (_, callback) => authListeners.push(callback),
     MutationObserver: class { constructor(callback) { observers.push(callback); } observe() {} },
     panelCanOpenModule: () => allow,
@@ -53,17 +53,17 @@ function harness({ email = 'admin@example.test', role = 'ADMINISTRATIVO', plaza 
     set: () => assert.fail('No set'), remove: () => assert.fail('No remove'), fetch: () => assert.fail('No HTTP'), onValue: () => assert.fail('No listener RTDB'),
   });
   vm.runInContext([
-    'let _vpData = [], _vpAvailabilitySnapshot = null, _vpAvailabilityTimer = null, _vpAvailabilityGeneration = 0;',
+    html.slice(html.indexOf('  let _vpData = [];'), html.indexOf('  function vpAvailabilityContext()')),
     `let _panelProfile = ${JSON.stringify({ rol: role, plaza })};`,
     "const VP_SOPORTE_EMAIL='soporte@fredinero.com', VP_CLEON_EMAIL='cleon@fredinero.com';",
     ...['VAC_ESTADO_CFG', 'PERM_ESTADO_CFG'].map(constant),
     ...[...helperNames, ...legacyNames].map(fn),
-    ...['vpAvailabilityRefresh', 'buscarVacPerm', 'renderVacPerm'].map(action),
+    ...['vpAvailabilityRefresh', 'vpAvailabilityLoad', 'vpAvailabilityInvalidate', 'buscarVacPerm', 'renderVacPerm'].map(action),
     html.slice(html.indexOf('  // Eventos locales: no listener RTDB'), html.indexOf('  function vpIsAlfredo()')),
     `globalThis.api = { ${helperNames.concat(legacyNames).join(', ')},
-      cache: () => _vpAvailabilitySnapshot, data: () => _vpData,
-      seed: records => { _vpAvailabilitySnapshot = { records, user: auth.currentUser, types: ['vacaciones', 'permisos'], loadedAt: new Date() }; },
-      reset: () => { vpAvailabilityStop(); _vpAvailabilityGeneration++; _vpAvailabilitySnapshot = null; _vpData = []; }
+      cache: () => _vpAvailabilitySnapshot, boardCache: () => _vpAvailabilityBoardSnapshot, data: () => _vpData,
+      seed: records => { _vpAvailabilitySnapshot = { records, user: auth.currentUser, types: ['vacaciones', 'permisos'], loadedAt: new Date() }; _vpAvailabilityBoardSnapshot = { ..._vpAvailabilitySnapshot, context: vpAvailabilityContext() }; },
+      reset: () => { vpAvailabilityStop(); _vpAvailabilityGeneration++; _vpAvailabilitySnapshot = null; _vpAvailabilityBoardSnapshot = null; vpAvailabilityCancelLoad(); _vpData = []; }
     };`,
   ].join('\n\n'), context);
   return { api: context.api, window: context.window, node, nodes, auth, document, context, reads, writes, timers, authChange: () => authListeners.forEach(cb => cb(auth.currentUser)), visibilityChange: () => documentListeners.visibilitychange(), sectionChange: () => observers.forEach(cb => cb()), at: date => { clock = date.getTime(); }, tick: date => { clock = date.getTime(); const timer = [...timers.values()][0]; timers.clear(); assert.ok(timer, 'Timer programado'); timer.callback(); } };
@@ -198,14 +198,14 @@ test('Cleon final sólo Alfredo/Soporte; propuesta pendiente no figura hasta ace
   assert.equal(h.api.vpAvailabilityFinal({ ...sol, aceptada_propuesta_cleon: true }), true);
 });
 
-test('búsqueda conserva universo autorizado anterior al rango y estado usando EXACTAMENTE lecturas existentes', async () => {
+test('búsqueda conserva universo autorizado de tabla con lecturas existentes sin poblar tablero independiente', async () => {
   const h = harness({ store: { vacation_requests: { old: vacation('old') }, permission_requests: { p: permission('p') } } });
   h.node('vpFechaIni').value = '2026-11-10'; h.node('vpFechaFin').value = '2026-11-10';
   await h.window.buscarVacPerm();
   assert.deepEqual(h.reads, ['vacation_requests', 'permission_requests']);
   assert.equal(h.api.cache().records.length, 2); assert.equal(h.api.data().length, 0);
-  assert.match(h.node('vpAvailabilityCards').innerHTML, /Juana García/); assert.match(h.node('vpAvailabilityCards').innerHTML, /Pedro López/);
-  assert.match(h.node('vpAvailabilityCoverage').textContent, /antes del rango de creación/);
+  assert.equal(h.node('vpAvailabilityCards').innerHTML, ''); assert.equal(h.api.boardCache(), null);
+  assert.match(h.node('vpAvailabilityCoverage').textContent, /Sin cobertura verificada/);
   assert.equal(h.writes.length, 0);
 });
 
@@ -213,13 +213,13 @@ test('cobertura parcial por tipo es explícita y no agrega raíces ni lecturas p
   const h = harness({ store: { vacation_requests: { v: vacation() } } }); h.node('vpTipo').value = 'vacaciones';
   await h.window.buscarVacPerm(); assert.deepEqual(h.reads, ['vacation_requests']);
   assert.deepEqual(plain(h.api.cache().types), ['vacaciones']);
-  assert.match(h.node('vpAvailabilityCoverage').textContent, /Cobertura: vacaciones,/);
+  assert.match(h.node('vpAvailabilityCoverage').textContent, /Sin cobertura verificada/);
   h.node('vpTipo').value = ''; h.window.vpAvailabilityRefresh(); assert.equal(h.reads.length, 1);
 });
 
 test('render recalcula estadoKEY y filtro sin Firebase; timer único dispara exactamente en regreso', async () => {
   const h = harness({ store: { permission_requests: { p: permission() } } }); h.node('vpTipo').value = 'permisos';
-  await h.window.buscarVacPerm(); assert.equal(h.api.data()[0]._estadoKey, 'activo');
+  await h.window.buscarVacPerm(); h.api.seed(h.api.cache().records); h.window.renderVacPerm(); assert.equal(h.api.data()[0]._estadoKey, 'activo');
   assert.equal(h.timers.size, 1); assert.equal([...h.timers.values()][0].delay, 2 * 60 * 60 * 1000);
   const reads = h.reads.length; h.tick(new Date(2026, 10, 10, 14));
   assert.equal(h.api.data()[0]._estadoKey, 'gozados'); assert.equal(h.reads.length, reads); assert.equal(h.timers.size, 1);
@@ -277,7 +277,7 @@ test('búsqueda en vuelo no repone solicitudes de una sesión anterior después 
 });
 
 test('helpers y timer no escriben, leen Firebase, emiten avisos ni utilizan intervalos; hooks cancelan sesión/visibilidad/reemplazo', () => {
-  for (const name of helperNames) assert.doesNotMatch(fn(name), /(?<![.\w])(?:get|ref|update|set|remove|push|fetch|onValue|setInterval)\s*\(|panelNotices|panelNoticeCanonical/, name);
+  for (const name of helperNames.filter(name => !['vpAvailabilityBoundedRead', 'vpAvailabilityKeys', 'vpAvailabilityScalar', 'vpAvailabilityProjection'].includes(name))) assert.doesNotMatch(fn(name), /(?<![.\w])(?:get|ref|update|set|remove|push|fetch|onValue|setInterval)\s*\(|panelNotices|panelNoticeCanonical/, name);
   assert.doesNotMatch(action('vpAvailabilityRefresh'), /buscarVacPerm|\bget\(/);
   const hooks = html.slice(html.indexOf('  // Eventos locales: no listener RTDB'), html.indexOf('  function vpIsAlfredo()'));
   assert.match(hooks, /onAuthStateChanged\(auth/); assert.match(hooks, /visibilitychange/); assert.match(hooks, /MutationObserver/); assert.match(hooks, /vpAvailabilityStop\(\)/);
