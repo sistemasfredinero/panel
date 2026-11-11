@@ -21,7 +21,7 @@ function constant(name) {
   assert.ok(match, `Config real ${name}`); return match[0];
 }
 const helperNames = [...html.matchAll(/^  (?:async )?function (vpAvailability\w+|vpTemporal\w+)\(/gm)].map(m => m[1]);
-const legacyNames = ['vpRequestFirebasePath', 'vpRequestFirebasePathHtml', 'supportWorkerIsAuthorized', 'privacyEscape', 'vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
+const legacyNames = ['vpRequestFirebasePath', 'vpRequestFirebasePathHtml', 'supportWorkerIsAuthorized', 'privacyEscape', 'vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpEsCleon', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
 function snapshot(value, key = '') {
   return { key, val: () => value, exists: () => value != null && Object.keys(value).length > 0, forEach: cb => Object.entries(value || {}).forEach(([id, row]) => cb(snapshot(row, id))) };
 }

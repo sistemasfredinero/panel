@@ -8695,7 +8695,7 @@
   function vpAvailabilityRootAllowed(path) {
     return !!auth.currentUser?.uid && panelCanOpenModule('requests')
       && /^(vacation_requests|permission_requests|cleon_solicitudes\/vacaciones)$/.test(path)
-      && (path !== 'cleon_solicitudes/vacaciones' || vpIsAlfredo() || vpEsSoporte());
+      && (path !== 'cleon_solicitudes/vacaciones' || vpIsAlfredo() || vpEsSoporte() || vpEsCleon());
   }
 
   async function vpAvailabilityKeys(path, active, signal) {
@@ -8761,7 +8761,7 @@
     } else {
       await pair('correo', 'user_email');
       if (vpIsCleonRequest(sol)) {
-        if (!vpIsAlfredo() && !vpEsSoporte()) return null;
+        if (!vpIsAlfredo() && !vpEsSoporte() && !vpEsCleon()) return null;
         await read('alfredo_estado');
         if (sol.alfredo_estado !== 'aprobada_alfredo') return null;
         if (await read('alfredo_fecha_inicio_propuesta')) await read('aceptada_propuesta_cleon');
@@ -8815,7 +8815,7 @@
     job.promise = (async () => {
       try {
         const roots = [['vacation_requests', 'vacaciones'], ['permission_requests', 'permisos']];
-        if (vpIsAlfredo() || vpEsSoporte()) roots.push(['cleon_solicitudes/vacaciones', 'vac_rh']);
+        if (vpIsAlfredo() || vpEsSoporte() || vpEsCleon()) roots.push(['cleon_solicitudes/vacaciones', 'vac_rh']);
         const records = [], today = new Date(); today.setHours(0, 0, 0, 0);
         for (const [root, tipo] of roots) {
           const ids = await vpAvailabilityKeys(root, active, controller.signal);
@@ -8969,7 +8969,7 @@
 
   function vpAvailabilityAuthorized(sol) {
     if (!auth.currentUser?.uid || !panelCanOpenModule('requests')) return false;
-    if (vpIsCleonRequest(sol) || sol._tipo === 'vac_rh') return vpIsAlfredo() || vpEsSoporte();
+    if (vpIsCleonRequest(sol) || sol._tipo === 'vac_rh') return vpIsAlfredo() || vpEsSoporte() || (vpEsCleon() && (vpIsCleonRequest(sol) || sol._tipo === 'vac_rh' && !(sol.correo || sol.user_email)));
     // Defensa adicional si en el futuro se habilita requests a roles de plaza.
     const role = String(_panelProfile?.rol || _panelProfile?.role || '').trim().toUpperCase();
     if (['GERENTE', 'LIDER A', 'LIDER B', 'LIDER C', 'CANJES', 'GESTOR', 'GESTOR DE COBRANZA'].includes(role)) {
@@ -9135,10 +9135,10 @@
     document.getElementById('activitiesSection').style.display = 'none';
     document.getElementById('alfredoSection').style.display = 'none';
     document.getElementById('vacPermSection').style.display = 'block';
-    const canSeeCleon = vpIsAlfredo() || vpEsSoporte();
+    const canSeeCleon = vpIsAlfredo() || vpEsSoporte() || vpEsCleon();
     document.getElementById('vpTypeCleon').style.display = canSeeCleon ? '' : 'none';
     document.getElementById('vpCleonStatusGroup').style.display = canSeeCleon ? '' : 'none';
-    document.getElementById('vpAlfredoShortcut').style.display = canSeeCleon ? '' : 'none';
+    document.getElementById('vpAlfredoShortcut').style.display = (vpIsAlfredo() || vpEsSoporte()) ? '' : 'none';
     if (!canSeeCleon && document.getElementById('vpTipo').value === 'vac_rh') document.getElementById('vpTipo').value = '';
     setPanelHeader('requests');
     const hoy = new Date();
@@ -9176,7 +9176,7 @@
     const tsEnd   = fechaFin ? new Date(fechaFin + 'T23:59:59').getTime() : Infinity;
     const coincideUsuario = (nombre, correo) => vpCoincideUsuarioFlexible(buscar, nombre, correo);
     const coincideFecha = ts => (!fechaIni && !fechaFin) || (ts >= tsStart && ts <= tsEnd);
-    const canSeeCleon = vpIsAlfredo() || vpEsSoporte();
+    const canSeeCleon = vpIsAlfredo() || vpEsSoporte() || vpEsCleon();
     _vpData = [];
     const usagePayload = [];
     const vpAvailabilityRecords = [], vpAvailabilityTypes = [];

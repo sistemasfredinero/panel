@@ -411,6 +411,28 @@ def test_viewport(browser, width):
         check(not page.evaluate("availabilityTest.authorized('rh-private')"), 'Cuenta normal ve vacaciones privadas RH')
         assert_groups(page, INITIAL_NAMES)
 
+    def cleon_self_visibility():
+        page.evaluate("""() => {
+          availabilityTest.login('ADMINISTRATIVO', 'cleon@fredinero.com');
+          const own = [
+            permission('cleon-self-perm', 'Cleon Permiso Propio', {correo:'cleon@fredinero.com', alfredo_estado:'aprobada_alfredo'}),
+            {...vacation('cleon-self-vac', 'Cleon Vacaciones Propias'), _tipo:'vac_rh', user_email:'cleon@fredinero.com', estado:'aprobada_alfredo'}
+          ];
+          availabilityTest.seed(own, ['permisos', 'vac_rh']);window.renderVacPerm();
+        }""")
+        text = page.locator('#vacPermTableContainer tbody').inner_text()
+        check('Cleon Permiso Propio' in text and 'Cleon Vacaciones Propias' in text,
+              'Cleon no ve sus dos tipos de solicitudes en la tabla')
+        cards = page.locator('#vpAvailabilityCards').inner_text()
+        check('Cleon Permiso Propio' in cards and 'Cleon Vacaciones Propias' in cards,
+              'Cleon no se incluye en disponibilidad')
+        check(page.locator('#vacPermTableContainer [onclick*=abrirAlfredoModal]').count() == 0,
+              'La lectura propia habilitó aprobación RH')
+        check(page.locator('#vacPermTableContainer [data-request-firebase-path]').count() == 0,
+              'Cleon obtuvo rutas exclusivas de Soporte')
+        page.evaluate('availabilityTest.login();availabilityTest.seed();window.renderVacPerm();')
+        assert_groups(page, INITIAL_NAMES)
+
     def session_cleanup():
         page.evaluate('availabilityTest.logout()')
         check(page.locator('#vpAvailabilityCards').inner_html() == '', 'Logout no elimina tarjetas')
@@ -433,6 +455,7 @@ def test_viewport(browser, width):
         run('cobertura parcial explícita sin completar por Firebase', partial_coverage)
         run('antes/exactamente después del regreso y salida futura', time_boundaries)
         run('acceso management-only real y privacidad de Cleon/RH', manager_scope)
+        run('Cleon ve sus solicitudes, sin aprobarlas ni rutas de Soporte', cleon_self_visibility)
         run('logout limpia snapshot, tabla, tarjetas y timer', session_cleanup)
         run('grid responsive y ningún overflow horizontal', no_overflow)
         page.screenshot(path=screenshot, full_page=True)

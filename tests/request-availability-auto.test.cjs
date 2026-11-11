@@ -11,7 +11,7 @@ function extract(name, action = false) {
   const match = html.match(new RegExp(pattern, 'm')); assert.ok(match, name); return match[0];
 }
 const helpers = [...html.matchAll(/^  (?:async )?function (vpAvailability\w+|vpTemporal\w+)\(/gm)].map(m => m[1]);
-const dependencies = ['vpRequestFirebasePath', 'vpRequestFirebasePathHtml', 'supportWorkerIsAuthorized', 'privacyEscape', 'vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
+const dependencies = ['vpRequestFirebasePath', 'vpRequestFirebasePathHtml', 'supportWorkerIsAuthorized', 'privacyEscape', 'vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpEsCleon', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
 const vacation = (id, extra = {}) => ({ confirmada_empleado: true, approval_stage: 'completado', fecha_inicio_aprobada: '09/11/2026', fecha_fin_aprobada: '11/11/2026', user_email: `${id}@example.test`, nombre_solicitante: `Persona ${id}`, rol: 'GESTOR', plaza: 'CHIHUAHUA', ...extra });
 const permission = (id, extra = {}) => ({ estado: 'aprobado_final', visto_bueno_cleon: true, approval_stage: 'cleon', fecha_inicio: '10/11/2026', fecha_regreso: '10/11/2026', hora_salida: '10:00', hora_regreso: '14:00', dia_completo: false, correo: `${id}@example.test`, nombre: `Permiso ${id}`, rol: 'LIDER A', plaza: 'TAMPICO', ...extra });
 function harness({ store = {}, email = 'admin@example.test', role = 'ADMINISTRATIVO', allow = true, beforeRead, badKeys, denied } = {}) {
@@ -287,4 +287,38 @@ test('cancelados, devueltos y propuesta Cleon no aceptada se excluyen incluso co
   };
   const h = harness({ email: 'soporte@fredinero.com', store: { permission_requests: rows } }); await h.window.showVacPerm();
   assert.equal(h.api.board().records.length, 0); assert.match(h.node('vpAvailabilityCards').innerHTML, /Próximas salidas aprobadas \(0\)/);
+});
+
+
+test('Cleon ve permisos propios y vacaciones RH en disponibilidad automática sin exponer RH a otros usuarios', async () => {
+  const h = harness({email:'cleon@fredinero.com',store:{
+    vacation_requests:{v:vacation('v',{user_email:'cleon@fredinero.com'})},
+    permission_requests:{p:permission('p',{correo:'cleon@fredinero.com',alfredo_estado:'aprobada_alfredo'})},
+    'cleon_solicitudes/vacaciones':{rh:{estado:'aprobada_alfredo',user_email:'cleon@fredinero.com',nombre_solicitante:'Cristina Leon',fecha_inicio:'09/11/2026',fecha_fin:'11/11/2026',rol:'ADMINISTRATIVO',plaza:'CHIHUAHUA'}}
+  }});
+  await h.window.showVacPerm();
+  assert.deepEqual(plain(h.api.board().types),['vacaciones','permisos','vac_rh']);
+  assert.deepEqual(plain(h.api.board().records.map(s=>s.id)).sort(),['p','rh','v']);
+  assert.match(h.node('vpAvailabilityCards').innerHTML,/Cristina Leon/);
+  assert.equal(h.node('vpTypeCleon').style.display,'');
+  assert.equal(h.node('vpAlfredoShortcut').style.display,'none');
+  assert.deepEqual(h.calls.filter(c=>c.kind==='REST_SHALLOW').map(c=>c.path),['vacation_requests','permission_requests','cleon_solicitudes/vacaciones']);
+  assert.ok(h.calls.filter(c=>c.kind==='SDK_SCALAR').every(c=>!/(motivo|base64|foto|historial)/.test(c.path)));
+});
+
+test('Cleon figura en Buscar y tabla, conserva estados y no obtiene botones de aprobación RH', async () => {
+  const h=harness({email:'cleon@fredinero.com',store:{
+    vacation_requests:{v:vacation('v',{user_email:'cleon@fredinero.com'})},
+    permission_requests:{p:permission('p',{correo:'cleon@fredinero.com',alfredo_estado:'aprobada_alfredo'})},
+    'cleon_solicitudes/vacaciones':{rh:{estado:'aprobada_alfredo',user_email:'cleon@fredinero.com',nombre_solicitante:'Cristina Leon',fecha_inicio:'09/11/2026',fecha_fin:'11/11/2026'}}
+  }});
+  await h.window.buscarVacPerm();
+  assert.deepEqual(plain(h.api.data().map(s=>s.id)).sort(),['p','rh','v']);
+  assert.match(h.node('vacPermTableContainer').innerHTML,/cleon@fredinero.com/);
+  assert.doesNotMatch(h.node('vacPermTableContainer').innerHTML,/abrirAlfredoModal|vpAprobarFlujo|Ruta Firebase/);
+  vm.runInContext([extract('vpVacacionCleonEstaFinalizada'),extract('vpPuedeResponderVacacionCleon'),'globalThis.canApproveRh=vpPuedeResponderVacacionCleon;'].join('\n'),h.context);
+  assert.equal(h.context.canApproveRh({_tipo:'vac_rh',estado:'pendiente_alfredo'}),false);
+  h.auth.currentUser.email='administrativo@fredinero.com';
+  assert.equal(h.context.vpAvailabilityAuthorized({id:'rh',_tipo:'vac_rh',user_email:'cleon@fredinero.com'}),false);
+  assert.equal(h.context.vpAvailabilityAuthorized({_tipo:'permisos',correo:'cleon@fredinero.com'}),false);
 });
