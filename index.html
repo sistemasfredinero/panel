@@ -7878,6 +7878,38 @@
     return vpCorreoActual() === VP_SOPORTE_EMAIL;
   }
 
+  function vpRequestFirebasePath(sol) {
+    if (!supportWorkerIsAuthorized()) return '';
+    const roots = { vacaciones: 'vacation_requests', permisos: 'permission_requests', vac_rh: 'cleon_solicitudes/vacaciones' };
+    const id = sol?.id;
+    if (!Object.hasOwn(roots, sol?._tipo) || typeof id !== 'string' || !id.trim()
+      || /[.#$\[\]\/\u0000-\u001f\u007f]/.test(id) || new TextEncoder().encode(id).length > 768) return '';
+    return roots[sol._tipo] + '/' + id;
+  }
+
+  function vpRequestFirebasePathHtml(sol) {
+    const path = vpRequestFirebasePath(sol);
+    if (!path) return '';
+    const escaped = privacyEscape(path);
+    return `<div style="margin-top:5px;max-width:280px;color:#475569;font-size:10px"><span>Ruta Firebase:</span><code style="display:block;white-space:normal;word-break:break-all;user-select:text">${escaped}</code><button type="button" data-request-firebase-path="${escaped}" onclick="window.copyRequestFirebasePath(this)" style="margin-top:4px;padding:5px 8px;min-height:28px;border:1px solid #CBD5E1;border-radius:5px;background:#F8FAFC;color:#075E67;cursor:pointer;font-size:10px">Copiar ruta</button></div>`;
+  }
+
+  window.copyRequestFirebasePath = async function(button) {
+    if (!supportWorkerIsAuthorized()) return;
+    const user = auth.currentUser;
+    const path = button?.dataset?.requestFirebasePath || '';
+    const roots = [['cleon_solicitudes/vacaciones/', 'vac_rh'], ['vacation_requests/', 'vacaciones'], ['permission_requests/', 'permisos']];
+    const match = roots.find(([root]) => path.startsWith(root));
+    if (!match || vpRequestFirebasePath({ _tipo: match[1], id: path.slice(match[0].length) }) !== path) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(path);
+      if (auth.currentUser === user && supportWorkerIsAuthorized()) button.textContent = 'Ruta copiada';
+    } catch {
+      if (auth.currentUser === user && supportWorkerIsAuthorized()) window.prompt('Copia esta ruta y búscala en Firebase Realtime Database:', path);
+    }
+  };
+
   function vpEsCleon() {
     return vpCorreoActual() === VP_CLEON_EMAIL;
   }
@@ -8153,6 +8185,7 @@
           <td style="padding:10px 12px">
             <div style="font-weight:700;color:#1A2E1A">${sol.nombre_solicitante || '—'}</div>
             <div style="font-size:11px;color:#7A8C7A">${sol.user_email || ''}</div>
+            ${vpRequestFirebasePathHtml({ ...sol, _tipo: 'vacaciones' })}
           </td>
           <td style="padding:10px 12px;color:#4A5568">
             ${sol.rol || '—'}<br><span style="font-size:11px">${sol.plaza || '—'}</span>
@@ -8516,7 +8549,7 @@
       const diaCompleto = s.dia_completo ? 'Día completo' : 'Parcial';
       const horario = s.dia_completo ? '—' : `${s.hora_inicio||'?'} - ${s.hora_salida||'?'}`;
       h += `<tr style="background:${bg};border-bottom:1px solid #D1FAE5">
-        <td style="padding:10px 12px"><div style="font-weight:700;color:#1A2E1A">${s.nombre_solicitante||'—'}</div><div style="font-size:11px;color:#7A8C7A">${s.correo||''}</div></td>
+        <td style="padding:10px 12px"><div style="font-weight:700;color:#1A2E1A">${s.nombre_solicitante||'—'}</div><div style="font-size:11px;color:#7A8C7A">${s.correo||''}</div>${vpRequestFirebasePathHtml({ ...s, _tipo: 'permisos' })}</td>
         <td style="padding:10px 12px;color:#4A5568">${s.rol||'—'}<br><span style="font-size:11px">${s.plaza||'—'}</span></td>
         <td style="padding:10px 12px;white-space:nowrap">${s.fecha_inicio||'—'} → ${s.fecha_regreso||'—'}<br><span style="font-size:11px;color:#7A8C7A">${diaCompleto}</span></td>
         <td style="padding:10px 12px;white-space:nowrap">${horario}<br><span style="font-size:11px;color:#7A8C7A">Regreso: ${s.hora_regreso||'—'}</span></td>
@@ -9364,7 +9397,7 @@
       }
       html += `<tr style="background:${bg};border-bottom:1px solid #E8F5E9">
         <td style="padding:10px 12px">${tipoBadge}</td>
-        <td style="padding:10px 12px"><div style="font-weight:700;color:#1A2E1A">${nombre}</div><div style="font-size:11px;color:#7A8C7A">${correo}</div></td>
+        <td style="padding:10px 12px"><div style="font-weight:700;color:#1A2E1A">${nombre}</div><div style="font-size:11px;color:#7A8C7A">${correo}</div>${vpRequestFirebasePathHtml(s)}</td>
         <td style="padding:10px 12px;color:#4A5568">${s.rol||'—'}<br><span style="font-size:11px">${s.plaza||'—'}</span></td>
         <td style="padding:10px 12px;white-space:nowrap">${fechas}</td>
         <td style="padding:10px 12px">${detalle}</td>

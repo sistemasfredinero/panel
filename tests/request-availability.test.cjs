@@ -21,7 +21,7 @@ function constant(name) {
   assert.ok(match, `Config real ${name}`); return match[0];
 }
 const helperNames = [...html.matchAll(/^  (?:async )?function (vpAvailability\w+|vpTemporal\w+)\(/gm)].map(m => m[1]);
-const legacyNames = ['vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
+const legacyNames = ['vpRequestFirebasePath', 'vpRequestFirebasePathHtml', 'supportWorkerIsAuthorized', 'privacyEscape', 'vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
 function snapshot(value, key = '') {
   return { key, val: () => value, exists: () => value != null && Object.keys(value).length > 0, forEach: cb => Object.entries(value || {}).forEach(([id, row]) => cb(snapshot(row, id))) };
 }
@@ -37,7 +37,7 @@ function harness({ email = 'admin@example.test', role = 'ADMINISTRATIVO', plaza 
   const auth = { currentUser: { uid: 'actor', email } };
   const document = { getElementById: node, hidden: false, addEventListener: (name, callback) => { documentListeners[name] = callback; } };
   const context = vm.createContext({
-    window: {}, document, auth, Date: ClockDate, console, AbortController, database: {},
+    TextEncoder, window: {}, document, auth, Date: ClockDate, console, AbortController, database: {},
     onAuthStateChanged: (_, callback) => authListeners.push(callback),
     MutationObserver: class { constructor(callback) { observers.push(callback); } observe() {} },
     panelCanOpenModule: () => allow,
@@ -55,7 +55,7 @@ function harness({ email = 'admin@example.test', role = 'ADMINISTRATIVO', plaza 
   vm.runInContext([
     html.slice(html.indexOf('  let _vpData = [];'), html.indexOf('  function vpAvailabilityContext()')),
     `let _panelProfile = ${JSON.stringify({ rol: role, plaza })};`,
-    "const VP_SOPORTE_EMAIL='soporte@fredinero.com', VP_CLEON_EMAIL='cleon@fredinero.com';",
+    "const SUPPORT_WORKER_UID='5dVKDIhQZlbzonMbSG9mX1pXHYg1', VP_SOPORTE_EMAIL='soporte@fredinero.com', VP_CLEON_EMAIL='cleon@fredinero.com';",
     ...['VAC_ESTADO_CFG', 'PERM_ESTADO_CFG'].map(constant),
     ...[...helperNames, ...legacyNames].map(fn),
     ...['vpAvailabilityRefresh', 'vpAvailabilityLoad', 'vpAvailabilityInvalidate', 'buscarVacPerm', 'renderVacPerm'].map(action),

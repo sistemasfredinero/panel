@@ -11,7 +11,7 @@ function extract(name, action = false) {
   const match = html.match(new RegExp(pattern, 'm')); assert.ok(match, name); return match[0];
 }
 const helpers = [...html.matchAll(/^  (?:async )?function (vpAvailability\w+|vpTemporal\w+)\(/gm)].map(m => m[1]);
-const dependencies = ['vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
+const dependencies = ['vpRequestFirebasePath', 'vpRequestFirebasePathHtml', 'supportWorkerIsAuthorized', 'privacyEscape', 'vacGetEstado', 'vacParseFecha', 'permGetEstado', 'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpCorreoActual', 'vpNormalizarTexto', 'vpDistanciaLevenshtein', 'vpCoincideToken', 'vpCoincideUsuarioFlexible', 'vpEtapaVisible', 'approvalStageLabel'];
 const vacation = (id, extra = {}) => ({ confirmada_empleado: true, approval_stage: 'completado', fecha_inicio_aprobada: '09/11/2026', fecha_fin_aprobada: '11/11/2026', user_email: `${id}@example.test`, nombre_solicitante: `Persona ${id}`, rol: 'GESTOR', plaza: 'CHIHUAHUA', ...extra });
 const permission = (id, extra = {}) => ({ estado: 'aprobado_final', visto_bueno_cleon: true, approval_stage: 'cleon', fecha_inicio: '10/11/2026', fecha_regreso: '10/11/2026', hora_salida: '10:00', hora_regreso: '14:00', dia_completo: false, correo: `${id}@example.test`, nombre: `Permiso ${id}`, rol: 'LIDER A', plaza: 'TAMPICO', ...extra });
 function harness({ store = {}, email = 'admin@example.test', role = 'ADMINISTRATIVO', allow = true, beforeRead, badKeys, denied } = {}) {
@@ -40,7 +40,7 @@ function harness({ store = {}, email = 'admin@example.test', role = 'ADMINISTRAT
       return value;
     } finally { concurrent--; }
   }
-  const context = vm.createContext({ window: {}, auth, document, Date: Clock, database: {}, console, AbortController,
+  const context = vm.createContext({ TextEncoder, window: {}, auth, document, Date: Clock, database: {}, console, AbortController,
     onAuthStateChanged: (_, fn) => authCallbacks.push(fn), MutationObserver: class { constructor(fn) { observers.push(fn); } observe() {} },
     panelCanOpenModule: () => allow, branchKey: value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase(),
     showPanelModuleDenied: () => {}, setPanelHeader: () => {},
@@ -64,7 +64,7 @@ function harness({ store = {}, email = 'admin@example.test', role = 'ADMINISTRAT
   vm.runInContext([
     html.slice(html.indexOf('  let _vpData = [];'), html.indexOf('  function vpAvailabilityContext()')),
     `let _panelProfile = ${JSON.stringify({ rol: role, plaza: 'CHIHUAHUA' })};`,
-    "const VP_SOPORTE_EMAIL='soporte@fredinero.com', VP_CLEON_EMAIL='cleon@fredinero.com';",
+    "const SUPPORT_WORKER_UID='5dVKDIhQZlbzonMbSG9mX1pXHYg1', VP_SOPORTE_EMAIL='soporte@fredinero.com', VP_CLEON_EMAIL='cleon@fredinero.com';",
     ...constants, ...helpers.concat(dependencies).map(name => extract(name)),
     ...['vpAvailabilityRefresh', 'vpAvailabilityLoad', 'vpAvailabilityInvalidate', 'vpAvailabilityCommitRecord', 'showVacPerm', 'buscarVacPerm', 'renderVacPerm'].map(name => extract(name, true)),
     html.slice(html.indexOf('  // Eventos locales: no listener RTDB'), html.indexOf('  function vpIsAlfredo()')),

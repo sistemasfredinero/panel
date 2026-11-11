@@ -51,6 +51,7 @@ assert '<script' not in SECTION.lower(), 'La fixture no debe ejecutar imports de
 
 HELPERS = re.findall(r'^  (?:async )?function (vpAvailability\w+|vpTemporal\w+)\(', HTML, re.M)
 DEPENDENCIES = [
+    'vpRequestFirebasePath', 'vpRequestFirebasePathHtml', 'supportWorkerIsAuthorized', 'privacyEscape',
     'normaliseActivityText', 'branchKey', 'panelRole', 'panelIsActivityOnlyUser',
     'panelCanOpenModule', 'vacGetEstado', 'vacParseFecha', 'permGetEstado',
     'vpIsAlfredo', 'vpIsCleonRequest', 'vpEsSoporte', 'vpEsCleon', 'vpCorreoActual',
@@ -176,7 +177,7 @@ window.renderVacPerm();
 SCRIPT = '\n\n'.join([
     STUBS.replace("__AVAILABILITY_STATE__", HTML[HTML.index("  let _vpData = [];"):HTML.index("  function vpAvailabilityContext()")]),
     constant('PANEL_ACTIVITY_ONLY_ROLES'),
-    constant('VP_SOPORTE_EMAIL'), constant('VP_CLEON_EMAIL'),
+    constant('SUPPORT_WORKER_UID'), constant('VP_SOPORTE_EMAIL'), constant('VP_CLEON_EMAIL'),
     constant('VAC_ESTADO_CFG', True), constant('PERM_ESTADO_CFG', True),
     *(function(name) for name in dict.fromkeys(HELPERS + DEPENDENCIES)),
     action('vpAvailabilityRefresh'), action('vpAvailabilityLoad'), action('vpAvailabilityInvalidate'), action('renderVacPerm'), HOOKS, FIXTURES,
