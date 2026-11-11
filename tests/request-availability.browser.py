@@ -396,6 +396,26 @@ def test_viewport(browser, width):
         refresh_local()
         assert_groups(page, INITIAL_NAMES)
 
+    def relative_days():
+        page.evaluate('''() => {
+          clock = new NativeDate(2026, 10, 11, 16, 44).getTime();
+          availabilityTest.seed([
+            {id:'relative-vac', _tipo:'vacaciones', nombre_solicitante:'Vacaciones ejemplo', user_email:'fixture@example.test', rol:'GESTOR', plaza:'CHIHUAHUA', confirmada_empleado:true, approval_stage:'completado', fecha_inicio_aprobada:'09/11/2026', fecha_fin_aprobada:'13/11/2026'},
+            {id:'relative-perm', _tipo:'permisos', nombre:'Permiso ejemplo', correo:'fixture@example.test', rol:'CANJES', plaza:'CHIHUAHUA', estado:'aprobado_final', fecha_inicio:'12/11/2026', fecha_regreso:'13/11/2026', hora_inicio:'09:00', hora_salida:'18:00', hora_regreso:'09:00', dia_completo:false}
+          ]); window.renderVacPerm();
+        }''')
+        text = page.locator('#vpAvailabilityCards').inner_text()
+        for expected in ['Salida: 9/11/2026 · Antier', 'Regreso programado: 13/11/2026 · Pasado mañana', 'Salida: 12/11/2026 18:00 · Mañana']:
+            check(expected in text, f'Etiqueta relativa incorrecta: {expected}')
+        no_overflow()
+        page.screenshot(path=f'/tmp/request-availability-relative-ui-{width}.png', full_page=True)
+        page.evaluate('clock = new NativeDate(2026, 10, 12).getTime(); window.vpAvailabilityRefresh();')
+        text = page.locator('#vpAvailabilityCards').inner_text()
+        for expected in ['Salida: 9/11/2026 · hace 3 días', 'Regreso programado: 13/11/2026 · Mañana', 'Salida: 12/11/2026 18:00 · Hoy']:
+            check(expected in text, f'Recálculo del día siguiente incorrecto: {expected}')
+        page.evaluate('clock = new NativeDate(2026, 10, 10, 11).getTime(); availabilityTest.seed(); window.renderVacPerm();')
+        assert_groups(page, INITIAL_NAMES)
+
     def manager_scope():
         # GERENTE/LIDER/GESTOR son activity-only según la política real vigente.
         # No se fuerza allow=true para fabricar acceso a requests.
@@ -454,6 +474,7 @@ def test_viewport(browser, width):
         run('plaza/rol/nombre/tipo filtran resumen con eventos locales', active_filters)
         run('cobertura parcial explícita sin completar por Firebase', partial_coverage)
         run('antes/exactamente después del regreso y salida futura', time_boundaries)
+        run('etiquetas relativas y recálculo sin IO al día siguiente', relative_days)
         run('acceso management-only real y privacidad de Cleon/RH', manager_scope)
         run('Cleon ve sus solicitudes, sin aprobarlas ni rutas de Soporte', cleon_self_visibility)
         run('logout limpia snapshot, tabla, tarjetas y timer', session_cleanup)

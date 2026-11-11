@@ -327,3 +327,45 @@ test('fecha pasada no inventa aprobación, no cierra antes del regreso aprobado 
     assert.equal(h.api.vpTemporalEstado({ ...missingHourPast, ...extra }, 'permisos'), null, 'Mantener exclusiones y autorización final RH');
   }
 });
+
+test('día relativo sigue las siete reglas del usuario y conserva las horas de permisos', () => {
+  const now = new Date(2026, 10, 11, 16, 44), h = harness({now});
+  for (const [offset, label] of [[-30,'hace 30 días'],[-3,'hace 3 días'],[-2,'Antier'],[-1,'Ayer'],[0,'Hoy'],[1,'Mañana'],[2,'Pasado mañana'],[3,'dentro de 3 días'],[30,'dentro de 30 días']]) {
+    const date = new Date(2026,10,11+offset,23,59);
+    assert.equal(h.api.vpAvailabilityRelativeDay(date, now), label);
+  }
+  assert.equal(h.api.vpAvailabilityDateLabel(new Date(2026,10,9), null, now),'9/11/2026 · Antier');
+  assert.equal(h.api.vpAvailabilityDateLabel(new Date(2026,10,12), {label:'18:00'}, now),'12/11/2026 18:00 · Mañana');
+  assert.equal(h.api.vpAvailabilityDateLabel(null), 'Fecha no disponible');
+  assert.equal(h.api.vpAvailabilityDateLabel(new Date(NaN)), 'Fecha no disponible');
+  assert.equal(h.api.vpAvailabilityRelativeDay(new Date(2026,10,9), new Date(NaN)), '');
+  assert.equal(h.reads.length,0);assert.equal(h.writes.length,0);assert.equal(h.timers.size,0);
+});
+
+test('días relativos son días calendario, no horas transcurridas; cruzan mes, año y año bisiesto', () => {
+  const h = harness();
+  for (const [target,now,label] of [
+    [new Date(2026,10,11,0,1),new Date(2026,10,11,23,59),'Hoy'],
+    [new Date(2026,10,12,0,1),new Date(2026,10,11,23,59),'Mañana'],
+    [new Date(2026,10,10,23,59),new Date(2026,10,11,0,1),'Ayer'],
+    [new Date(2027,0,1),new Date(2026,11,31,23,59),'Mañana'],
+    [new Date(2024,1,29),new Date(2024,2,2),'Antier'],
+    [new Date(2026,2,10),new Date(2026,2,7),'dentro de 3 días'],
+    [new Date(2026,10,3),new Date(2026,9,31),'dentro de 3 días'],
+  ]) assert.equal(h.api.vpAvailabilityRelativeDay(target,now),label);
+});
+
+test('Salida y Regreso incluyen etiquetas y cambian a medianoche con el mismo reloj local, sin descargar', () => {
+  const h=harness({now:new Date(2026,10,11,16,44)});
+  const rows=[vacation('example',{fecha_inicio_aprobada:'09/11/2026',fecha_fin_aprobada:'13/11/2026'}),permission('future',{fecha_inicio:'12/11/2026',fecha_regreso:'13/11/2026',hora_salida:'18:00',hora_regreso:'09:00'})];
+  const original=JSON.stringify(rows);h.api.seed(rows);h.api.vpAvailabilityRender();
+  assert.match(h.node('vpAvailabilityCards').innerHTML,/Salida: 9\/11\/2026 · Antier/);
+  assert.match(h.node('vpAvailabilityCards').innerHTML,/Regreso programado: 13\/11\/2026 · Pasado mañana/);
+  assert.match(h.node('vpAvailabilityCards').innerHTML,/Salida: 12\/11\/2026 18:00 · Mañana/);
+  assert.equal(h.timers.size,1,'Reutiliza un único temporizador local existente');
+  h.tick(new Date(2026,10,12,0,0));
+  assert.match(h.node('vpAvailabilityCards').innerHTML,/Salida: 9\/11\/2026 · hace 3 días/);
+  assert.match(h.node('vpAvailabilityCards').innerHTML,/Regreso programado: 13\/11\/2026 · Mañana/);
+  assert.match(h.node('vpAvailabilityCards').innerHTML,/Salida: 12\/11\/2026 18:00 · Hoy/);
+  assert.equal(JSON.stringify(rows),original);assert.equal(h.reads.length,0);assert.equal(h.writes.length,0);assert.equal(h.timers.size,1);
+});

@@ -9012,8 +9012,22 @@
     return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  function vpAvailabilityDateLabel(date, time = null) {
-    return date ? `${date.toLocaleDateString('es-MX')}${time ? ` ${time.label}` : ''}` : 'Fecha no disponible';
+  function vpAvailabilityRelativeDay(date, now = new Date()) {
+    if (!date || !Number.isFinite(date.getTime()) || !now || !Number.isFinite(now.getTime())) return '';
+    // Compara fechas locales, no bloques de 24 horas: respeta medianoche y cambios de horario.
+    const day = value => Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
+    const difference = Math.round((day(date) - day(now)) / 86400000);
+    if (difference === -2) return 'Antier';
+    if (difference === -1) return 'Ayer';
+    if (difference === 0) return 'Hoy';
+    if (difference === 1) return 'Mañana';
+    if (difference === 2) return 'Pasado mañana';
+    return difference < 0 ? `hace ${Math.abs(difference)} días` : `dentro de ${difference} días`;
+  }
+
+  function vpAvailabilityDateLabel(date, time = null, now = new Date()) {
+    if (!date || !Number.isFinite(date.getTime())) return 'Fecha no disponible';
+    return `${date.toLocaleDateString('es-MX')}${time ? ` ${time.label}` : ''} · ${vpAvailabilityRelativeDay(date, now)}`;
   }
 
   function vpAvailabilityStop() {
@@ -9064,8 +9078,8 @@
     const groups = [['Ausentes ahora', board.absent, '#9A3412'], ['Regreso programado HOY', board.returningToday, '#075E67'], ['Próximas salidas aprobadas', board.future, '#6B21A8']];
     cards.innerHTML = groups.map(([title, items, color]) => `<article style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px;min-width:0"><h3 style="font-size:14px;margin:0 0 10px;color:${color}">${title} (${items.length})</h3>${items.length ? `<ul style="list-style:none;margin:0;padding:0;max-height:330px;overflow:auto">${items.map(({ sol, dates }) => {
       const type = sol._tipo === 'permisos' ? 'Permiso' : sol._tipo === 'vac_rh' ? 'Vacaciones RH' : 'Vacaciones';
-      const start = vpAvailabilityDateLabel(dates.startDate, dates.departureTime);
-      const end = vpAvailabilityDateLabel(dates.returnDate, dates.returnTime);
+      const start = vpAvailabilityDateLabel(dates.startDate, dates.departureTime, now);
+      const end = vpAvailabilityDateLabel(dates.returnDate, dates.returnTime, now);
       const plazaColor = typeof BRANCH_MAP_COLORS !== 'undefined' ? (BRANCH_MAP_COLORS[branchKey(sol.plaza)] || '#475569') : '#475569';
       const roles = { ADMINISTRATIVO: '#475569', GERENTE: '#7C3AED', 'LIDER A': '#2563EB', 'LIDER B': '#0369A1', 'LIDER C': '#0F766E', CANJES: '#B45309', GESTOR: '#BE123C', 'GESTOR DE COBRANZA': '#BE123C' };
       const roleColor = roles[String(sol.rol || '').trim().toUpperCase()] || '#475569';
