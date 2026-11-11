@@ -285,3 +285,45 @@ test('helpers y timer no escriben, leen Firebase, emiten avisos ni utilizan inte
   assert.match(hooks, /onAuthStateChanged\(auth/); assert.match(hooks, /visibilitychange/); assert.match(hooks, /MutationObserver/); assert.match(hooks, /vpAvailabilityStop\(\)/);
   assert.match(hooks, /_vpAvailabilitySnapshot = null/); assert.match(hooks, /_vpAvailabilityGeneration\+\+/);
 });
+
+test('captura histórica: fecha de regreso ya pasada cierra permisos finales con hora anterior a salida, sin modificar horarios', () => {
+  const h = harness({ now: new Date(2026, 10, 11, 9) });
+  const rows = [
+    permission('mante', { fecha_inicio: '09/11/2026', fecha_regreso: '09/11/2026', hora_salida: '07:00', hora_regreso: '02:00' }),
+    permission('xalapa', { fecha_inicio: '29/10/2026', fecha_regreso: '29/10/2026', hora_salida: '13:00', hora_regreso: '02:00' }),
+    permission('admin', { fecha_inicio: '15/10/2026', fecha_regreso: '15/10/2026', hora_salida: '14:00', hora_regreso: '04:00' }),
+    permission('saltillo', { fecha_inicio: '08/09/2026', fecha_regreso: '08/09/2026', hora_salida: '12:30', hora_regreso: '03:00' }),
+  ];
+  for (const row of rows) {
+    const before = JSON.stringify(row);
+    assert.equal(h.api.vpTemporalVentana(row).valid, false);
+    assert.equal(h.api.permGetEstado(row), 'gozados', row.id);
+    assert.equal(h.api.vpAvailabilityEstadoKey(row), 'gozados', row.id);
+    assert.equal(JSON.stringify(row), before, 'No cambiar horas a PM ni guardar estados');
+  }
+  const board = h.api.vpAvailabilityBoard(rows);
+  assert.equal(board.future.length, 0); assert.equal(board.absent.length, 0); assert.equal(board.returningToday.length, 0);
+  h.api.seed(rows); h.node('vpEstado').value = 'perm_gozados'; h.window.renderVacPerm();
+  assert.equal(h.api.data().length, rows.length, 'El filtro Gozados incluye los permisos de la captura');
+  assert.ok(h.api.data().every(row => row._estadoKey === 'gozados'));
+  assert.match(h.node('vacPermTableContainer').innerHTML, /Gozado/);
+  assert.doesNotMatch(h.node('vacPermTableContainer').innerHTML, /Aprobado Final/);
+  assert.equal(h.reads.length, 0); assert.equal(h.writes.length, 0);
+});
+
+test('fecha pasada no inventa aprobación, no cierra antes del regreso aprobado ni usa fechas calendarizadas incoherentes', () => {
+  const h = harness({ now: new Date(2026, 10, 11, 9) });
+  const futureApproved = permission('future', { fecha_inicio: '09/11/2026', fecha_regreso: '09/11/2026', fecha_inicio_aprobada: '20/11/2026', fecha_regreso_aprobada: '20/11/2026', hora_salida_aprobada: '13:00', hora_regreso_aprobada: '02:00' });
+  assert.equal(h.api.permGetEstado(futureApproved), 'aprobado_final', 'Regreso aprobado futuro prevalece sobre original pasado');
+  const today = permission('today-invalid', { fecha_inicio: '11/11/2026', fecha_regreso: '11/11/2026', hora_salida: '13:00', hora_regreso: '02:00' });
+  assert.equal(h.api.permGetEstado(today), 'aprobado_final', 'No asumir regreso hoy con hora incoherente');
+  const missingHourPast = permission('missing-hour', { fecha_inicio: '09/11/2026', fecha_regreso: '09/11/2026', hora_regreso: '' });
+  assert.equal(h.api.permGetEstado(missingHourPast), 'gozados');
+  const reversedDates = permission('reverse-date', { fecha_inicio: '20/11/2026', fecha_regreso: '09/11/2026' });
+  assert.equal(h.api.permGetEstado(reversedDates), 'aprobado_final', 'No usar una fecha anterior al inicio');
+  const pending = permission('pending', { fecha_inicio: '09/11/2026', fecha_regreso: '09/11/2026', visto_bueno_cleon: false, estado: 'pendiente_vobo' });
+  assert.notEqual(h.api.permGetEstado(pending), 'gozados');
+  for (const extra of [{ cancelado: true }, { devolucion_desde: 'cleon' }, { correo: 'cleon@fredinero.com', alfredo_estado: 'pendiente_alfredo' }]) {
+    assert.equal(h.api.vpTemporalEstado({ ...missingHourPast, ...extra }, 'permisos'), null, 'Mantener exclusiones y autorización final RH');
+  }
+});

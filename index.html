@@ -8913,6 +8913,13 @@
   function vpTemporalEstado(sol, tipo, now = new Date()) {
     if (!vpAvailabilityFinal(sol, tipo)) return null;
     const dates = vpTemporalVentana(sol, tipo);
+    if (tipo === 'permisos' && dates.startDate && dates.returnDate && dates.returnDate >= dates.startDate) {
+      // Históricos con hora incompleta o AM/PM incongruente no deben quedar
+      // aprobados para siempre. Si todo el día de regreso ya pasó, basta la
+      // fecha aprobada para el estado visual; nunca corregir/inventar la hora.
+      const today = new Date(now); today.setHours(0, 0, 0, 0);
+      if (dates.returnDate < today) return 'gozados';
+    }
     if (dates.valid && now >= dates.end) return 'gozados';
     if (dates.valid && now >= dates.start && now < dates.end) return 'activo';
     return tipo === 'vacaciones' ? 'confirmada' : tipo === 'vac_rh' ? 'aprobada_alfredo' : vpIsCleonRequest(sol) ? 'aprobada_alfredo' : 'aprobado_final';
