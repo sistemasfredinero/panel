@@ -121,7 +121,7 @@ function harness({ role = 'ADMINISTRATIVO', plaza = 'CHIHUAHUA', beforeRead, den
   vm.runInContext([...STATES.map(declaration), ...NAMES.map(fn),
     `let _activityProfile = ${JSON.stringify({ rol: role, plaza })}; let _selectedActivityActionFilters = new Set();`,
     action('openActivityRoutesMap'), action('closeActivityRoutesMap'),
-    'globalThis.api = { firebasePushIdBoundary, firebasePushIdTimestamp, loadActivityAnalysisData, invalidateActivityQueryCache, profile: () => _activityProfile, state: () => ({ query: _activityQueryContext, locationGeneration: _activityLocationGeneration, revision: _activityRouteLoadRevision }) };',
+    'globalThis.api = { firebasePushIdBoundary, firebasePushIdTimestamp, loadActivityAnalysisData, activityGetLightEntry, activityEnsureLightRecords, currentActivityFilterCriteria, invalidateActivityQueryCache, profile: () => _activityProfile, state: () => ({ query: _activityQueryContext, locationGeneration: _activityLocationGeneration, revision: _activityRouteLoadRevision }) };',
   ].join('\n\n'), context, { filename: 'index.html[actual-core-GPS-map-integration]' });
   return { context, api: context.api, window: context.window, auth, store, node, reads, shallowReads, usage, forbidden, renderCalls, max: () => maximum };
 }
@@ -212,4 +212,27 @@ for (const changed of ['cerrar', 'filtros', 'sesión']) test(`primera apertura: 
   assert.equal(h.renderCalls.length, 0); assertSafe(h);
   if (changed === 'cerrar') assert.equal(h.node('activityRoutesMapModal').active, false);
   else assert.match(h.node('activityRoutesMap').innerHTML, /No se pudieron cargar las ubicaciones/);
+});
+
+test('búsqueda parcial102 de1207 sin índice: cero provisional sin GPS; mapa explícito continúa y publica sólo rango completo', async () => {
+  const h = harness(); const rows = fixture(h, 1207, { partial: false });
+  rows[0].rol = 'OBJETIVO'; h.node('activityRole').value = 'OBJETIVO';
+  const entry = await h.api.activityGetLightEntry(h.api.currentActivityFilterCriteria());
+  const first = await h.api.activityEnsureLightRecords(entry, 50);
+  assert.equal(first.scannedBatches, 2); assert.equal(entry.offset, 102);
+  assert.equal(entry.records.length, 0); assert.equal(entry.complete, false); assert.equal(entry.partial, true);
+  assert.match(entry.statusText, /Verificación pendiente.*sin coincidencias en la parte revisada/);
+  assert.equal(gpsReads(h).length, 0); assert.equal(h.renderCalls.length, 0);
+  await h.window.openActivityRoutesMap();
+  assert.equal(entry.complete, true); assert.equal(entry.partial, false); assert.equal(entry.offset, rows.length);
+  const groups = plain(h.window.__activityRouteGroups);
+  assert.deepEqual(groups.flatMap(group => group.records.map(row => row.id)), [rows[0].id]);
+  assert.equal(gpsReads(h).length, 2, 'Sólo se ubica coincidencia verificada después de cobertura completa');
+  assert.equal(h.renderCalls.length, 1);
+  assert.equal(h.shallowReads.filter(route => route === 'gestor_activities').length, 1, 'No reinicia cobertura');
+  assert.equal(new Set(h.shallowReads.filter(route => /^gestor_activities\/[^/]+$/.test(route))).size, rows.length);
+  assert.ok(h.max() <= 6); assertSafe(h);
+  const count = h.reads.length + h.shallowReads.length;
+  h.window.closeActivityRoutesMap(); await h.window.openActivityRoutesMap();
+  assert.equal(h.reads.length + h.shallowReads.length, count, 'Reapertura completa utiliza caché real');
 });

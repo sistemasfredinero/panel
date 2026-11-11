@@ -125,10 +125,16 @@ function blocked(h, pattern) {
 test('UI requiere instalación y confirmaciones explícitas; sin ejecución al iniciar', t => {
   const h = harness(t);
   assert.match(html, /id="supportNoticeDirectoryEntry"[^>]*style="display:none/);
-  assert.match(html, /Requiere reglas de avisos; no activar hasta instalación/);
+  const card = html.match(/<details id="supportNoticeDirectoryEntry"[\s\S]*?<\/details>/)?.[0];
+  assert.ok(card, 'Directorio conservado en details independiente');
+  assert.doesNotMatch(card.split('>')[0], /\bopen\b/, 'Mantenimiento cerrado por defecto');
+  assert.match(card, /Mantenimiento de avisos · Soporte/);
+  assert.match(card, /altas de usuarios y cambios de correo, rol, plaza o cobertura/);
+  assert.match(card, /Crear un perfil en users no actualiza el directorio automáticamente/);
+  assert.match(card, /Requiere las reglas de avisos instaladas/);
   assert.match(html, /id="supportNoticeDirectoryPrepare"[^>]*onclick="window\.prepareSupportNoticeDirectory\(\)"/);
   assert.match(html, /id="supportNoticeDirectorySave"[^>]*disabled[^>]*onclick="window\.saveSupportNoticeDirectory\(\)"/);
-  assert.match(html, /onAuthStateChanged\(auth, async \(user\) => \{\s*resetSupportWorkerDiagnostic\(\);\s*resetSupportEmailTest\(\);\s*resetSupportFcmDiagnostic\(\);\s*resetSupportNoticeDirectory\(\);/);
+  assert.match(html, /onAuthStateChanged\(auth, async \(user\) => \{\s*resetSupportNoticeDirectory\(\);/);
   h.api.applyPrivacyAdminAccess(); h.reset();
   assert.equal(h.nodes.supportNoticeDirectoryEntry.style.display, '');
   assert.deepEqual([h.reads.length, h.writes.length, h.confirms.length], [0, 0, 0]);
@@ -162,7 +168,7 @@ test('proyección cerrada, UID real de child.key, correo ASCII base64url biyecti
   assert.equal(Object.hasOwn(h.writes[0].projection, 'updated_at'), false);
   assert.equal(Object.hasOwn(h.writes[0].projection, 'version'), false);
   assert.match(h.confirms[1], /REEMPLAZAR ÚNICAMENTE notice_directory/);
-  assert.match(h.status.textContent, /avisos operativos siguen sin activar/);
+  assert.match(h.status.textContent, /la configuración de envíos operativos no cambió y no se solicitaron avisos/);
 });
 
 test('nombre usa nombre_completo, nombre o correo; ADMINISTRATIVO permite plaza vacía sin inventarla', t => {

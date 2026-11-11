@@ -142,13 +142,20 @@ test('Actualizar/TTL/session cambian contexto y datos; concurrencia en búsqueda
   assert.equal(h.restReads.filter(route => route === 'gestor_activities').length, 4);
 });
 
-test('loadMore añade50 coincidencias, no50 candidatos; todas las páginasbounded51', async () => {
+test('plaza selectiva: Buscar/Cargar más revisan máximo102 candidatos por acción y completan con continuación', async () => {
   const h = harness(); const rows = fixture(h, 280, { missing: true });
   h.node('activityPlaza').value = 'CHIHUAHUA';
-  await h.window.searchActivities(); assert.equal(h.api.data().length, 50);
+  await h.window.searchActivities(); assert.equal(h.api.data().length, 34);
+  assert.equal(h.api.page().scanned, 102); assert.equal(h.api.page().partial, true);
+  assert.equal(h.api.page().hasMore, true);
+  const before = h.reads.length + h.restReads.length;
+  await h.window.searchActivities(); assert.equal(h.reads.length + h.restReads.length, before);
+  await h.window.loadMoreActivities();
+  assert.equal(h.api.page().scanned, 204); assert.equal(h.api.page().hasMore, true);
   await h.window.loadMoreActivities();
   assert.equal(h.api.data().length, rows.filter(row => row.plaza === 'CHIHUAHUA').length);
-  assert.equal(h.api.visible(), 100); assert.equal(h.api.page().hasMore, false);
+  assert.equal(h.api.page().scanned, 280); assert.equal(h.api.page().hasMore, false);
+  assert.equal(h.api.page().partial, false); assert.equal(h.api.page().statusText, '');
   assert.ok(h.api.data().every(row => row.plaza === 'CHIHUAHUA'));
 });
 

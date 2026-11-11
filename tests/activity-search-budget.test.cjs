@@ -49,25 +49,34 @@ test('300 históricos fuera de fecha con comentarios pesados: sólo fecha por no
   const old = new Date('2026-11-02T10:00:00').getTime();
   const comments = 'COMMENT_NOT_TO_DOWNLOAD '.repeat(10000);
   for (let i = 0; i < 300; i++) h.store.gestor_activities[`z-old-${String(i).padStart(4, '0')}`] = { tipo: 'GENERAL', gestion_realizada: 'LLAMADA', plaza: 'CHIHUAHUA', created_at: old, comentarios: comments, observaciones: comments, nombre_usuario: 'NO DESCARGAR', foto_base64: comments };
-  assert.equal(await h.window.searchActivities(), true); assert.equal(h.api.data().length, 50);
+  assert.equal(await h.window.searchActivities(), true); assert.equal(h.api.data().length, 0);
   const oldReads = leaves(h).filter(route => route.includes('/z-old-'));
-  assert.equal(oldReads.length, 300); assert.ok(oldReads.every(route => route.endsWith('/created_at')));
-  assert.equal(h.restReads.filter(route => /^gestor_activities\/z-old-/.test(route)).length, 300);
-  assert.equal(requests(h), 661, 'Cobertura completa + fecha necesaria por histórico, no 60 GETs ni comentarios');
+  assert.equal(oldReads.length, 102); assert.ok(oldReads.every(route => route.endsWith('/created_at')));
+  assert.equal(h.restReads.filter(route => /^gestor_activities\/z-old-/.test(route)).length, 102);
+  assert.equal(requests(h), 206, '2 shallow cobertura + 102 presencias + 102 fechas; pausa sin recorrer300');
+  assert.equal(h.api.page().scanned, 102); assert.equal(h.api.page().partial, true);
+  assert.equal(h.api.page().hasMore, true);
+  assert.match(h.api.page().statusText, /Verificación pendiente.*sin coincidencias en la parte revisada/);
   assert.ok(!leaves(h).some(route => /\/(comentarios|observaciones|foto_base64)$/.test(route)));
   assert.equal(h.api.page().lightEntry.complete, false);
   const before = requests(h), oldReadCount = oldReads.length, metadataReads = h.restReads.length;
+  await h.window.searchActivities(); assert.equal(requests(h), before, 'Vacío parcial repetido no avanza ni vuelve a leer');
   h.node('activityType').value = 'GENERAL';
   assert.equal(await h.window.searchActivities(), true);
   assert.equal(leaves(h).filter(route => route.includes('/z-old-')).length, oldReadCount, 'Fechas de no coincidencias compartidas entre firmas');
   assert.equal(h.restReads.length, metadataReads, 'Presencia canónica compartida por sesión cinco minutos');
-  assert.ok(requests(h) - before <= 8, 'Cambiar sólo tipo no repite600 metadatos');
+  assert.equal(requests(h), before, 'Cambiar sólo tipo no repite metadatos ya verificados');
   assert.ok(bytes(h) < 500000);
   assert.ok(h.maxInFlight() <= 6);
   const cache = vm.runInContext('Array.from(_activityMetadataCache.entries())', h.context);
   assert.ok(cache.length <= 2048);
   assert.ok(cache.filter(([key]) => key.includes('|light-meta|')).every(([, value]) => Object.keys(value.values).every(field => ['plaza', 'rol', 'created_at', 'timestamp', 'fecha_hora_registro', 'actualizado_en'].includes(field))));
   assert.doesNotMatch(JSON.stringify(cache), /COMMENT_NOT_TO_DOWNLOAD|NO DESCARGAR|synthetic-token/);
+  const results = await h.api.loadActivityAnalysisData();
+  assert.equal(results.length, 999, 'Análisis explícito completa las999 generales (excluye único prospecto), no trunca históricos');
+  assert.equal(leaves(h).filter(route => route.includes('/z-old-')).length, 300);
+  assert.equal(h.api.page().lightEntry.complete, true);
+  assert.equal(h.api.page().lightEntry.partial, false);
 });
 
 test('sin índice: filtros tipo/acción/usuario se resuelven antes de comentarios/enlaces/identidad extra', async () => {
@@ -78,6 +87,8 @@ test('sin índice: filtros tipo/acción/usuario se resuelven antes de comentario
     if (filter === 'action') h.api.actions(['GENERAL|VALE DENEGADO']);
     if (filter === 'user') h.node('activityUser').value = 'Persona inexistente';
     assert.equal(await h.window.searchActivities(), true); assert.equal(h.api.data().length, 0);
+    assert.equal(h.api.page().scanned, 61); assert.equal(h.api.page().partial, false);
+    assert.equal(h.api.page().hasMore, false); assert.equal(h.api.page().statusText, '');
     assert.ok(!leaves(h).some(route => /\/(comentarios|observaciones|promesa_pago_id|uid|user_uid)$/.test(route)), filter);
     assert.ok(h.maxInFlight() <= 6);
   }
@@ -158,4 +169,123 @@ test('caché máximo3 firmas + metadatos acotados2048/TTL5min; force/session inv
   assert.ok(vm.runInContext('Array.from(_activityMetadataCache.keys()).every(key => key.startsWith(_activityQueryContext))', h.context));
   h.api.profile().rol = '';
   const before = requests(h); assert.throws(() => h.api.activityEnsureQueryContext(), /rol o la plaza/); assert.equal(requests(h), before);
+});
+
+// Estas pruebas miden peticiones/candidatos sintéticos, NO facturación ni latencia productiva.
+for (const matches of [0, 1]) test(`sin índice ${matches} coincidencia(s)/2207: máximo2 lotes por acción, continuación completa y Buscar repetido sin IO`, async () => {
+  let rawReads = 0;
+  const h = harness({ beforeRead: async request => {
+    if (typeof request === 'string' && /^gestor_activities\/[^/]+$/.test(request)) {
+      rawReads++;
+      assert.ok(rawReads <= 102, 'Nunca iniciar presencia del candidato103 en la misma acción');
+      await new Promise(resolve => setImmediate(resolve));
+    }
+  } });
+  const rows = fixture(h, 2207); delete h.store.activity_summaries;
+  h.node('activityUser').value = 'Objetivo escaso';
+  if (matches) rows[0].nombre_usuario = 'Objetivo escaso';
+  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(rawReads, 102); assert.equal(h.api.data().length, 0);
+  assert.equal(h.api.page().partial, true); assert.equal(h.api.page().hasMore, true);
+  assert.match(h.api.page().statusText, /Verificación pendiente.*sin coincidencias en la parte revisada/);
+  assert.equal(h.window.__activitySearchSources.scanned, 102);
+  assert.equal(h.window.__activitySearchSources.scannedBatches, 2);
+  const repeated = requests(h);
+  await h.window.searchActivities(); assert.equal(requests(h), repeated);
+  assert.equal(h.window.__activitySearchSources.scannedBatches, 0);
+  let actions = 0;
+  while (h.api.page().hasMore) {
+    const offset = h.api.page().scanned;
+    rawReads = 0;
+    await h.window.loadMoreActivities();
+    assert.equal(h.alerts.length, 0);
+    assert.ok(rawReads <= 102);
+    assert.ok(h.api.page().scanned > offset && h.api.page().scanned - offset <= 102);
+    assert.ok(++actions <= 22, 'Cursor termina el rango, no bucle ni reinicio');
+  }
+  assert.equal(h.api.page().scanned, rows.length);
+  assert.equal(h.api.page().partial, false); assert.equal(h.api.page().statusText, '');
+  assert.deepEqual(ids(h.api.data()), matches ? [rows[0].id] : []);
+  const beforeAnalysis = h.restReads.length;
+  assert.deepEqual(ids(await h.api.loadActivityAnalysisData()), matches ? [rows[0].id] : []);
+  assert.equal(h.restReads.length, beforeAnalysis, 'Análisis no reinicia cobertura ya revisada');
+  const cached = requests(h); await h.window.searchActivities(); await h.api.loadActivityAnalysisData();
+  assert.equal(requests(h), cached);
+  assert.ok(h.maxInFlight() <= 6); assert.deepEqual(h.forbidden, []);
+});
+
+for (const candidateCount of [0, 1]) test(`usuario único sin plaza: consulta UID ${candidateCount} candidato(s) antes de canónicos, históricos siguen pendientes y análisis completo`, async () => {
+  const operations = [];
+  const h = harness({ beforeRead: request => { operations.push(typeof request === 'string' ? request : request.route); } });
+  const rows = fixture(h, 2207); delete h.store.activity_summaries;
+  h.store.users = { target: { nombre_completo: 'Objetivo único', correo: 'target@example.test' } };
+  h.store.notice_directory = { by_uid: { target: { name: 'Objetivo único', email: 'target@example.test' } } };
+  h.node('activityUser').value = 'Objetivo único';
+  rows[0].nombre_usuario = 'Objetivo único'; rows[0].user_uid = 'target';
+  h.store.gestor_activities['z-legacy-target'] = { tipo: 'GENERAL', gestion_realizada: 'LLAMADA', created_at: BASE, nombre_usuario: 'Objetivo único', correo_usuario: 'target@example.test', user_uid: 'target', plaza: '' };
+  if (candidateCount) h.store.activity_summaries = { users: { target: { [rows[0].id]: { ...rows[0], historial_expediente: undefined, foto_base64: undefined, comentarios: undefined } } } };
+  assert.equal(await h.window.searchActivities(), true);
+  const firstCandidate = operations.indexOf('activity_summaries/users/target');
+  assert.ok(firstCandidate >= 0 && firstCandidate < operations.indexOf('gestor_activities'), 'Una consulta candidata antes de claves/canónicos');
+  assert.ok(h.reads.filter(read => read.constraints).every(read => read.route === 'activity_summaries/users/target'));
+  assert.equal(h.reads.filter(read => read.constraints).length, 1, 'Índice0/1 no se consulta de nuevo para cada lote global');
+  assert.equal(h.restReads.includes('activity_summaries/plazas'), false);
+  assert.equal(h.api.page().scanned, 102); assert.equal(h.api.page().hasMore, true);
+  assert.equal(h.api.page().partial, true);
+  assert.equal(h.api.data().length, candidateCount + 1, 'Histórico presente al principio más candidato prioritario, sin declarar cobertura completa');
+  const before = requests(h); await h.window.searchActivities(); assert.equal(requests(h), before);
+  await h.window.loadMoreActivities(); assert.equal(h.api.page().scanned, 204);
+  const all = await h.api.loadActivityAnalysisData();
+  assert.deepEqual(ids(all), [rows[0].id, 'z-legacy-target'].sort(), 'Incluye coincidencia antigua ausente en UID, sin falsezero ni truncamiento');
+  assert.equal(h.api.page().lightEntry.complete, true);
+  const cached = requests(h); await h.window.searchActivities(); await h.api.loadActivityAnalysisData(); assert.equal(requests(h), cached);
+  assert.ok(h.maxInFlight() <= 6); assert.deepEqual(h.forbidden, []);
+});
+
+for (const lookup of ['nomatch', 'ambiguous', 'denied']) test(`lookup ${lookup}: fallback general limitado, nunca cero certificado por directorio`, async () => {
+  const h = harness({ beforeRead: request => { if (lookup === 'denied' && request === 'users') throw new Error('Directorio sintético denegado'); } });
+  fixture(h, 2207); delete h.store.activity_summaries;
+  h.node('activityUser').value = 'Objetivo';
+  h.store.users = { one: { nombre_completo: lookup === 'nomatch' ? 'Otro' : 'Objetivo' }, two: { nombre_completo: 'Objetivo' } };
+  if (lookup === 'nomatch') h.store.users.two.nombre_completo = 'Distinto';
+  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(h.api.page().sourcePath, 'gestor_activities');
+  assert.equal(h.api.page().scanned, 102); assert.equal(h.api.page().partial, true); assert.equal(h.api.page().hasMore, true);
+  assert.equal(h.api.data().length, 0);
+  assert.match(h.api.page().statusText, /sin coincidencias en la parte revisada/);
+  const before = requests(h); await h.window.searchActivities(); assert.equal(requests(h), before);
+});
+
+test('gerente no sustituye cobertura de plazas por UID no validado ni perfil de directorio', async () => {
+  const h = harness({ role: 'GERENTE', plaza: 'TAMPICO' });
+  h.auth.currentUser.email = 'gerente.tampico@fredinero.com';
+  const rows = fixture(h, 2207); delete h.store.activity_summaries;
+  rows[0].plaza = 'MADERO';
+  h.store.users = { target: { nombre_completo: 'José Díaz', correo: 'jose@example.test' } };
+  h.node('activityUser').value = 'José Díaz'; h.node('activityPlaza').value = 'MADERO';
+  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(h.api.page().sourcePath, 'activity_summaries/plazas/MADERO');
+  assert.equal(h.api.page().scanned, 102); assert.equal(h.api.page().hasMore, true);
+  assert.ok(!h.reads.some(read => read === 'notice_directory/by_uid' || typeof read === 'string' && read.startsWith('users/') || read.route?.startsWith('activity_summaries/users/')));
+  assert.ok(!h.restReads.includes('users'));
+  const all = await h.api.loadActivityAnalysisData();
+  assert.deepEqual(ids(all), [rows[0].id]);
+  assert.ok(leaves(h).every(route => h.store.gestor_activities[route.split('/')[1]]?.plaza === 'MADERO' || route.endsWith('/plaza')));
+});
+
+test('índice UID candidato denegado: fallback general acotado y sin reintentos automáticos', async () => {
+  const h = harness({ beforeRead: request => { if (request?.route === 'activity_summaries/users/target') throw new Error('Índice sintético denegado'); } });
+  fixture(h, 2207); delete h.store.activity_summaries;
+  h.store.users = { target: {} };
+  h.store.notice_directory = { by_uid: { target: { name: 'Objetivo', email: 'target@example.test' } } };
+  h.node('activityUser').value = 'Objetivo';
+  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(h.api.page().sourcePath, 'gestor_activities');
+  assert.equal(h.api.page().scanned, 102); assert.equal(h.api.page().partial, true);
+  assert.equal(h.api.page().hasMore, true); assert.equal(h.api.data().length, 0);
+  assert.match(h.api.page().statusText, /Verificación pendiente.*sin coincidencias en la parte revisada/);
+  assert.equal(h.reads.filter(read => read.route === 'activity_summaries/users/target').length, 1);
+  const before = requests(h); await h.window.searchActivities(); assert.equal(requests(h), before);
+  await h.window.loadMoreActivities(); assert.equal(h.api.page().scanned, 204);
+  assert.equal(h.reads.filter(read => read.route === 'activity_summaries/users/target').length, 1);
 });

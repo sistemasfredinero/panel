@@ -423,6 +423,35 @@ for (const count of [50, 51, 52, 101]) {
   });
 }
 
+for (const matches of [0, 1]) test(`paginación compatibility ${matches} match(es)/2207: máximo2 queries por acción, cursor sin reinicio y rango completo al continuar`, async () => {
+  const h = harness();
+  const rows = Array.from({ length: 2207 }, (_, index) => record(h, index));
+  if (matches) rows[0].rol = 'OBJETIVO';
+  install(h, rows); h.node('activityRole').value = 'OBJETIVO';
+  const selected = criteria(h);
+  const session = { start: selected.start, end: selected.end, sourcePath: 'gestor_activities', cursorKey: h.api.firebasePushIdBoundary(selected.end, 'z'), seen: new Set(), pendingMatches: [] };
+  const results = [];
+  let actions = 0;
+  do {
+    const before = h.queryReads.length, previousCursor = session.cursorKey;
+    const next = await h.api.loadActivityTextPage(session, h.api.activityPreview, selected);
+    assert.ok(h.queryReads.length - before <= 2);
+    assert.ok(next.scannedBatches <= 2);
+    if (actions === 0) {
+      assert.equal(next.page.length, 0); assert.equal(session.hasMore, true);
+      assert.equal(session.partial, true);
+      assert.match(session.statusText, /Verificación pendiente.*sin coincidencias en la parte revisada/);
+      assert.equal(session.scanned, 101, 'Dos queries51 con frontera inclusiva deduplicada');
+    }
+    assert.notEqual(session.cursorKey, previousCursor);
+    results.push(...next.page);
+    assert.ok(++actions <= 23);
+  } while (session.hasMore);
+  assert.deepEqual(results.map(row => row.id), matches ? [rows[0].id] : []);
+  assert.equal(session.seen.size, rows.length); assert.equal(session.partial, false);
+  assert.equal(session.statusText, ''); assert.deepEqual(h.forbidden, []);
+});
+
 for (const type of TYPES) {
   test(`${type}: filtro selectivo recorre 1307 entradas con muchas no coincidencias; rol/plaza/userSearch/actions/rango, hidrata sólo siete`, async () => {
     const h = harness();

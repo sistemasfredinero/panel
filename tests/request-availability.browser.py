@@ -249,11 +249,11 @@ def test_viewport(browser, width):
         except Exception as error:
             result['failures'].append({'check': name, 'error': str(error)})
 
-    def click_refresh():
+    def refresh_local():
         before = page.evaluate('JSON.stringify(availabilityTest.calls)')
-        page.get_by_role('button', name='Recalcular sin descargar', exact=True).click()
+        page.evaluate('window.vpAvailabilityRefresh()')
         check(page.evaluate('JSON.stringify(availabilityTest.calls)') == before,
-              'Recalcular hizo lectura, escritura, listener, aviso o solicitud de red')
+              'El helper local hizo lectura, escritura, listener, aviso o solicitud de red')
 
     def initial():
         assert_groups(page, INITIAL_NAMES)
@@ -266,6 +266,10 @@ def test_viewport(browser, width):
                       '10:45', '11:00', 'El reloj recalcula sin Firebase',
                       '1 solicitud(es) final(es) sin fecha/hora válida']:
             check(label in text, f'Falta etiqueta/cobertura real: {label}')
+        check(page.locator('#boardAvailability button').count() == 1, 'Disponibilidad debe tener sólo Actualizar')
+        button = page.locator('#boardAvailability').get_by_role('button', name='Actualizar', exact=True)
+        check('Consulta mínima' in button.get_attribute('title'), 'Falta explicación de consulta mínima')
+        check('cambios externos' in page.locator('#vpAvailabilityHelp').inner_text(), 'Falta motivo de actualización manual')
         check(page.evaluate('availabilityTest.rawCount()') == 12, 'Se mutó el universo ya cargado')
         check(page.locator('#vacPermSection #boardAvailability #vpAvailabilityCoverage').count() == 1,
               'DOM fuera del alcance vacPermSection')
@@ -314,27 +318,27 @@ def test_viewport(browser, width):
         page.locator('#vpEstado').select_option('perm_gozados')
         page.locator('#vpFechaIni').fill('2026-11-10')
         page.locator('#vpFechaFin').fill('2026-11-10')
-        click_refresh()
+        refresh_local()
         check(page.locator('#vacPermTableContainer tbody tr').count() == 0,
               'El rango de creación no filtró la tabla')
         assert_groups(page, INITIAL_NAMES)
         page.locator('#vpEstado').select_option('')
         page.locator('#vpFechaIni').fill('')
         page.locator('#vpFechaFin').fill('')
-        click_refresh()
+        refresh_local()
         check(page.locator('#vacPermTableContainer th').all_text_contents() ==
               ['Tipo', 'Empleado', 'Rol / Plaza', 'Fechas', 'Detalle', 'Estado', 'Etapa', 'Acciones'],
               'Columnas de la tabla real incorrectas')
 
     def active_filters():
         page.locator('#vpTipo').select_option('vacaciones')
-        click_refresh()
+        refresh_local()
         assert_groups(page, INITIAL_NAMES)
         table_text = page.locator('#vacPermTableContainer tbody').inner_text()
         check('Vacaciones' in table_text and 'Permiso' not in table_text,
               'La tabla no conservó el filtro Vacaciones')
         page.locator('#vpTipo').select_option('permisos')
-        click_refresh()
+        refresh_local()
         assert_groups(page, INITIAL_NAMES)
         table_text = page.locator('#vacPermTableContainer tbody').inner_text()
         check('Permiso' in table_text and 'Vacaciones' not in table_text,
@@ -350,12 +354,12 @@ def test_viewport(browser, width):
         page.locator('#vpPlaza').select_option('TAMPICO')
         assert_groups(page, [['OTRA PLAZA Tampico'], [], []])
         page.locator('#vpPlaza').select_option('CHIHUAHUA')
-        click_refresh()
+        refresh_local()
         assert_groups(page, INITIAL_NAMES)
 
     def partial_coverage():
         page.evaluate("availabilityTest.seed(fixtureRecords.filter(row => row._tipo === 'vacaciones'), ['vacaciones'])")
-        click_refresh()
+        refresh_local()
         coverage = page.locator('#vpAvailabilityCoverage').inner_text()
         check('Cobertura: vacaciones, sólo solicitudes autorizadas' in coverage,
               'La cobertura por tipo no es explícita')
@@ -363,32 +367,32 @@ def test_viewport(browser, width):
                              ['Carla Vacaciones Futuras Aprobadas']])
         check(page.evaluate('availabilityTest.rawCount()') == 4, 'Se completó indebidamente una carga parcial')
         page.evaluate('availabilityTest.seed()')
-        click_refresh()
+        refresh_local()
 
     def time_boundaries():
         page.evaluate('availabilityTest.at(14, 19)')
-        click_refresh()
+        refresh_local()
         assert_groups(page, INITIAL_NAMES)
         page.evaluate('availabilityTest.at(14, 20)')
-        click_refresh()
+        refresh_local()
         assert_groups(page, [INITIAL_NAMES[0][1:], INITIAL_NAMES[1], INITIAL_NAMES[2]])
         check(page.evaluate("availabilityTest.states()['perm-current']") == 'gozados',
               'No termina exactamente en hora de regreso aprobada')
         page.locator('#vpEstado').select_option('perm_activo')
-        click_refresh()
+        refresh_local()
         check(list(page.evaluate('availabilityTest.states()')) == ['perm-overnight'],
               'Filtro activo no recalcula el buffer en memoria')
         page.locator('#vpEstado').select_option('perm_gozados')
-        click_refresh()
+        refresh_local()
         check(set(page.evaluate('availabilityTest.states()')) == {'perm-past', 'perm-current'},
               'Filtro gozados no recalcula permisos ya regresados')
         page.locator('#vpEstado').select_option('')
         page.evaluate('availabilityTest.at(15, 10)')
-        click_refresh()
+        refresh_local()
         assert_groups(page, [[INITIAL_NAMES[1][3]] + INITIAL_NAMES[0][1:],
                              INITIAL_NAMES[1], INITIAL_NAMES[2][1:]])
         page.evaluate('availabilityTest.at(11)')
-        click_refresh()
+        refresh_local()
         assert_groups(page, INITIAL_NAMES)
 
     def manager_scope():
@@ -422,7 +426,7 @@ def test_viewport(browser, width):
         page.add_script_tag(content=SCRIPT)
         run('grupos, estados, aprobación final, cobertura y exclusiones', initial)
         run('fechas/horas aprobadas y detalle real de tabla', dates_hours)
-        run('recalcular sin lecturas/escrituras', click_refresh)
+        run('recalcular sin lecturas/escrituras', refresh_local)
         run('estado/rango sólo filtran tabla; columnas reales', filter_independence)
         run('plaza/rol/nombre/tipo filtran resumen con eventos locales', active_filters)
         run('cobertura parcial explícita sin completar por Firebase', partial_coverage)
@@ -514,12 +518,12 @@ def test_auto_viewport(browser, width):
         check(colors['departure'] == 'rgb(185, 28, 28)' and colors['returning'] == 'rgb(21, 128, 61)', 'Salida/regreso no son rojo/verde')
         check(len({c['color'] for c in colors['chips']}) >= 3, 'Burbujas de plaza, rol y tipo no diferenciadas')
         before = page.evaluate('autoTest.calls.length')
-        page.get_by_role('button', name='Recalcular sin descargar', exact=True).click()
+        page.evaluate('window.vpAvailabilityRefresh()')
         page.locator('#vpTipo').select_option('permisos')
         page.locator('#vpTipo').select_option('')
         page.evaluate('async () => {document.getElementById("vacPermSection").style.display="none"; await Promise.resolve(); await window.showVacPerm();}')
         check(page.evaluate('autoTest.calls.length') == before, 'Reabrir/filtros/recalcular no reutilizó caché')
-        page.get_by_role('button', name='Actualizar disponibilidad', exact=True).click()
+        page.locator('#boardAvailability').get_by_role('button', name='Actualizar', exact=True).click()
         page.wait_for_function('autoTest.board() !== null')
         check(page.evaluate('autoTest.calls.length') == before * 2, 'Actualización mínima no hizo una sola recarga')
         result['requests'] = page.evaluate('autoTest.calls')
