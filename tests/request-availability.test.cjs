@@ -167,13 +167,15 @@ test('fechas, horas o cronologías incompletas no inventan ausentes ni límites'
   assert.equal(h.api.permGetEstado(rows[0]), 'aprobado_final');
 });
 
-test('plaza/rol/nombre y tipo filtran el resumen; estado/rango de creación no ocultan vacaciones en curso', () => {
+test('plaza/rol/nombre filtran el resumen; tipo/estado/rango de tabla no ocultan disponibilidad', () => {
   const h = harness();
   h.node('vpPlaza').value = ' chihuáhua '; h.node('vpRol').value = 'GESTOR'; h.node('vpUsuario').value = 'juana garcia';
   h.node('vpEstado').value = 'perm_gozados'; h.node('vpFechaIni').value = '2026-11-10'; h.node('vpFechaFin').value = '2026-11-10';
   const rows = [vacation('yes'), vacation('plaza', { plaza: 'TAMPICO' }), vacation('role', { rol: 'CANJES' }), vacation('name', { nombre_solicitante: 'Otro' })];
   assert.deepEqual(plain(ids(h.api.vpAvailabilityBoard(rows).absent)), ['yes']);
-  h.node('vpTipo').value = 'permisos'; assert.equal(h.api.vpAvailabilityBoard(rows).absent.length, 0);
+  h.node('vpTipo').value = 'permisos'; assert.deepEqual(plain(ids(h.api.vpAvailabilityBoard(rows).absent)), ['yes']);
+  assert.equal(h.api.vpAvailabilityFilters(rows[0]), false, 'La tabla sí conserva el filtro Permisos');
+  assert.equal(h.api.vpAvailabilityFilters(rows[0], false), true, 'El resumen no hereda ese filtro');
 });
 
 test('alcance de sesión bloquea llamadas directas y no expone Cleon ni plazas ajenas a líderes', async () => {

@@ -240,3 +240,51 @@ test('datos locales de RH no abren cobertura privada y rutas inválidas no dispa
   h.window.vpAvailabilityCommitRecord('vacaciones', 'bad/path', vacation('bad'));
   assert.equal(h.api.board().records.length, 0); assert.equal(h.calls.length, count);
 });
+
+test('próximas salidas mantiene vacaciones y permisos finales aunque la tabla seleccione sólo Vacaciones', async () => {
+  const h = harness({ store: {
+    vacation_requests: { v: vacation('v', { fecha_inicio_aprobada: '20/11/2026', fecha_fin_aprobada: '25/11/2026' }) },
+    permission_requests: { p: permission('p', { fecha_inicio: '20/11/2026', fecha_regreso: '20/11/2026', hora_salida: '12:00', hora_regreso: '16:00' }) },
+  } });
+  h.node('vpTipo').value = 'vacaciones'; h.node('vpEstado').value = 'vac_confirmada';
+  await h.window.showVacPerm();
+  assert.equal(h.api.board().records.length, 2);
+  assert.match(h.node('vpAvailabilityCards').innerHTML, /Próximas salidas aprobadas \(2\)/);
+  assert.match(h.node('vpAvailabilityCards').innerHTML, /Permiso p/);
+  const count = h.calls.length;
+  h.node('vpTipo').value = 'permisos'; h.window.vpAvailabilityRefresh();
+  assert.match(h.node('vpAvailabilityCards').innerHTML, /Próximas salidas aprobadas \(2\)/);
+  assert.match(h.node('vpAvailabilityCards').innerHTML, /Persona v/);
+  assert.equal(h.calls.length, count, 'Cambiar filtro de tabla no descarga ni oculta disponibilidad del otro tipo');
+});
+
+test('permisos finales de la app con indicadores antiguos de propuesta figuran en próximas salidas, sin descargar esos indicadores', async () => {
+  const rows = {};
+  for (const [id, proof] of Object.entries({
+    finalEstado: { estado: 'aprobado_final', visto_bueno_cleon: false },
+    finalRH: { estado: 'aprobado_final', visto_bueno_cleon: true },
+    finalVoBo: { estado: 'propuesta_rh', visto_bueno_cleon: true },
+    finalEtapa: { estado: 'sin_responder', visto_bueno_cleon: false, approval_stage: 'completado' },
+  })) rows[id] = permission(id, { fecha_inicio: '20/11/2026', fecha_regreso: '20/11/2026', hora_salida: '12:00', hora_regreso: '16:00', respondida_lgallegos: true, aprobado_lgallegos: false, confirmada_empleado: false, ...proof });
+  rows.pending = permission('pending', { fecha_inicio: '20/11/2026', fecha_regreso: '20/11/2026', estado: 'propuesta_rh', visto_bueno_cleon: false, respondida_lgallegos: true, aprobado_lgallegos: false, confirmada_empleado: false });
+  rows.intermediate = permission('intermediate', { fecha_inicio: '20/11/2026', fecha_regreso: '20/11/2026', estado: 'pendiente_vobo', visto_bueno_cleon: false, respondida_lgallegos: true, aprobado_lgallegos: true, confirmada_empleado: true });
+  const h = harness({ store: { permission_requests: rows } }); await h.window.showVacPerm();
+  assert.deepEqual(plain(h.api.board().records.map(sol => sol.id).sort()), ['finalEstado', 'finalEtapa', 'finalRH', 'finalVoBo']);
+  assert.match(h.node('vpAvailabilityCards').innerHTML, /Próximas salidas aprobadas \(4\)/);
+  assert.ok(!h.calls.some(call => /\/(respondida_lgallegos|aprobado_lgallegos|confirmada_empleado)$/.test(call.path)));
+  assert.ok(!h.calls.some(call => /final(Estado|RH)\/(approval_stage|visto_bueno_cleon)$/.test(call.path)), 'Estado final evita verificaciones redundantes');
+  assert.ok(h.maximum() <= 6);
+  const count = h.calls.length;
+  h.window.vpAvailabilityCommitRecord('permisos', 'pending', { ...rows.pending, estado: 'aprobado_final', visto_bueno_cleon: true });
+  assert.match(h.node('vpAvailabilityCards').innerHTML, /Próximas salidas aprobadas \(5\)/); assert.equal(h.calls.length, count);
+});
+
+test('cancelados, devueltos y propuesta Cleon no aceptada se excluyen incluso con indicadores de final antiguos', async () => {
+  const rows = {
+    cancel: permission('cancel', { cancelado: true, fecha_inicio: '20/11/2026', fecha_regreso: '20/11/2026' }),
+    returned: permission('returned', { devolucion_desde: 'cleon', fecha_inicio: '20/11/2026', fecha_regreso: '20/11/2026' }),
+    cleon: permission('cleon', { correo: 'cleon@fredinero.com', alfredo_estado: 'aprobada_alfredo', alfredo_fecha_inicio_propuesta: '20/11/2026', aceptada_propuesta_cleon: false, fecha_inicio: '20/11/2026', fecha_regreso: '20/11/2026' }),
+  };
+  const h = harness({ email: 'soporte@fredinero.com', store: { permission_requests: rows } }); await h.window.showVacPerm();
+  assert.equal(h.api.board().records.length, 0); assert.match(h.node('vpAvailabilityCards').innerHTML, /Próximas salidas aprobadas \(0\)/);
+});

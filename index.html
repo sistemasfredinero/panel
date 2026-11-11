@@ -976,7 +976,7 @@
     </div>
     <p id="vpAvailabilityCoverage" style="font-size:12px;color:#475569;line-height:1.5;margin:10px 0">Se carga automáticamente al abrir el módulo: sólo campos mínimos de solicitudes aprobadas vigentes o futuras. Buscar carga únicamente la tabla.</p>
     <div id="vpAvailabilityCards" aria-live="polite"></div>
-    <p style="font-size:12px;color:#475569;margin:12px 0 0">Sólo solicitudes con aprobación final y aceptación cuando corresponde. Ausencia y regreso según lo aprobado; no confirma que la persona ya checó asistencia. Se aplica plaza, rol, nombre y tipo; el rango de creación y el estado filtran únicamente la tabla inferior.</p>
+    <p style="font-size:12px;color:#475569;margin:12px 0 0">Sólo solicitudes con aprobación final y aceptación cuando corresponde. Ausencia y regreso según lo aprobado; no confirma que la persona ya checó asistencia. Disponibilidad incluye vacaciones y permisos aprobados. Se aplica plaza, rol y usuario; tipo, rango de creación y estado filtran únicamente la tabla inferior.</p>
   </section>
 
   <!-- Tabla de resultados -->
@@ -9051,12 +9051,9 @@
         if (sol.alfredo_estado !== 'aprobada_alfredo') return null;
         if (await read('alfredo_fecha_inicio_propuesta')) await read('aceptada_propuesta_cleon');
       } else {
-        await read('respondida_lgallegos');
-        if (sol.respondida_lgallegos) {
-          await read('aprobado_lgallegos');
-          if (!sol.aprobado_lgallegos) await read('confirmada_empleado');
+        if (String(sol.estado || '').trim().toLowerCase() !== 'aprobado_final') {
+          await Promise.all(['approval_stage', 'visto_bueno_cleon'].map(read));
         }
-        await Promise.all(['approval_stage', 'visto_bueno_cleon'].map(read));
       }
       if (!vpAvailabilityFinal(sol)) return null;
     }
@@ -9207,8 +9204,9 @@
     if (tipo !== 'permisos') return false;
     if (vpIsCleonRequest(sol)) return sol.alfredo_estado === 'aprobada_alfredo'
       && (!sol.alfredo_fecha_inicio_propuesta || sol.aceptada_propuesta_cleon === true);
-    if (sol.respondida_lgallegos && !sol.aprobado_lgallegos && !sol.confirmada_empleado) return false;
-    if (/propuesta|pendiente|sin_responder/.test(estado) && !sol.visto_bueno_cleon && sol.approval_stage !== 'completado') return false;
+    // RH móvil no limpia los indicadores de una propuesta anterior al dar
+    // VoBo final. La prueba final prevalece, como en la app; confirmación o
+    // aprobación intermedia por sí solas nunca prueban la salida aprobada.
     return sol.visto_bueno_cleon === true || estado === 'aprobado_final' || sol.approval_stage === 'completado';
   }
 
@@ -9259,9 +9257,11 @@
     return true;
   }
 
-  function vpAvailabilityFilters(sol) {
+  function vpAvailabilityFilters(sol, includeTableType = true) {
     const val = id => document.getElementById(id)?.value || '';
-    if (val('vpTipo') && sol._tipo !== val('vpTipo')) return false;
+    // Tipo/estado/rango pertenecen a la tabla; disponibilidad incluye ambos
+    // tipos aprobados sin que una consulta anterior oculte sus salidas.
+    if (includeTableType && val('vpTipo') && sol._tipo !== val('vpTipo')) return false;
     if (val('vpRol') && String(sol.rol || '').trim().toUpperCase() !== val('vpRol').toUpperCase()) return false;
     if (val('vpPlaza') && branchKey(sol.plaza) !== branchKey(val('vpPlaza'))) return false;
     return vpCoincideUsuarioFlexible(val('vpUsuario'), sol.nombre_solicitante || sol.nombre, sol.user_email || sol.correo);
@@ -9272,7 +9272,7 @@
     const today = new Date(now); today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
     for (const sol of records) {
-      if (!vpAvailabilityAuthorized(sol) || !vpAvailabilityFilters(sol) || !vpAvailabilityFinal(sol)) continue;
+      if (!vpAvailabilityAuthorized(sol) || !vpAvailabilityFilters(sol, false) || !vpAvailabilityFinal(sol)) continue;
       const dates = vpTemporalVentana(sol);
       const item = { sol, dates };
       if (!dates.valid) { incomplete.push(item); continue; }
@@ -9338,7 +9338,7 @@
     }
     const board = vpAvailabilityBoard(snapshot.records, now);
     const types = snapshot.types.map(t => t === 'vacaciones' ? 'vacaciones' : t === 'permisos' ? 'permisos' : 'vacaciones RH').join(', ');
-    coverage.textContent = `Última carga mínima: ${snapshot.loadedAt.toLocaleString('es-MX')}. Cobertura: ${types}, sólo solicitudes autorizadas con aprobación final y regreso hoy o posterior, antes del rango de creación. Plaza, rol, nombre y tipo vigentes aplicados. Hora local del navegador: ${now.toLocaleString('es-MX')}. El reloj recalcula sin Firebase; caché de 5 minutos al reabrir. Cambios externos de aprobación requieren Actualizar disponibilidad.${board.incomplete.length ? ` ${board.incomplete.length} solicitud(es) final(es) sin fecha/hora válida: no se clasifican como ausencia ni salida futura.` : ''}`;
+    coverage.textContent = `Última carga mínima: ${snapshot.loadedAt.toLocaleString('es-MX')}. Cobertura: ${types}, sólo solicitudes autorizadas con aprobación final y regreso hoy o posterior, antes del rango de creación. Vacaciones y permisos incluidos; plaza, rol y usuario vigentes aplicados. Tipo, estado y rango de creación sólo filtran la tabla. Hora local del navegador: ${now.toLocaleString('es-MX')}. El reloj recalcula sin Firebase; caché de 5 minutos al reabrir. Cambios externos de aprobación requieren Actualizar disponibilidad.${board.incomplete.length ? ` ${board.incomplete.length} solicitud(es) final(es) sin fecha/hora válida: no se clasifican como ausencia ni salida futura.` : ''}`;
     const groups = [['Ausentes ahora', board.absent, '#9A3412'], ['Regreso programado HOY', board.returningToday, '#075E67'], ['Próximas salidas aprobadas', board.future, '#6B21A8']];
     cards.innerHTML = groups.map(([title, items, color]) => `<article style="background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:14px;min-width:0"><h3 style="font-size:14px;margin:0 0 10px;color:${color}">${title} (${items.length})</h3>${items.length ? `<ul style="list-style:none;margin:0;padding:0;max-height:330px;overflow:auto">${items.map(({ sol, dates }) => {
       const type = sol._tipo === 'permisos' ? 'Permiso' : sol._tipo === 'vac_rh' ? 'Vacaciones RH' : 'Vacaciones';

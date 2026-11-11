@@ -136,7 +136,8 @@ const fixtureRecords = [
     fecha_inicio: '09/11/2026', fecha_regreso: '11/11/2026',
     hora_salida: '16:00', hora_regreso: '09:05'}),
   permission('perm-later', 'Rosa Permiso Sale Más Tarde', {
-    hora_salida: '15:10', hora_regreso: '17:45'}),
+    hora_salida: '15:10', hora_regreso: '17:45', respondida_lgallegos: true,
+    aprobado_lgallegos: false, confirmada_empleado: false}),
   vacation('vac-future', 'Carla Vacaciones Futuras Aprobadas', {
     fecha_inicio_aprobada: '20/11/2026', fecha_fin_aprobada: '25/11/2026'}),
   permission('perm-pending', 'PENDIENTE No Es Salida Aprobada', {
@@ -326,10 +327,21 @@ def test_viewport(browser, width):
               'Columnas de la tabla real incorrectas')
 
     def active_filters():
+        page.locator('#vpTipo').select_option('vacaciones')
+        click_refresh()
+        assert_groups(page, INITIAL_NAMES)
+        table_text = page.locator('#vacPermTableContainer tbody').inner_text()
+        check('Vacaciones' in table_text and 'Permiso' not in table_text,
+              'La tabla no conservó el filtro Vacaciones')
         page.locator('#vpTipo').select_option('permisos')
-        assert_groups(page, [INITIAL_NAMES[0][:2], INITIAL_NAMES[1][1:], INITIAL_NAMES[2][:1]])
+        click_refresh()
+        assert_groups(page, INITIAL_NAMES)
+        table_text = page.locator('#vacPermTableContainer tbody').inner_text()
+        check('Permiso' in table_text and 'Vacaciones' not in table_text,
+              'La tabla no conservó el filtro Permisos')
         page.locator('#vpRol').select_option('GESTOR')
-        assert_groups(page, [[], [], []])
+        assert_groups(page, [['Ángela Vacaciones En Curso'], ['Juana Vacaciones Regreso Hoy'],
+                             ['Carla Vacaciones Futuras Aprobadas']])
         page.locator('#vpRol').select_option('')
         page.locator('#vpTipo').select_option('')
         page.locator('#vpUsuario').fill('lucia permiso')
