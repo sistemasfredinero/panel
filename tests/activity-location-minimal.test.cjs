@@ -22,7 +22,7 @@ function deferred() { let resolve; const promise = new Promise(done => { resolve
 function harness({ role = 'ADMINISTRATIVO', plaza = 'TAMPICO', email = 'administracion@fredinero.com', store = {}, beforeRead } = {}) {
   const reads = [], usage = [], opened = [], alerts = [], modal = { active: false, classList: { add() { modal.active = true; }, remove() { modal.active = false; } } };
   const map = { innerHTML: '' };
-  let now = 100_000, groupsInput, analysisCalls = 0, active = 0, maximumActive = 0;
+  let now = 100_000, groupsInput, routesCalls = 0, active = 0, maximumActive = 0;
   const context = { Date: class extends Date { static now() { return now; } }, Map, Set, Promise, Number, JSON,
     auth: { currentUser: { uid: 'test-account', email } }, _activityProfile: { rol: role, plaza, correo: email },
     database: {}, ref: (_, route) => route,
@@ -39,10 +39,12 @@ function harness({ role = 'ADMINISTRATIVO', plaza = 'TAMPICO', email = 'administ
     window: { open: (...args) => opened.push(args) }, alert: message => alerts.push(message),
     document: { getElementById: id => id === 'activityRoutesMapModal' ? modal : map },
     currentActivityFilterCriteria: () => ({ start: 1, end: 2, actions: [] }),
-    loadActivityAnalysisData: async () => { analysisCalls++; return Object.entries(store.gestor_activities || {}).map(([id, record]) => ({ id, plaza: record.plaza, tipo: 'GENERAL' })); },
+    activityEnsureQueryContext: () => 'offline', cancelActivityRoutesLoad: () => { context._activityRouteController?.abort(); }, AbortController, ACTIVITY_ROUTES_COVERAGE_MESSAGE: 'Mapa de fichas disponibles del rango; históricos sin ficha o sin clave cronológica requieren índice diario',
+    loadActivityRoutesData: async () => { routesCalls++; return Object.entries(store.gestor_activities || {}).map(([id, record]) => ({ id, plaza: record.plaza, tipo: 'GENERAL' })); },
     buildActivityRouteGroups: records => { groupsInput = records; return []; },
     renderEmptyActivityRoutesMap: () => { map.innerHTML = 'Sin rutas'; },
     activityRecordById: id => ({ id, plaza }),
+    activityRoutesSdkRead: async (route, { ensureActive, signal }) => { ensureActive(); if (signal.aborted) throw new Error('Cancelado'); const result = await context.get(route); ensureActive(); return result; },
     activityText: value => String(value),
   };
   vm.createContext(context);
@@ -51,10 +53,10 @@ function harness({ role = 'ADMINISTRATIVO', plaza = 'TAMPICO', email = 'administ
   vm.runInContext([constant('PANEL_PLAZAS'), constant('TAMPICO_MADERO_MANAGER_EMAIL'),
     constant('ACTIVITY_LOCATION_CACHE_TTL_MS'), constant('ACTIVITY_LOCATION_CACHE_MAX'),
     'let _activityLightReads = 0; const _activityLightWaiters = [];',
-    'const _activityLocationCache = new Map(); let _activityLocationGeneration = 0; let _activityRouteLoadRevision = 0;',
+    'const _activityLocationCache = new Map(); let _activityLocationGeneration = 0; let _activityRouteLoadRevision = 0; let _activityRouteController = null;',
     ...names.map(fn), action('openActivityMap'), action('openActivityRoutesMap'), action('closeActivityRoutesMap')].join('\n'), context);
   return { context, reads, usage, opened, alerts, map, modal, advance: value => { now += value; },
-    max: () => maximumActive, groups: () => groupsInput, analysisCalls: () => analysisCalls };
+    max: () => maximumActive, groups: () => groupsInput, routesCalls: () => routesCalls };
 }
 function record(id = 'payment-1', plaza = 'TAMPICO') { return { id, plaza, tipo: 'COBRANZA', actualizado_en: 10 }; }
 function store(plaza = 'TAMPICO') { return { gestor_activities: { 'payment-1': { plaza, latitud: 22.2, longitud: -97.9, historial_expediente: { history: { comentario: 'x'.repeat(100_000) } }, firma_base64: 'a'.repeat(300_000) } } }; }
@@ -95,14 +97,14 @@ test('Cambio de cuenta o limpieza invalida solicitudes tardías y no comparte la
   const h = harness({ store: store(), beforeRead: () => block ? gate.promise : undefined });
   const pending = h.context.loadActivityLocationRecord(record());
   h.context.auth.currentUser.uid = 'other-account'; gate.resolve(); await assert.rejects(pending, /sesión/);
-  block = false; await h.context.loadActivityLocationRecord(record()); assert.equal(h.reads.length, 6);
-  h.context.resetActivityLocationCache(); await h.context.loadActivityLocationRecord(record()); assert.equal(h.reads.length, 9);
+  block = false; await h.context.loadActivityLocationRecord(record()); assert.equal(h.reads.length, 4, 'Cambio cancela antes de leer coordenadas');
+  h.context.resetActivityLocationCache(); await h.context.loadActivityLocationRecord(record()); assert.equal(h.reads.length, 7);
 });
 test('Errores no son caché negativa permanente; se permite reintentar manualmente', async () => {
   let failing = true; const h = harness({ store: store(), beforeRead: () => { if (failing) throw new Error('Sin señal'); } });
   await assert.rejects(h.context.loadActivityLocationRecord(record()), /Sin señal/);
   failing = false; assert.equal((await h.context.loadActivityLocationRecord(record())).latitud, 22.2);
-  assert.equal(h.reads.length, 6);
+  assert.equal(h.reads.length, 4, 'Fallo de plaza no solicita latitud/longitud');
 });
 test('Rutas arbitrarias o raíz no se consultan', async () => {
   const h = harness({ store: store() });

@@ -1139,6 +1139,7 @@
         <button class="modal-close" onclick="window.closeActivityRoutesMap()" style="margin:0;width:auto;background:#6B7280">✕ Cerrar</button>
       </div>
     </div>
+    <div id="activityRoutesCoverage" role="status" style="padding:8px 12px;margin-bottom:8px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;color:#92400E;font-size:12px">Mapa de fichas disponibles del rango; históricos sin ficha o sin clave cronológica requieren índice diario</div>
     <div id="activityRoutesMap" style="flex:1;min-height:0;border-radius:9px;border:1px solid #C7D2FE;overflow:hidden"></div>
   </div>
 </div>
@@ -1149,7 +1150,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  import { getDatabase, ref, get, set, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, startAfter, endAt, limitToFirst, limitToLast, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import { getDatabase, ref, get, onValue, set, remove, update, increment, query, orderByChild, orderByKey, equalTo, startAt, startAfter, endAt, limitToFirst, limitToLast, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
   import {makePanelNoticeClient} from './notice-client.js?v=integracion-1';
 
@@ -3987,9 +3988,11 @@
   window.setActivityActionFilter = function(key, checked) {
     if (checked) _selectedActivityActionFilters.add(String(key));
     else _selectedActivityActionFilters.delete(String(key));
+    if (typeof cancelActivityRoutesLoad === 'function') cancelActivityRoutesLoad();
     updateActivityActionFilterLabel();
   };
   window.clearActivityActionFilters = function() {
+    if (typeof cancelActivityRoutesLoad === 'function') cancelActivityRoutesLoad();
     _selectedActivityActionFilters.clear();
     renderActivityActionFilterOptions();
     updateActivityActionFilterLabel();
@@ -4379,6 +4382,7 @@
     _activityAnalysisLoading = null;
     _activityDetailCache.clear();
     if (typeof window.resetActivityBoard === 'function') window.resetActivityBoard();
+    if (!resetLocations && typeof resetActivityRoutesCache === 'function') resetActivityRoutesCache();
     if (resetLocations && typeof resetActivityLocationCache === 'function') resetActivityLocationCache();
   }
   window.invalidateActivityQueryCache = invalidateActivityQueryCache;
@@ -4390,9 +4394,21 @@
     if (_activityQueryContext !== context) { invalidateActivityQueryCache(Boolean(_activityQueryContext)); _activityQueryContext = context; }
     return context;
   }
-  async function activityBoundedRead(reader, ensureActive = () => {}) {
+  async function activityBoundedRead(reader, ensureActive = () => {}, { signal } = {}) {
     ensureActive();
-    if (_activityLightReads >= 6) await new Promise(resolve => _activityLightWaiters.push(resolve));
+    if (signal?.aborted) throw new Error('Consulta de mapa cancelada.');
+    if (_activityLightReads >= 6) await new Promise((resolve, reject) => {
+      const acquire = () => { signal?.removeEventListener('abort', abort); resolve(); };
+      const abort = () => {
+        const index = _activityLightWaiters.indexOf(acquire);
+        if (index < 0) return;
+        _activityLightWaiters.splice(index, 1);
+        signal?.removeEventListener('abort', abort);
+        reject(new Error('Consulta de mapa cancelada.'));
+      };
+      _activityLightWaiters.push(acquire);
+      signal?.addEventListener('abort', abort, { once: true });
+    });
     else _activityLightReads += 1;
     try { ensureActive(); const value = await reader(); ensureActive(); return value; }
     finally { const next = _activityLightWaiters.shift(); if (next) next(); else _activityLightReads -= 1; }
@@ -4975,6 +4991,7 @@
   };
 
   window.showActivities = async function() {
+    if (typeof cancelActivityRoutesLoad === 'function') cancelActivityRoutesLoad();
     document.getElementById('app').style.display = 'block';
     document.getElementById('moduleLanding').style.display = 'none';
     document.getElementById('attendanceWorkspace').style.display = 'none';
@@ -6656,6 +6673,185 @@
     return window.viewActivityAttachments(id);
   };
 
+  // Mapa aislado: sólo fichas cronológicas disponibles, no cobertura canónica.
+  const ACTIVITY_ROUTES_COVERAGE_MESSAGE = 'Mapa de fichas disponibles del rango; históricos sin ficha o sin clave cronológica requieren índice diario';
+  const ACTIVITY_ROUTES_FIELDS = ['created_at', 'timestamp', 'tipo', 'activity_type', 'tipo_actividad', 'categoria_actividad', 'activity_category', 'categoria', 'uid', 'user_uid', 'nombre_usuario', 'correo_usuario', 'rol', 'plaza', 'gestion_realizada', 'gestion', 'tipo_accion', 'accion_prospeccion', 'nombre_prospecto', 'nombre_contacto', 'se_visita_a', 'estado_expediente', 'es_expediente_prospeccion', 'tiene_evidencia', 'has_evidence', 'actualizado_en'];
+  const _activityRoutesCache = new Map();
+  const _activityRoutesPending = new Set();
+  let _activityRoutesGeneration = 0;
+  let _activityRouteController = null;
+
+  function cancelActivityRoutesLoad() {
+    _activityRoutesGeneration++;
+    _activityRouteController?.abort();
+    for (const controller of _activityRoutesPending) controller.abort();
+    _activityRoutesPending.clear();
+    // Conservar resultados completados TTL; nunca reutilizar una lectura abandonada.
+    for (const [key, entry] of _activityRoutesCache) if (!entry.complete) _activityRoutesCache.delete(key);
+  }
+  document.addEventListener?.('input', event => {
+    if (['activityStartDate', 'activityEndDate', 'activityType', 'activityRole', 'activityPlaza', 'activityUser'].includes(event.target?.id)) cancelActivityRoutesLoad();
+  });
+  document.addEventListener?.('change', event => {
+    if (['activityStartDate', 'activityEndDate', 'activityType', 'activityRole', 'activityPlaza', 'activityUser'].includes(event.target?.id)) cancelActivityRoutesLoad();
+  });
+  function resetActivityRoutesCache() {
+    cancelActivityRoutesLoad();
+    _activityRoutesCache.clear();
+  }
+  function activityRoutesCapturedTimestamp(record) {
+    // No historia, fecha del ID, actualizado_en ni movimiento de raíz como captura.
+    return activityCreatedTimestamp({ created_at: record?.created_at, timestamp: record?.timestamp });
+  }
+  function activityRoutesMatchesUser(record, rawQuery) {
+    if (matchesActivityUser(record, rawQuery)) return true;
+    const words = normaliseActivityText(`${record.nombre_usuario || ''} ${record.correo_usuario || ''}`).split(/\s+/);
+    // Las abreviaturas de dos letras conservan orden dentro de una palabra:
+    // rd coincide con RODRIGO/RODRIGUEZ; bere sigue siendo substring ordinario.
+    return String(rawQuery || '').split(',').map(normaliseActivityText).filter(Boolean).some(term =>
+      term.split(/\s+/).every(token => words.some(word => word.includes(token)
+        || token.length === 2 && word.indexOf(token[0]) >= 0 && word.indexOf(token[1], word.indexOf(token[0]) + 1) >= 0)));
+  }
+  function activityRoutesMatchesCriteria(record, criteria) {
+    const captured = activityRoutesCapturedTimestamp(record);
+    return captured !== null && captured >= criteria.start && captured <= criteria.end
+      && isInManagerActivityScope(record)
+      && (!criteria.type || activityCategory(record) === criteria.type)
+      && (!criteria.role || normaliseActivityText(record.rol) === criteria.role)
+      && (!criteria.plaza || normaliseActivityText(record.plaza) === criteria.plaza)
+      && activityMatchesSelectedActions(record, criteria.actions)
+      && activityRoutesMatchesUser(record, criteria.userSearch);
+  }
+  async function activityRoutesSdkRead(request, options = {}) {
+    const { signal, ensureActive = () => {} } = options;
+    // get() no ofrece cancelación. Un listener SDK de lectura onlyOnce sí se
+    // retira al cerrar/cambiar filtros; no hay suscripción persistente ni polling.
+    return activityBoundedRead(() => new Promise((resolve, reject) => {
+      ensureActive();
+      if (signal?.aborted) { reject(new Error('Consulta de mapa cancelada.')); return; }
+      let unsubscribe = null, settled = false;
+      const finish = (error, value) => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', abort);
+        unsubscribe?.();
+        if (error) reject(error); else resolve(value);
+      };
+      const abort = () => finish(new Error('Consulta de mapa cancelada.'));
+      signal?.addEventListener('abort', abort, { once: true });
+      try {
+        unsubscribe = onValue(request, value => {
+          try { ensureActive(); finish(null, value); } catch (error) { finish(error); }
+        }, error => finish(new Error('No se pudo leer el índice o GPS del mapa. Revisa permisos y usa Actualizar.')), { onlyOnce: true });
+        if (settled) unsubscribe?.();
+      } catch (error) { finish(error); }
+    }), ensureActive, { signal });
+  }
+  async function activityRoutesReadPlazas(ensureActive, signal) {
+    return activityBoundedRead(async () => {
+      ensureActive();
+      const operator = auth.currentUser;
+      let token = '';
+      try {
+        token = await operator.getIdToken();
+        ensureActive();
+        const base = ref(database).toString().replace(/\/$/, '');
+        const response = await fetch(`${base}/activity_summaries/plazas.json?shallow=true&auth=${encodeURIComponent(token)}`, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', signal });
+        ensureActive();
+        if (!response.ok) throw new Error('Índice no disponible.');
+        const value = await response.json();
+        ensureActive();
+        if (value === null) return [];
+        if (!value || typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([key, item]) => !key || /[.#$\[\]\/\x00-\x1f\x7f]/.test(key) || item !== true)) throw new Error('Índice no válido.');
+        recordPanelDataUsage('PANEL_ACTIVITY_ROUTES_PLAZA_NAMES', { records: Object.keys(value).length, payload: value, scope: 'Sólo nombres de plazas existentes; sin claves canónicas' });
+        return Object.keys(value).sort();
+      } catch (error) {
+        ensureActive();
+        throw new Error('No se pudieron consultar los nombres de plazas del índice de fichas. Usa Actualizar; no se recorrerá el historial.');
+      } finally { token = ''; }
+    }, ensureActive, { signal });
+  }
+  async function loadActivityRoutesData({ ensureActive = () => {}, force = false, signal } = {}) {
+    const criteria = currentActivityFilterCriteria();
+    if (!criteria.startValue || !criteria.endValue || !Number.isFinite(criteria.start) || !Number.isFinite(criteria.end) || criteria.start > criteria.end) throw new Error('Selecciona un rango válido de fechas antes de abrir el mapa.');
+    const context = activityEnsureQueryContext();
+    if (force) resetActivityRoutesCache();
+    const generation = _activityRoutesGeneration;
+    const signature = `${context}|${activityFilterSignature(criteria)}`;
+    const active = () => {
+      ensureActive();
+      if (signal?.aborted || generation !== _activityRoutesGeneration || context !== activityQueryContextKey() || activityFilterSignature(criteria) !== activityFilterSignature(currentActivityFilterCriteria())) throw new Error('La sesión, el mapa o los filtros cambiaron. Consulta de mapa cancelada.');
+    };
+    active();
+    for (const [key, item] of _activityRoutesCache) if (Date.now() - item.at >= ACTIVITY_QUERY_TTL_MS) _activityRoutesCache.delete(key);
+    const cached = _activityRoutesCache.get(signature);
+    if (cached) { const records = await cached.promise; active(); return records.map(record => ({ ...record })); }
+    const controller = new AbortController();
+    _activityRoutesPending.add(controller);
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    const pendingActive = () => { active(); if (controller.signal.aborted) throw new Error('Consulta de mapa cancelada.'); };
+    const entry = { at: Date.now(), promise: null };
+    entry.promise = (async () => {
+      let plazas;
+      if (activityIsManagerScope()) {
+        const allowed = prospectSectionPlazas();
+        if (criteria.plaza && !allowed.includes(criteria.plaza)) throw new Error('La sucursal seleccionada no pertenece al alcance del gerente.');
+        plazas = criteria.plaza ? [criteria.plaza] : allowed;
+      } else if (criteria.plaza) plazas = [criteria.plaza];
+      else if (activityCanManageAll() || activityIsAdministrative()) plazas = await activityRoutesReadPlazas(pendingActive, controller.signal);
+      else plazas = prospectSectionPlazas();
+      pendingActive();
+      const recordsById = new Map();
+      let offset = 0;
+      const readPlaza = async plaza => {
+        if (!plaza || /[.#$\[\]\/\x00-\x1f\x7f]/.test(plaza)) throw new Error('Nombre de plaza inválido.');
+        const lower = firebasePushIdBoundary(criteria.start, '-');
+        let cursor = firebasePushIdBoundary(criteria.end, 'z');
+        const seen = new Set();
+        while (true) {
+          pendingActive();
+          const snap = await activityRoutesSdkRead(query(ref(database, `activity_summaries/plazas/${plaza}`), orderByKey(), startAt(lower), endAt(cursor), limitToLast(ACTIVITY_RESULTS_PAGE_SIZE + 1)), { ensureActive: pendingActive, signal: controller.signal });
+          pendingActive();
+          const rows = [];
+          if (snap.exists()) snap.forEach(child => { rows.push({ key: String(child.key), value: child.val() }); });
+          rows.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+          recordPanelDataUsage('PANEL_ACTIVITY_ROUTES_INDEX_RANGE', { records: rows.length, estimatedBytes: estimateDataUsageBytes(snap.val()), scope: `${criteria.startValue} a ${criteria.endValue} · fichas disponibles de ${plaza} · no cobertura histórica` });
+          // 50 fichas + una frontera retenida para la página siguiente. Cursor por
+          // clave COMPLETA; nunca por timestamp, evita perder IDs simultáneos.
+          const hasMore = rows.length === ACTIVITY_RESULTS_PAGE_SIZE + 1;
+          const page = hasMore ? rows.slice(1) : rows;
+          for (const { key, value } of page) {
+            if (seen.has(key)) continue;
+            seen.add(key);
+            if (!/^[A-Za-z0-9_-]{20}$/.test(key) || !value || typeof value !== 'object') continue;
+            const record = { id: key, _activity_path: `gestor_activities/${key}` };
+            for (const field of ACTIVITY_ROUTES_FIELDS) if (['string', 'number', 'boolean'].includes(typeof value[field])) record[field] = value[field];
+            if (normaliseActivityText(record.plaza) !== plaza || !activityRoutesMatchesCriteria(record, criteria)) continue;
+            record.created_at = activityRoutesCapturedTimestamp(record);
+            recordsById.set(key, record);
+          }
+          if (!hasMore) break;
+          const next = rows[0].key;
+          if (next >= cursor) throw new Error('No se pudo avanzar la página del índice. Usa Actualizar.');
+          cursor = next;
+        }
+      };
+      // Cola de plazas, no Promise.all sobre todas las sucursales.
+      await Promise.all(Array.from({ length: Math.min(6, plazas.length) }, async () => {
+        while (offset < plazas.length) { pendingActive(); const plaza = plazas[offset++]; await readPlaza(plaza); }
+      }));
+      pendingActive();
+      return Array.from(recordsById.values()).sort((a, b) => b.created_at - a.created_at || a.id.localeCompare(b.id));
+    })();
+    entry.promise.then(() => { entry.complete = true; }, () => {});
+    _activityRoutesCache.set(signature, entry);
+    while (_activityRoutesCache.size > 3) _activityRoutesCache.delete(_activityRoutesCache.keys().next().value);
+    try { const records = await entry.promise; active(); return records.map(record => ({ ...record })); }
+    catch (error) { controller.abort(); if (_activityRoutesCache.get(signature) === entry) _activityRoutesCache.delete(signature); throw error; }
+    finally { signal?.removeEventListener('abort', abort); _activityRoutesPending.delete(controller); }
+  }
+
   const ACTIVITY_LOCATION_CACHE_TTL_MS = 5 * 60_000;
   const ACTIVITY_LOCATION_CACHE_MAX = 500;
   const _activityLocationCache = new Map();
@@ -6669,6 +6865,7 @@
   }
 
   function resetActivityLocationCache() {
+    if (typeof resetActivityRoutesCache === 'function') resetActivityRoutesCache();
     _activityLocationGeneration++;
     _activityRouteLoadRevision++;
     _activityLocationCache.clear();
@@ -6699,9 +6896,16 @@
           ensureActive();
           if (generation !== _activityLocationGeneration || contextKey !== activityLocationContextKey()) throw new Error('La sesión o la búsqueda cambió durante la consulta de GPS.');
         };
-        const [latitudeSnap, longitudeSnap, plazaSnap] = await Promise.all([
-          ...['latitud', 'longitud', 'plaza'].map(field => activityBoundedRead(() => get(ref(database, `${path}/${field}`)), active)),
-        ]);
+        const read = field => options.signal
+          ? activityRoutesSdkRead(ref(database, `${path}/${field}`), { ensureActive: active, signal: options.signal })
+          : activityBoundedRead(() => get(ref(database, `${path}/${field}`)), active);
+        // Plaza canónica primero: no solicitar GPS de registros que salieron del alcance.
+        const plazaSnap = await read('plaza');
+        active();
+        if (!isInManagerActivityScope({ plaza: plazaSnap.val() })) throw new Error('La plaza de esta actividad cambió. Actualiza la búsqueda antes de abrir el mapa.');
+        if (options.signal && normaliseActivityText(plazaSnap.val()) !== normaliseActivityText(preview.plaza)) throw new Error('La plaza de esta ficha cambió. Actualiza el mapa antes de consultar GPS.');
+        const [latitudeSnap, longitudeSnap] = await Promise.all(['latitud', 'longitud'].map(read));
+        active();
         const location = { latitud: latitudeSnap.val(), longitud: longitudeSnap.val(), plaza: plazaSnap.val() };
         recordPanelDataUsage('PANEL_ACTIVITY_LOCATION_SCALARS', { records: 1, payload: location, scope: 'GPS puntual y plaza vigente; sin expediente' });
         if (generation !== _activityLocationGeneration || contextKey !== activityLocationContextKey()) throw new Error('La sesión o la búsqueda cambió durante la consulta de GPS.');
@@ -6709,6 +6913,11 @@
       })();
       _activityLocationCache.set(key, entry);
       while (_activityLocationCache.size > ACTIVITY_LOCATION_CACHE_MAX) _activityLocationCache.delete(_activityLocationCache.keys().next().value);
+      // Retirar la promesa inmediatamente al abort, antes de un catch/microtask:
+      // una reapertura rápida nunca hereda el GPS abandonado del mapa anterior.
+      const discardCanceled = () => { if (_activityLocationCache.get(key) === entry) _activityLocationCache.delete(key); };
+      options.signal?.addEventListener('abort', discardCanceled, { once: true });
+      entry.promise.finally(() => options.signal?.removeEventListener('abort', discardCanceled)).catch(() => {});
       entry.promise.catch(() => { if (_activityLocationCache.get(key) === entry) _activityLocationCache.delete(key); });
       cached = entry;
     }
@@ -6717,15 +6926,16 @@
     if (generation !== _activityLocationGeneration || contextKey !== activityLocationContextKey()) throw new Error('La sesión o la búsqueda cambió durante la consulta de GPS.');
     const record = { ...preview, ...coordinates };
     if (!isInManagerActivityScope(record)) throw new Error('La plaza de esta actividad cambió. Actualiza la búsqueda antes de abrir el mapa.');
+    if (options.signal && normaliseActivityText(record.plaza) !== normaliseActivityText(preview.plaza)) throw new Error('La plaza de esta ficha cambió. Actualiza el mapa antes de consultar GPS.');
     return record;
   }
 
-  async function loadActivityLocationRecords(records, ensureActive = () => {}) {
+  async function loadActivityLocationRecords(records, ensureActive = () => {}, options = {}) {
     const result = [];
     // Seis actividades simultáneas, sin multiplicar descargas de expedientes.
     for (let index = 0; index < records.length; index += 6) {
       ensureActive();
-      const page = await Promise.all(records.slice(index, index + 6).map(record => loadActivityLocationRecord(record, { ensureActive })));
+      const page = await Promise.all(records.slice(index, index + 6).map(record => loadActivityLocationRecord(record, { ...options, ensureActive })));
       ensureActive();
       result.push(...page);
     }
@@ -7008,10 +7218,11 @@
     if (!report) return;
     report.style.display = '';
     const pageCount = Number(records?.length || 0);
-    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px">${pageCount ? `Hay <b>${pageCount}</b> actividad(es) en esta página.` : 'Aún no hay coincidencias en esta página.'} El mapa consulta <b>todas las actividades que cumplen los filtros actuales</b> y carga GPS únicamente al abrirse.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Cargar rutas en mapa</button></div>`;
+    report.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div style="color:#3730A3;font-size:13px">${pageCount ? `Hay <b>${pageCount}</b> actividad(es) en esta página.` : 'Aún no hay coincidencias en esta página.'} El mapa consulta <b>fichas disponibles de los días seleccionados</b>, independientemente de esta página, y carga GPS sólo de coincidencias del rango. Históricos sin ficha requieren índice diario.</div><button onclick="window.openActivityRoutesMap()" style="padding:8px 12px;background:#4F46E5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px">🗺️ Cargar rutas en mapa</button></div>`;
   }
 
   window.closeActivityRoutesMap = function() {
+    cancelActivityRoutesLoad();
     _activityRouteLoadRevision++;
     document.getElementById('activityRoutesMapModal').classList.remove('active');
   };
@@ -7028,9 +7239,7 @@
       button.style.cursor = 'wait';
     }
     try {
-      resetActivityLocationCache();
-      const loaded = await window.searchActivities({ force: true });
-      if (loaded) await window.openActivityRoutesMap();
+      await window.openActivityRoutesMap({ force: true });
     } finally {
       const refreshedButton = document.getElementById('refreshActivityRoutesMapBtn');
       if (refreshedButton) {
@@ -7065,7 +7274,7 @@
     message.onAdd = function() {
       const node = L.DomUtil.create('div');
       node.style.cssText = 'background:#fff;padding:10px 12px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);max-width:280px;font:12px Segoe UI,Arial,sans-serif;color:#475569';
-      node.innerHTML = '<b style="color:#312E81">Mapa de rutas</b><br><span style="display:block;margin-top:4px">No hay actividades con ubicación GPS para los filtros actuales. Puedes mover y acercar el mapa normalmente.</span>';
+      node.innerHTML = '<b style="color:#312E81">Mapa de rutas</b><br><span style="display:block;margin-top:4px">No hay ubicaciones en las fichas disponibles del rango. Esto no certifica cero actividades históricas. Puedes mover y acercar el mapa normalmente.</span>';
       L.DomEvent.disableClickPropagation(node);
       L.DomEvent.disableScrollPropagation(node);
       return node;
@@ -7073,28 +7282,44 @@
     message.addTo(map);
   }
 
-  window.openActivityRoutesMap = async function() {
+  window.openActivityRoutesMap = async function({ force = false } = {}) {
     const modal = document.getElementById('activityRoutesMapModal');
     const mapElement = document.getElementById('activityRoutesMap');
+    // Inicializar el contexto ANTES de capturar revisión/generaciones. La primera
+    // apertura no se autocancela por invalidación del contexto inicial.
+    try { activityEnsureQueryContext(); } catch (error) {
+      modal.classList.add('active');
+      mapElement.innerHTML = `<div style="padding:24px;color:#B91C1C">${activityText(error.message)}</div>`;
+      return;
+    }
+    cancelActivityRoutesLoad();
+    if (force) resetActivityLocationCache();
+    const controller = new AbortController();
+    _activityRouteController = controller;
     const revision = ++_activityRouteLoadRevision;
     const contextKey = activityLocationContextKey();
     const filterSignature = activityFilterSignature(currentActivityFilterCriteria());
     const ensureActive = () => {
-      if (revision !== _activityRouteLoadRevision || contextKey !== activityLocationContextKey()
+      if (controller.signal.aborted || revision !== _activityRouteLoadRevision || contextKey !== activityLocationContextKey()
         || filterSignature !== activityFilterSignature(currentActivityFilterCriteria())) throw new Error('La sesión, el mapa o los filtros cambiaron. Abre nuevamente el mapa.');
     };
     modal.classList.add('active');
-    mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#4F46E5;font-weight:800">⏳ Consultando todas las actividades que cumplen los filtros y sus ubicaciones GPS...</div>';
+    window.__activityRouteGroups = [];
+    const coverage = document.getElementById('activityRoutesCoverage');
+    if (coverage) coverage.textContent = ACTIVITY_ROUTES_COVERAGE_MESSAGE;
+    mapElement.innerHTML = '<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#4F46E5;font-weight:800">Consultando fichas disponibles de los días seleccionados y GPS mínimo de coincidencias...</div>';
     let records;
     let hydrated;
     try {
-      records = await loadActivityAnalysisData();
+      records = await loadActivityRoutesData({ ensureActive, signal: controller.signal });
       ensureActive();
-      hydrated = await loadActivityLocationRecords(records, ensureActive);
+      hydrated = await loadActivityLocationRecords(records, ensureActive, { signal: controller.signal, force });
       ensureActive();
+      if (coverage) coverage.textContent = `${ACTIVITY_ROUTES_COVERAGE_MESSAGE}. ${records.length} ficha(s) coincidente(s) disponible(s); ${hydrated.length} ubicación(es) válida(s). No certifica completitud histórica.`;
     } catch (error) {
-      if (revision !== _activityRouteLoadRevision) return;
-      mapElement.innerHTML = `<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#B91C1C">❌ No se pudieron cargar las ubicaciones: ${activityText(error.message || 'error desconocido')}</div>`;
+      controller.abort();
+      if (revision !== _activityRouteLoadRevision || _activityRouteController !== controller) return;
+      mapElement.innerHTML = `<div style="height:100%;display:grid;place-items:center;padding:24px;box-sizing:border-box;text-align:center;color:#B91C1C">No se pudieron cargar las ubicaciones: ${activityText(error.message || 'error desconocido')}. No se recorrerá el historial como alternativa.</div>`;
       return;
     }
     const groups = buildActivityRouteGroups(hydrated);
