@@ -1,10 +1,12 @@
 'use strict';
-// Sólo fixtures sintéticos y código REAL index.html. No SDK/red/datos reales.
+// Recolector histórico independiente de GRÁFICOS: fixtures y helpers REALES.
+// Buscar directo se prueba en activity-table-direct-range.test.cjs/browser.py.
 const assert = require('node:assert/strict');
 const { readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
+const legacyAnalysisPageSource = require('./activity-legacy-analysis-harness.cjs');
 const html = readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const plain = value => JSON.parse(JSON.stringify(value));
 const fn = name => {
@@ -80,10 +82,10 @@ function harness({ store = {}, role = 'ADMINISTRATIVO', plaza = 'CHIHUAHUA', bef
   });
   vm.runInContext([...STATES.map(declaration), ...NAMES.map(fn),
     `let _activityProfile = ${JSON.stringify({ rol: role, plaza })}; let _selectedActivityActionFilters = new Set();`,
-    action('searchActivities'), action('loadMoreActivities'),
+    legacyAnalysisPageSource, action('loadMoreActivities'),
     `globalThis.api = { ${NAMES.join(', ')}, data: () => _activitiesData, analysis: () => _activityAnalysisData, visible: () => _activitiesVisibleCount, page: () => _activityPageSession, profile: () => _activityProfile, actions: values => { _selectedActivityActionFilters = new Set(values); } };`,
   ].join('\n\n'), context);
-  return { context, api: context.api, window: context.window, node, auth, store, reads, restReads, payloads, usage, alerts, forbidden, maxInFlight: () => maxInFlight, gpsResets: () => gpsResets, renders: () => renders, advance: ms => { time += ms; } };
+  return { context, api: context.api, window: context.window, searchAnalysisPage: context.searchAnalysisPage, node, auth, store, reads, restReads, payloads, usage, alerts, forbidden, maxInFlight: () => maxInFlight, gpsResets: () => gpsResets, renders: () => renders, advance: ms => { time += ms; } };
 }
 function fixture(h, count = 240, { missing = false, prospects = false } = {}) {
   h.store.gestor_activities = {}; h.store.activity_summaries = { plazas: {}, users: {} };
@@ -107,7 +109,7 @@ module.exports = { harness, fixture, ids, DAY, BASE, plain };
 if (require.main === module) {
 test('general: 240 registros, plaza fuera catálogo/sin plaza e índice parcial; tabla50 y gráficos todo el rango sin fullcanónicos', async () => {
   const h = harness(); const rows = fixture(h, 240, { missing: true });
-  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(await h.searchAnalysisPage(), true);
   assert.equal(h.api.data().length, 50); assert.equal(h.api.visible(), 50);
   assert.equal(h.gpsResets(), 0, 'La primera creación de contexto no cancela el mapa');
   const before = h.restReads.length + h.reads.length;
@@ -121,7 +123,7 @@ test('general: 240 registros, plaza fuera catálogo/sin plaza e índice parcial;
   assert.ok(results.every(row => !row.foto_base64 && !row.historial_expediente));
   assert.ok(h.maxInFlight() <= 6); assert.deepEqual(h.forbidden, []);
   const reads = h.restReads.length + h.reads.length;
-  await h.window.searchActivities(); await Promise.all([h.api.loadActivityAnalysisData(), h.api.loadActivityAnalysisData()]);
+  await h.searchAnalysisPage(); await Promise.all([h.api.loadActivityAnalysisData(), h.api.loadActivityAnalysisData()]);
   assert.equal(h.restReads.length + h.reads.length, reads, 'Buscar con misma firma y abrir gráficos no descargan otra vez');
   const oldBytes = Buffer.byteLength(JSON.stringify(Object.fromEntries(rows.map(row => [row.id, row]))));
   const newBytes = h.payloads.reduce((sum, value) => sum + Buffer.byteLength(JSON.stringify(value)), 0);
@@ -131,25 +133,25 @@ test('general: 240 registros, plaza fuera catálogo/sin plaza e índice parcial;
 
 test('Actualizar/TTL/session cambian contexto y datos; concurrencia en búsqueda/gráficos deduplicada', async () => {
   const h = harness(); fixture(h, 220);
-  await Promise.all([h.window.searchActivities(), h.api.loadActivityAnalysisData(), h.api.loadActivityAnalysisData()]);
+  await Promise.all([h.searchAnalysisPage(), h.api.loadActivityAnalysisData(), h.api.loadActivityAnalysisData()]);
   assert.equal(h.restReads.filter(route => route === 'gestor_activities').length, 1);
   const readCount = h.restReads.length + h.reads.length;
-  await h.window.searchActivities(); assert.equal(h.restReads.length + h.reads.length, readCount);
-  await h.window.searchActivities({ force: true }); assert.ok(h.restReads.length + h.reads.length > readCount); assert.ok(h.gpsResets() >= 1);
+  await h.searchAnalysisPage(); assert.equal(h.restReads.length + h.reads.length, readCount);
+  await h.searchAnalysisPage({ force: true }); assert.ok(h.restReads.length + h.reads.length > readCount); assert.ok(h.gpsResets() >= 1);
   h.advance(300001); const expired = h.restReads.length + h.reads.length;
   await h.api.loadActivityAnalysisData(); assert.ok(h.restReads.length + h.reads.length > expired);
-  h.auth.currentUser.uid = 'new-session'; await h.window.searchActivities();
+  h.auth.currentUser.uid = 'new-session'; await h.searchAnalysisPage();
   assert.equal(h.restReads.filter(route => route === 'gestor_activities').length, 4);
 });
 
 test('plaza selectiva: Buscar/Cargar más revisan máximo102 candidatos por acción y completan con continuación', async () => {
   const h = harness(); const rows = fixture(h, 280, { missing: true });
   h.node('activityPlaza').value = 'CHIHUAHUA';
-  await h.window.searchActivities(); assert.equal(h.api.data().length, 34);
+  await h.searchAnalysisPage(); assert.equal(h.api.data().length, 34);
   assert.equal(h.api.page().scanned, 102); assert.equal(h.api.page().partial, true);
   assert.equal(h.api.page().hasMore, true);
   const before = h.reads.length + h.restReads.length;
-  await h.window.searchActivities(); assert.equal(h.reads.length + h.restReads.length, before);
+  await h.searchAnalysisPage(); assert.equal(h.reads.length + h.restReads.length, before);
   await h.window.loadMoreActivities();
   assert.equal(h.api.page().scanned, 204); assert.equal(h.api.page().hasMore, true);
   await h.window.loadMoreActivities();
@@ -161,19 +163,19 @@ test('plaza selectiva: Buscar/Cargar más revisan máximo102 candidatos por acci
 
 test('GERENTE scope estricto: verificación sólo plaza mínima fuera alcance; desconocida y sinplaza no se hidratan', async () => {
   const h = harness({ role: 'GERENTE' }); const rows = fixture(h, 220, { missing: true });
-  await h.window.searchActivities(); const results = await h.api.loadActivityAnalysisData();
+  await h.searchAnalysisPage(); const results = await h.api.loadActivityAnalysisData();
   assert.deepEqual(ids(results), ids(rows.filter(row => row.plaza === 'CHIHUAHUA')));
   const outside = new Set(rows.filter(row => row.plaza !== 'CHIHUAHUA').map(row => row.id));
   assert.ok(h.reads.filter(read => typeof read === 'string' && read.startsWith('gestor_activities/')).every(read => !outside.has(read.split('/')[1]) || read.endsWith('/plaza')));
-  h.node('activityPlaza').value = 'PLAZA HISTORICA'; assert.equal(await h.window.searchActivities(), false);
+  h.node('activityPlaza').value = 'PLAZA HISTORICA'; assert.equal(await h.searchAnalysisPage(), false);
   assert.match(h.node('activitiesTableContainer').innerHTML, /alcance del gerente/);
 });
 
 test('índice ausente completo y ausencia de permisos shallow producen cobertura exacta o error explícito, nunca cero silencioso', async () => {
   const h = harness(); const rows = fixture(h, 230); delete h.store.activity_summaries;
-  await h.window.searchActivities(); assert.deepEqual(ids(await h.api.loadActivityAnalysisData()), ids(rows));
+  await h.searchAnalysisPage(); assert.deepEqual(ids(await h.api.loadActivityAnalysisData()), ids(rows));
   const denied = harness({ denyShallow: true }); fixture(denied, 230);
-  assert.equal(await denied.window.searchActivities(), false);
+  assert.equal(await denied.searchAnalysisPage(), false);
   assert.match(denied.node('activitiesTableContainer').innerHTML, /verificar la cobertura histórica/);
   await assert.rejects(denied.api.loadActivityAnalysisData(), /verificar la cobertura histórica/);
 });
@@ -184,7 +186,7 @@ test('expedientes raíz/seguimiento_de y aliasPROSPECTO: Buscar pagina50 y gráf
   Object.assign(root, { tipo: 'PROSPECTO', nombre_prospecto: 'Raíz', estado_expediente: 'CITA_PROGRAMADA', actualizado_en: BASE + 1000 });
   Object.assign(child, { tipo: 'PROSPECTO', nombre_prospecto: 'Hijo', seguimiento_de: root.id, actualizado_en: BASE + 2000, estado_expediente: 'ALTA' });
   delete h.store.activity_summaries;
-  await h.window.searchActivities(); const results = await h.api.loadActivityAnalysisData();
+  await h.searchAnalysisPage(); const results = await h.api.loadActivityAnalysisData();
   const expected = h.api.consolidateActivityExportProspects(rows.map(h.api.activityAnalysisPreview)).filter(row => h.api.activityMatchesCriteria(row, h.api.currentActivityFilterCriteria()));
   assert.deepEqual(ids(results), ids(expected)); assert.equal(results.length, 219);
   const prospect = results.find(row => row.id === root.id);
@@ -195,7 +197,7 @@ for (const changed of ['filtros', 'logout', 'rol']) test(`cambio de ${changed} d
   let release, entered; const waiting = new Promise(resolve => { entered = resolve; }); const blocked = new Promise(resolve => { release = resolve; });
   let first = true;
   const h = harness({ beforeRead: async request => { if (first && request === 'gestor_activities') { first = false; entered(); await blocked; } } }); fixture(h, 220);
-  const searching = h.window.searchActivities(); await waiting;
+  const searching = h.searchAnalysisPage(); await waiting;
   if (changed === 'filtros') h.node('activityUser').value = 'Otra persona';
   if (changed === 'logout') h.auth.currentUser = null;
   if (changed === 'rol') h.api.profile().rol = 'GERENTE';
@@ -222,7 +224,7 @@ test('claves no push: fecha mexicana y fallback sólo fechas de historia respeta
     'history-out': { ...basic, historial_expediente: { a: { fecha: '5/11/2026, 11:30 p. m.', texto: large } } },
     'timestamp-in': { ...basic, timestamp: BASE },
   };
-  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(await h.searchAnalysisPage(), true);
   const results = await h.api.loadActivityAnalysisData();
   assert.deepEqual(ids(results), ['date-mx', 'history-in', 'timestamp-in']);
   assert.equal(h.api.activityCreatedTimestamp(results.find(row => row.id === 'history-in')), new Date(`${DAY}T23:30:00`).getTime());
@@ -243,7 +245,7 @@ test('históricos de dos segmentos: conserva rutas reales y no confunde contened
     'prospect-1': { tipo: 'PROSPECTO', nombre_prospecto: 'Expediente histórico', tipo_accion: 'LLAMADA TELEFONICA', plaza: 'PLAZA HISTORICA', actualizado_en: BASE, historial_expediente: { x: { fecha: '6/11/2026, 10:00 a. m.', texto: large } } },
     'old-payment': { tipo: 'COBRANZA', gestion_realizada: 'LLAMADA', created_at: new Date('2026-11-05T10:00:00').getTime() },
   };
-  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(await h.searchAnalysisPage(), true);
   const results = await h.api.loadActivityAnalysisData();
   assert.deepEqual(ids(results), [rows[0].id, 'payment-1', 'prospect-1'].sort());
   for (const id of ['payment-1', 'prospect-1']) {
@@ -254,7 +256,7 @@ test('históricos de dos segmentos: conserva rutas reales y no confunde contened
   assert.ok(h.reads.every(read => typeof read !== 'string' || !/^gestor_activities\/legacy\/(payment-1|prospect-1|old-payment)$/.test(read)));
   assert.ok(h.reads.every(read => typeof read !== 'string' || !/\/(texto|foto_base64|historial_expediente)$/.test(read)));
   const count = h.reads.length + h.restReads.length;
-  await h.window.searchActivities(); await h.api.loadActivityAnalysisData();
+  await h.searchAnalysisPage(); await h.api.loadActivityAnalysisData();
   assert.equal(h.reads.length + h.restReads.length, count, 'Tabla y gráficos reutilizan cobertura nested');
   assert.ok(h.maxInFlight() <= 6); assert.deepEqual(h.forbidden, []);
 });
@@ -268,7 +270,7 @@ test('GERENTE con históricos nested sólo hidrata plaza fuera de alcance, sin t
     unknown: { ...basic, plaza: 'PLAZA HISTORICA' },
     absent: { ...basic },
   };
-  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(await h.searchAnalysisPage(), true);
   assert.deepEqual(ids(await h.api.loadActivityAnalysisData()), ['inside']);
   assert.deepEqual(h.reads.filter(read => typeof read === 'string' && /^gestor_activities\/legacy\/(outside|unknown|absent)\//.test(read)).sort(), [
     'gestor_activities/legacy/absent/plaza', 'gestor_activities/legacy/outside/plaza', 'gestor_activities/legacy/unknown/plaza',
@@ -283,7 +285,7 @@ for (const [label, container] of [
   ['registro incompleto', { tipo: 'GENERAL', created_at: BASE }],
 ]) test(`histórico ${label}: error explícito, nunca cobertura cero silenciosa`, async () => {
   const h = harness(); fixture(h, 0); h.store.gestor_activities.legacy = container;
-  assert.equal(await h.window.searchActivities(), false);
+  assert.equal(await h.searchAnalysisPage(), false);
   assert.match(h.node('activitiesTableContainer').innerHTML, /históric|estructura|registro/i);
   await assert.rejects(h.api.loadActivityAnalysisData(), /históric|estructura|registro/i);
   assert.equal(h.renders(), 0);
@@ -297,14 +299,14 @@ test('summary obsoleto: elimina hojas ausentes canónicas antes de filtros y pro
   for (const field of ['tipo', 'gestion_realizada', 'nombre_usuario', 'correo_usuario', 'comentarios']) delete row[field];
   Object.assign(row, { activity_type: 'COBRANZA', gestion: 'VISITA DE CORTESIA' });
   h.node('activityType').value = 'COBRANZA';
-  assert.equal(await h.window.searchActivities(), true);
+  assert.equal(await h.searchAnalysisPage(), true);
   const [result] = await h.api.loadActivityAnalysisData();
   assert.equal(result.id, row.id); assert.equal(result.activity_type, 'COBRANZA'); assert.equal(result.gestion, 'VISITA DE CORTESIA');
   for (const field of ['tipo', 'gestion_realizada', 'nombre_usuario', 'correo_usuario', 'comentarios', 'seguimiento_de', 'motivo']) assert.equal(result[field], undefined, field);
   assert.equal(result.tiene_evidencia, false); assert.equal(result.has_evidence, false);
   assert.ok(!h.reads.some(read => typeof read === 'string' && /\/(tipo|gestion_realizada|nombre_usuario|correo_usuario|comentarios|tiene_evidencia|seguimiento_de|motivo)$/.test(read)));
   h.node('activityType').value = ''; h.node('activityUser').value = 'José Díaz';
-  await h.window.searchActivities(); assert.deepEqual(ids(await h.api.loadActivityAnalysisData()), [], 'Usuario borrado del canónico no coincide por ficha obsoleta');
+  await h.searchAnalysisPage(); assert.deepEqual(ids(await h.api.loadActivityAnalysisData()), [], 'Usuario borrado del canónico no coincide por ficha obsoleta');
 });
 
 test('shallow: rechaza valores no true y claves inválidas/control sin filtrar y presentar cobertura parcial', async () => {
@@ -317,7 +319,7 @@ test('shallow: rechaza valores no true y claves inválidas/control sin filtrar y
     const h = harness({ shallowResponse: async () => ({ ok: true, json: async () => value }) });
     await assert.rejects(h.api.activityReadShallowKeys('gestor_activities'), /verificar la cobertura histórica/);
     assert.equal(h.usage.length, 0, 'No registra metadatos inválidos como lectura exitosa');
-    assert.equal(await h.window.searchActivities(), false);
+    assert.equal(await h.searchAnalysisPage(), false);
     assert.equal(h.renders(), 0); assert.match(h.node('activitiesTableContainer').innerHTML, /no se mostrarán resultados parciales/i);
   }
   for (const value of [null, {}, { safe: true }]) {
@@ -342,12 +344,12 @@ for (const stage of ['fetch', 'json', 'token']) test(`shallow error ${stage}: me
     return { ok: true, json: async () => { if (failing && stage === 'json') throw new Error(sensitive); return null; } };
   } });
   if (stage === 'token') h.auth.currentUser.getIdToken = async () => { if (failing) throw new Error(sensitive); return 'synthetic-token'; };
-  assert.equal(await h.window.searchActivities(), false);
+  assert.equal(await h.searchAnalysisPage(), false);
   const visible = h.node('activitiesTableContainer').innerHTML;
   assert.match(visible, /verificar la cobertura histórica/);
   assert.doesNotMatch(visible, /synthetic-token|https:|auth=/);
   await assert.rejects(h.api.loadActivityAnalysisData(), error => /verificar la cobertura histórica/.test(error.message) && !/synthetic-token|https:|auth=/.test(error.message));
-  failing = false; assert.equal(await h.window.searchActivities(), true);
+  failing = false; assert.equal(await h.searchAnalysisPage(), true);
 });
 
 test('fecha fallback nested: JSON shallow inválido también falla sin descargar bitácora ni mostrar cobertura parcial', async () => {
@@ -357,7 +359,7 @@ test('fecha fallback nested: JSON shallow inválido también falla sin descargar
     const value = route.split('/').reduce((obj, key) => obj?.[key], store);
     return { ok: true, json: async () => value == null ? null : Object.fromEntries(Object.keys(value).map(key => [key, true])) };
   } });
-  assert.equal(await h.window.searchActivities(), false);
+  assert.equal(await h.searchAnalysisPage(), false);
   assert.match(h.node('activitiesTableContainer').innerHTML, /verificar la cobertura histórica/);
   assert.ok(!h.reads.some(read => typeof read === 'string' && read.includes('/historial_expediente')));
   assert.equal(h.renders(), 0);
@@ -367,7 +369,7 @@ test('IDs históricos duplicados en dos rutas: error visible en vez de consolida
   const h = harness(); fixture(h, 0);
   const basic = { tipo: 'GENERAL', gestion_realizada: 'LLAMADA', created_at: BASE };
   h.store.gestor_activities = { first: { 'payment-1': { ...basic } }, second: { 'payment-1': { ...basic } } };
-  assert.equal(await h.window.searchActivities(), false);
+  assert.equal(await h.searchAnalysisPage(), false);
   assert.match(h.node('activitiesTableContainer').innerHTML, /IDs históricos ambiguos/);
   assert.equal(h.renders(), 0);
 });

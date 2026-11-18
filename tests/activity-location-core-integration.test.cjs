@@ -1,6 +1,6 @@
 'use strict';
 // Funciones REALES extraídas de index.html. SDK, DOM y frontera Leaflet simulados.
-// Sin red, cuentas reales, escrituras, tiles, timer, análisis ni canónico completo.
+// Sin red, cuentas reales, escrituras, tiles, polling, análisis ni canónico completo.
 const assert = require('node:assert/strict');
 const { readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
@@ -80,10 +80,10 @@ function harness({ role = 'ADMINISTRATIVO', plaza = 'CHIHUAHUA', email, beforeRe
     query: (route, ...constraints) => ({ route, constraints }), orderByKey: () => ({ type: 'key' }), startAt: value => ({ type: 'start', value }), endAt: value => ({ type: 'end', value }), limitToLast: count => ({ type: 'last', count }),
     recordPanelDataUsage: (name, value) => usage.push({ name, ...plain(value) }), createEmptyActivityRoutesMap: element => { renderCalls.push(element); return null; },
     get: deny('get'), set: deny('set'), update: deny('update'), remove: deny('remove'), push: deny('push'),
-    setInterval: deny('setInterval'), setTimeout: deny('setTimeout'), WebSocket: deny('WebSocket'), XMLHttpRequest: deny('XMLHttpRequest'),
+    setInterval: deny('setInterval'), setTimeout, clearTimeout, WebSocket: deny('WebSocket'), XMLHttpRequest: deny('XMLHttpRequest'),
     loadActivityAnalysisData: deny('loadActivityAnalysisData'), activityEnsureLightRecords: deny('activityEnsureLightRecords'), loadFullActivityRecord: deny('loadFullActivityRecord'), loadFullActivityRecords: deny('loadFullActivityRecords'),
   });
-  const domEvents = html.match(/^  document\.addEventListener\?\.\('input',[\s\S]*?^  \}\);\n  document\.addEventListener\?\.\('change',[\s\S]*?^  \}\);/m);
+  const domEvents = [...html.matchAll(/^  document\.addEventListener\?\.\('input',[\s\S]*?^  \}\);\n  document\.addEventListener\?\.\('change',[\s\S]*?^  \}\);/gm)].find(match => match[0].includes('cancelActivityRoutesLoad'));
   assert.ok(domEvents);
   vm.runInContext([...STATES.map(declaration), ...NAMES.map(fn), domEvents[0],
     `let _activityProfile = ${JSON.stringify({ rol: role, plaza })}; let _selectedActivityActionFilters = new Set();`,

@@ -3957,7 +3957,7 @@
     const recordType = activityCategory(record);
     const recordRole = normaliseActivityText(record.rol);
     const recordPlaza = normaliseActivityText(record.plaza);
-    const movementAt = recordType === 'PROSPECCION'
+    const movementAt = Number.isFinite(record._activity_direct_capture_at) ? record._activity_direct_capture_at : recordType === 'PROSPECCION'
       ? Number(record._expediente_ultimo_movimiento || record.actualizado_en || activityCreatedTimestamp(record) || 0)
       : Number(activityCreatedTimestamp(record) || 0);
     return movementAt >= criteria.start && movementAt <= criteria.end
@@ -3998,10 +3998,12 @@
     if (checked) _selectedActivityActionFilters.add(String(key));
     else _selectedActivityActionFilters.delete(String(key));
     if (typeof cancelActivityRoutesLoad === 'function') cancelActivityRoutesLoad();
+    if (typeof cancelActivityDirectLoad === 'function') cancelActivityDirectLoad();
     updateActivityActionFilterLabel();
   };
   window.clearActivityActionFilters = function() {
     if (typeof cancelActivityRoutesLoad === 'function') cancelActivityRoutesLoad();
+    if (typeof cancelActivityDirectLoad === 'function') cancelActivityDirectLoad();
     _selectedActivityActionFilters.clear();
     renderActivityActionFilterOptions();
     updateActivityActionFilterLabel();
@@ -4091,7 +4093,7 @@
 
   /** Proyección exclusiva de pantalla: conserva metadatos fuera de Object.keys/CSV. */
   function activityCopyDisplayMetadata(source, target) {
-    const fields = ['_display_owner', '_display_related_records', '_display_root_id', '_display_root_path', '_display_root_identity', '_display_has_evidence'];
+    const fields = ['_display_owner', '_display_related_records', '_display_root_id', '_display_root_path', '_display_root_identity', '_display_has_evidence', '_activity_direct_capture_at'];
     fields.forEach(field => {
       if (source && Object.prototype.hasOwnProperty.call(source, field)) Object.defineProperty(target, field, { value: source[field], writable: true, configurable: true, enumerable: false });
     });
@@ -4244,7 +4246,8 @@
       const rootStage = visible.get(rootPath);
       const projection = sourceByPath.get(rootPath);
       const metadataStage = stages.find(stage => stage._display_root_path === rootPath && stage._display_root_identity);
-      const identity = projection?._display_owner || (projection?._display_root_identity && ownerOf(projection._display_root_identity)) || (rootStage && ownerOf(rootStage)) || (metadataStage && ownerOf(metadataStage._display_root_identity));
+      const directOwner = stages.find(stage => Number.isFinite(stage._activity_direct_capture_at) && stage._display_owner && stage._display_root_path === rootPath)?._display_owner;
+      const identity = projection?._display_owner || (projection?._display_root_identity && ownerOf(projection._display_root_identity)) || (rootStage && ownerOf(rootStage)) || (metadataStage && ownerOf(metadataStage._display_root_identity)) || directOwner;
       const record = projection || rootStage || latest;
       return { key: `${kind}:${rootPath}`, kind, record, relatedRecords, owner: identity || ownerOf(null), hasEvidence: stages.some(evidence) || projection?._display_has_evidence === true || evidence(metadataStage?._display_root_identity), root_id: rootPath.split('/').pop(), root_path: rootPath, latestMovementAt: Math.max(...stages.map(movement)), loadedCount: relatedRecords.length };
     }).sort((a, b) => b.latestMovementAt - a.latestMovementAt || a.key.localeCompare(b.key));
@@ -4383,6 +4386,7 @@
   function invalidateActivityQueryCache(resetLocations = true) {
     _activityQueryGeneration += 1;
     _activityQueryEntries.clear();
+    if (typeof resetActivityDirectCache === 'function') resetActivityDirectCache();
     _activityMetadataCache.clear();
     _activityUserDirectory = null;
     _activityPageSession = null;
@@ -4766,7 +4770,278 @@
     return { payload: payloads, scannedBatches };
   }
 
+  // Tabla directa independiente del escáner histórico de gráficos/CSV.
+  // Las claves del índice delimitan CAPTURA, nunca el último movimiento.
+  const ACTIVITY_DIRECT_COVERAGE_MESSAGE = 'Fichas disponibles por fecha de captura; no es el total histórico. Históricos sin ficha o sin ID cronológico requieren índice pendiente. No se recorre el historial canónico.';
+  const ACTIVITY_DIRECT_FIELDS = [...new Set([...ACTIVITY_SUMMARY_FIELDS, 'activity_type', 'tipo_actividad', 'activity_category', 'categoria', 'gestion', 'fecha_hora_registro', 'expediente_prospeccion_id', 'prospecto_raiz_id', 'ultima_llamada_control_id', 'origen_pago_id', 'origen_pago_tipo', 'has_evidence'])];
+  const _activityDirectEntries = new Map();
+  let _activityDirectGeneration = 0;
+
+  function cancelActivityDirectLoad() {
+    _activitySearchRun += 1;
+    for (const [key, entry] of _activityDirectEntries) {
+      if (entry.initializing || entry.loading) { entry.controller.abort(); _activityDirectEntries.delete(key); }
+    }
+    if (_activityPageSession?.directEntry) _activityPageSession = null;
+  }
+  function resetActivityDirectCache() {
+    cancelActivityDirectLoad();
+    _activityDirectGeneration += 1;
+    for (const entry of _activityDirectEntries.values()) entry.controller.abort();
+    _activityDirectEntries.clear();
+  }
+  document.addEventListener?.('input', event => {
+    if (['activityStartDate', 'activityEndDate', 'activityType', 'activityRole', 'activityPlaza', 'activityUser'].includes(event.target?.id)) cancelActivityDirectLoad();
+  });
+  document.addEventListener?.('change', event => {
+    if (['activityStartDate', 'activityEndDate', 'activityType', 'activityRole', 'activityPlaza', 'activityUser'].includes(event.target?.id)) cancelActivityDirectLoad();
+  });
+
+  async function activityDirectReadPlazas(ensureActive, signal) {
+    // Shallow exclusivamente de nombres; token efímero, nunca en telemetría.
+    return activityBoundedRead(async () => {
+      ensureActive();
+      const operator = auth.currentUser;
+      let token = '';
+      try {
+        token = await operator.getIdToken();
+        ensureActive();
+        const base = ref(database).toString().replace(/\/$/, '');
+        const response = await fetch(`${base}/activity_summaries/plazas.json?shallow=true&auth=${encodeURIComponent(token)}`, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', signal });
+        ensureActive();
+        if (auth.currentUser !== operator || !response.ok) throw new Error('Índice de plazas no disponible.');
+        const value = await response.json();
+        ensureActive();
+        if (auth.currentUser !== operator) throw new Error('La sesión cambió.');
+        if (value === null) return [];
+        if (!value || typeof value !== 'object' || Array.isArray(value) || Object.entries(value).some(([key, item]) => !key || /[.#$\[\]\/\x00-\x1f\x7f]/.test(key) || item !== true)) throw new Error('Índice de plazas inválido.');
+        return Object.keys(value).sort();
+      } catch {
+        ensureActive();
+        throw new Error('No se pudieron consultar las plazas del índice del rango. Revisa la sesión y usa Actualizar; no se recorrerá el historial.');
+      } finally { token = ''; }
+    }, ensureActive, { signal });
+  }
+
+  function activityDirectProjectSummary(key, value) {
+    if (!/^[A-Za-z0-9_-]{20}$/.test(key) || !value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const captured = firebasePushIdTimestamp(key);
+    if (!captured) return null;
+    const record = { id: key, _activity_path: `gestor_activities/${key}` };
+    for (const field of ACTIVITY_DIRECT_FIELDS) {
+      if (field === 'id') continue; // La identidad es siempre la clave consultada.
+      const item = value[field];
+      if (typeof item === 'string') {
+        if (item.length > 1200 || /^\s*data:/i.test(item) || /;base64,/i.test(item) || (item.length >= 512 && /^[A-Za-z0-9+/]+={0,2}$/.test(item))) continue;
+        record[field] = item;
+      } else if (typeof item === 'boolean' || typeof item === 'number' && Number.isFinite(item)) record[field] = item;
+    }
+    // El rango se busca por clave; si la ficha declara otra fecha de captura,
+    // prevalece esa fecha para excluirla, nunca actualizado_en/seguimientos.
+    const captureAt = activityCreatedTimestamp({ ...record, id: undefined }) ?? captured;
+    Object.defineProperty(record, '_activity_direct_capture_at', { value: captureAt, configurable: true, writable: true, enumerable: false });
+    return record;
+  }
+
+  function activityDirectUpdateStatus(entry) {
+    entry.complete = entry.plazas.every(plaza => plaza.complete);
+    entry.partial = !entry.complete;
+    entry.statusText = `${ACTIVITY_DIRECT_COVERAGE_MESSAGE} ${entry.scanned} ficha(s) del rango revisada(s). ${entry.partial ? 'Sólo quedan fichas DEL RANGO por revisar; cada clic revisa como máximo dos rondas por plaza y añade hasta 50 coincidencias.' : 'Rango de fichas revisado; sin coincidencias no significa cero actividades históricas.'}${entry.skipped ? ` ${entry.skipped} ficha(s) inválida(s), incompleta(s) o fuera del alcance excluida(s); revisa el índice pendiente.` : ''}`;
+  }
+
+  async function activityGetDirectEntry(criteria, ensureActive = () => {}, { force = false } = {}) {
+    if (!criteria.startValue || !criteria.endValue || !Number.isFinite(criteria.start) || !Number.isFinite(criteria.end) || criteria.start > criteria.end) throw new Error('Selecciona un rango válido de captura.');
+    const context = activityEnsureQueryContext();
+    if (force) resetActivityDirectCache();
+    const signature = `${context}|${activityFilterSignature(criteria)}`;
+    for (const [key, item] of _activityDirectEntries) if (Date.now() - item.at >= ACTIVITY_QUERY_TTL_MS) { item.controller.abort(); _activityDirectEntries.delete(key); }
+    let entry = _activityDirectEntries.get(signature);
+    if (!entry) {
+      const generation = _activityQueryGeneration, directGeneration = _activityDirectGeneration;
+      const controller = new AbortController();
+      entry = { signature, criteria, context, at: Date.now(), records: [], seen: new Set(), scanned: 0, skipped: 0, controller, loading: null, initializing: true, firstPageLoaded: false };
+      entry.ensureActive = () => {
+        if (controller.signal.aborted || generation !== _activityQueryGeneration || directGeneration !== _activityDirectGeneration || context !== activityQueryContextKey() || activityFilterSignature(criteria) !== activityFilterSignature(currentActivityFilterCriteria())) throw new Error('La sesión, la tabla o los filtros cambiaron. Consulta directa cancelada.');
+      };
+      entry.source = { path: 'activity_summaries/plazas', label: 'fichas del rango por captura · índice de plazas · sin cobertura histórica', indexed: true, direct: true };
+      entry.initialized = (async () => {
+        let plazas;
+        if (activityIsManagerScope()) {
+          const allowed = prospectSectionPlazas();
+          if (criteria.plaza && !allowed.includes(criteria.plaza)) throw new Error('La sucursal seleccionada no pertenece al alcance del gerente.');
+          plazas = criteria.plaza ? [criteria.plaza] : allowed;
+        } else if (activityCanManageAll() || activityIsAdministrative()) plazas = criteria.plaza ? [criteria.plaza] : await activityDirectReadPlazas(entry.ensureActive, controller.signal);
+        else {
+          const allowed = prospectSectionPlazas();
+          if (criteria.plaza && !allowed.includes(criteria.plaza)) throw new Error('La sucursal seleccionada no pertenece a tu alcance.');
+          plazas = criteria.plaza ? [criteria.plaza] : allowed;
+        }
+        entry.ensureActive();
+        entry.plazas = [...new Set(plazas)].map(plaza => {
+          if (!plaza || /[.#$\[\]\/\x00-\x1f\x7f]/.test(plaza)) throw new Error('Nombre de plaza inválido.');
+          return { plaza, cursor: firebasePushIdBoundary(criteria.end, 'z'), complete: false };
+        });
+        activityDirectUpdateStatus(entry);
+      })();
+      _activityDirectEntries.set(signature, entry);
+      while (_activityDirectEntries.size > 3) {
+        const oldest = _activityDirectEntries.keys().next().value;
+        _activityDirectEntries.get(oldest).controller.abort();
+        _activityDirectEntries.delete(oldest);
+      }
+      entry.initialized.then(() => { entry.initializing = false; }, () => {
+        entry.initializing = false;
+        controller.abort();
+        if (_activityDirectEntries.get(signature) === entry) _activityDirectEntries.delete(signature);
+      });
+    }
+    await entry.initialized;
+    ensureActive();
+    entry.ensureActive();
+    return entry;
+  }
+
+  async function activityDirectScanRound(entry) {
+    const active = entry.ensureActive, signal = entry.controller.signal;
+    const pending = entry.plazas.filter(plaza => !plaza.complete);
+    const batches = new Array(pending.length);
+    let offset = 0;
+    await Promise.all(Array.from({ length: Math.min(6, pending.length) }, async () => {
+      while (offset < pending.length) {
+        active();
+        const index = offset++, state = pending[index];
+        const snap = await activityRoutesSdkRead(query(ref(database, `activity_summaries/plazas/${state.plaza}`), orderByKey(), startAt(firebasePushIdBoundary(entry.criteria.start, '-')), endAt(state.cursor), limitToLast(ACTIVITY_RESULTS_PAGE_SIZE + 1)), { ensureActive: active, signal });
+        active();
+        let responseBytes = estimateDataUsageBytes(snap.val());
+        const rows = [];
+        // Proyectar de inmediato; no conservar ni registrar el payload sin sanear.
+        if (snap.exists()) snap.forEach(child => { rows.push({ key: String(child.key), record: activityDirectProjectSummary(String(child.key), child.val()) }); });
+        rows.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+        const hasMore = rows.length === ACTIVITY_RESULTS_PAGE_SIZE + 1;
+        const candidates = (hasMore ? rows.slice(1) : rows).reverse();
+        const matches = [];
+        let skipped = 0;
+        // Frontera +1 retenida: endAt inclusivo de la clave COMPLETA siguiente.
+        if (hasMore && rows[0].key >= state.cursor) throw new Error('No avanzó el cursor del rango. Usa Actualizar.');
+        for (const { record } of candidates) {
+          if (!record || !isStoredActivityRecord(record)) { skipped += 1; continue; }
+          if (normaliseActivityText(record.plaza) !== normaliseActivityText(state.plaza) || !isInManagerActivityScope(record)) { skipped += 1; continue; }
+          if (!activityMatchesCriteria(record, entry.criteria)) continue;
+          // Gerentes: sólo plaza canónica de IDs que YA coinciden con las fichas.
+          // No identidad, registros completos, raíces vinculadas, GPS ni medios.
+          if (activityIsManagerScope()) {
+            const canonical = (await activityRoutesSdkRead(ref(database, `${activityRecordPath(record)}/plaza`), { ensureActive: active, signal })).val();
+            responseBytes += estimateDataUsageBytes(canonical);
+            active();
+            if (typeof canonical !== 'string' || !isInManagerActivityScope({ plaza: canonical }) || normaliseActivityText(canonical) !== normaliseActivityText(state.plaza)) { skipped += 1; continue; }
+          }
+          matches.push(record);
+        }
+        batches[index] = { state, cursor: hasMore ? rows[0].key : state.cursor, complete: !hasMore, scanned: candidates.length, skipped, matches, responseBytes };
+      }
+    }));
+    active();
+    const added = [];
+    for (const batch of batches) {
+      Object.assign(batch.state, { cursor: batch.cursor, complete: batch.complete });
+      entry.scanned += batch.scanned;
+      entry.skipped += batch.skipped;
+      for (const record of batch.matches) if (!entry.seen.has(record.id)) { entry.seen.add(record.id); added.push(record); }
+    }
+    added.sort((a, b) => b._activity_direct_capture_at - a._activity_direct_capture_at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+    // Append estable: los offsets jamás se desplazan por otro lote/plaza.
+    entry.records.push(...added);
+    activityDirectUpdateStatus(entry);
+    return { payload: added.map(activityAnalysisPreview), indexReads: pending.length, estimatedBytes: batches.reduce((sum, batch) => sum + batch.responseBytes, 0) };
+  }
+
+  async function activityEnsureDirectRecords(entry, target) {
+    await entry.initialized;
+    entry.ensureActive();
+    if (entry.loading) return entry.loading; // Deduplicar también acciones concurrentes.
+    const promise = (async () => {
+      const payload = [];
+      let scannedBatches = 0, indexReads = 0, estimatedBytes = 0;
+      while (!entry.complete && entry.records.length < target && scannedBatches < 2) {
+        const result = await activityDirectScanRound(entry);
+        payload.push(...result.payload);
+        indexReads += result.indexReads;
+        estimatedBytes += result.estimatedBytes;
+        scannedBatches += 1;
+      }
+      entry.ensureActive();
+      activityDirectUpdateStatus(entry);
+      return { payload, scannedBatches, indexReads, estimatedBytes };
+    })();
+    entry.loading = promise;
+    try { return await promise; }
+    catch (error) {
+      entry.controller.abort();
+      if (_activityDirectEntries.get(entry.signature) === entry) _activityDirectEntries.delete(entry.signature);
+      throw new Error(`${error.message} No se pudo revisar el índice del rango; no se confirma cero actividades. Usa Actualizar. No habrá fallback histórico.`);
+    } finally { if (entry.loading === promise) entry.loading = null; }
+  }
+
+  function activityDirectConsolidateRecords(records) {
+    // Sólo objetos NUEVOS de tabla; no modificar cachés ni objetos legacy/CSV.
+    const local = records.map(activityAnalysisPreview);
+    const byPath = new Map(local.map(record => [activityRecordPath(record), record]));
+    const parentPath = record => {
+      const link = activityCategory(record) === 'PROSPECCION'
+        ? record.expediente_prospeccion_id || record.prospecto_raiz_id || record.seguimiento_de
+        : record.promesa_pago_id || (normaliseActivityText(record.gestion_realizada || record.gestion) === 'COMPROBACION DE PAGO' ? record.recepcion_pago_id || record.origen_pago_id : '');
+      const path = activityDisplayLinkedPath(record, link);
+      return path !== activityRecordPath(record) ? path : '';
+    };
+    for (const record of local) {
+      if (activityCategory(record) !== 'PROSPECCION' && !['PROMESA DE PAGO', 'RECEPCION DE PAGO', 'COMPROBACION DE PAGO', 'LLAMADA DE CONTROL', 'RENUENCIA DE PAGO'].includes(normaliseActivityText(record.gestion_realizada || record.gestion))) continue;
+      let path = activityRecordPath(record), identity = record, current = record;
+      const visited = new Set([path]);
+      let next = parentPath(current);
+      // Un seguimiento sin enlace no certifica que quien lo capturó creó la raíz.
+      const missingRoot = !next && (activityCategory(record) === 'PROSPECCION' && record.es_expediente_prospeccion === false
+        || activityCategory(record) !== 'PROSPECCION' && ['COMPROBACION DE PAGO', 'LLAMADA DE CONTROL', 'RENUENCIA DE PAGO'].includes(normaliseActivityText(record.gestion_realizada || record.gestion)));
+      if (missingRoot) identity = null;
+      while (next && !visited.has(next)) {
+        visited.add(next);
+        path = next;
+        current = byPath.get(path);
+        if (!current) { identity = null; break; }
+        identity = current;
+        next = parentPath(current);
+      }
+      if (next && visited.has(next) && current) identity = null;
+      activityCopyDisplayMetadata({ _display_root_path: path, _display_root_id: path.split('/').pop(), _display_root_identity: identity || null, _display_owner: identity
+        ? { uid: String(identity.uid || identity.user_uid || ''), name: String(identity.nombre_usuario || 'Autor original por confirmar'), email: String(identity.correo_usuario || ''), role: String(identity.rol || ''), plaza: String(identity.plaza || record.plaza || '') }
+        : { uid: `pending-root:${path}`, name: 'Autor original por confirmar', email: '', role: '', plaza: String(record.plaza || '') } }, record);
+    }
+    return consolidateActivityExportProspects(local).map(record => {
+      const related = record._display_related_records || [record];
+      const capture = Math.max(...related.map(item => Number(item._activity_direct_capture_at || 0)));
+      const projected = activityAnalysisPreview(record);
+      Object.defineProperty(projected, '_activity_direct_capture_at', { value: capture, configurable: true, writable: true, enumerable: false });
+      if (!record._display_root_identity && record._display_root_path) {
+        const pending = related.find(item => item._display_root_path === record._display_root_path && item._display_owner)?._display_owner;
+        if (pending) activityCopyDisplayMetadata({ _display_owner: pending }, projected);
+      }
+      return projected;
+    });
+  }
+
   async function loadActivityTextPage(session, previewBuilder = activityPreview, criteria = null) {
+    if (session.directEntry) {
+      session.ensureActive?.();
+      const entry = session.directEntry, offset = Number(session.directOffset || 0);
+      const result = session.reuseFirstPage ? { payload: [], scannedBatches: 0, indexReads: 0, estimatedBytes: 0 } : await activityEnsureDirectRecords(entry, offset + ACTIVITY_RESULTS_PAGE_SIZE);
+      session.reuseFirstPage = false;
+      session.ensureActive?.();
+      const page = entry.records.slice(offset, offset + ACTIVITY_RESULTS_PAGE_SIZE).map(previewBuilder);
+      session.directOffset = offset + page.length;
+      session.hasMore = !entry.complete || session.directOffset < entry.records.length;
+      Object.assign(session, { partial: entry.partial, scanned: entry.scanned, statusText: entry.statusText });
+      if (offset === 0) entry.firstPageLoaded = true;
+      return { page, ...result };
+    }
     if (session.lightEntry) {
       session.ensureActive?.();
       const entry = session.lightEntry;
@@ -5158,6 +5433,7 @@
   };
 
   window.closeActivities = function() {
+    cancelActivityDirectLoad();
     document.getElementById('activitiesSection').style.display = 'none';
     window.showPanelHome();
   };
@@ -5612,19 +5888,20 @@
     const start = new Date(startValue + 'T00:00:00').getTime();
     const end = new Date(endValue + 'T23:59:59.999').getTime();
     if (start > end) { alert('La fecha inicial no puede ser posterior a la fecha final.'); return; }
-    const run = ++_activitySearchRun;
     const manualRefresh = options === true || options?.force === true;
-    if (manualRefresh) invalidateActivityQueryCache();
+    if (manualRefresh) resetActivityDirectCache();
     const context = activityEnsureQueryContext();
+    const run = ++_activitySearchRun;
     const criteria = currentActivityFilterCriteria();
     const generation = _activityQueryGeneration;
     if (_activityAnalysisSignature !== `${context}|${activityFilterSignature(criteria)}`) { _activityAnalysisData = null; _activityAnalysisSignature = ''; }
     const active = () => {
       if (run !== _activitySearchRun || generation !== _activityQueryGeneration || context !== activityQueryContextKey() || activityFilterSignature(criteria) !== activityFilterSignature(currentActivityFilterCriteria())) throw new Error('La sesión o los filtros cambiaron durante la búsqueda.');
     };
+    _activityPageSession = null;
     document.getElementById('activitiesTableContainer').innerHTML = '<div class="loading">⏳ Cargando actividades...</div>';
     try {
-      const entry = await activityGetLightEntry(criteria, active);
+      const entry = await activityGetDirectEntry(criteria, active);
       const source = entry.source;
       const session = {
         start,
@@ -5636,7 +5913,7 @@
         seen: new Set(),
         pendingMatches: [],
         hasMore: false,
-        lightEntry: entry,
+        directEntry: entry,
         reuseFirstPage: Boolean(entry.firstPageLoaded),
         ensureActive: active,
       };
@@ -5648,18 +5925,12 @@
       recordPanelDataUsage('PANEL_ACTIVITY_SEARCH_PAGE', {
         records: rawRecords.length,
         payload: firstPage.payload,
+        estimatedBytes: firstPage.estimatedBytes ?? null,
         scope: `${startValue} a ${endValue} · página 1 · ${source.label}${session.partial ? ' · verificación pendiente' : session.hasMore ? ' · hay más coincidencias verificadas' : ''}${manualRefresh ? ' · actualización manual' : ''}`,
       });
       const scopedRecords = [];
       rawRecords.forEach(record => { if (isInManagerActivityScope(record)) scopedRecords.push(record); });
-      const consolidated = scopedRecords;
-      _activitiesData = consolidated.filter(record => {
-        const isProspection = normaliseActivityText(record.tipo || record.activity_type) === 'PROSPECCION';
-        const timestamp = isProspection
-          ? Number(record._expediente_ultimo_movimiento || activityCreatedTimestamp(record) || 0)
-          : Number(activityCreatedTimestamp(record) || 0);
-        return timestamp >= start && timestamp <= end;
-      });
+      _activitiesData = activityDirectConsolidateRecords(scopedRecords).filter(record => activityMatchesCriteria(record, criteria));
       _activitiesVisibleCount = ACTIVITY_RESULTS_PAGE_SIZE;
       window.renderActivities();
       return true;
@@ -6090,14 +6361,15 @@
     const visibleRecords = _activitiesFiltered.slice(0, _activitiesVisibleCount);
     const remainingRecords = Math.max(0, _activitiesFiltered.length - visibleRecords.length);
     const session = _activityPageSession;
-    const entry = session?.lightEntry;
+    const direct = Boolean(session?.directEntry);
+    const entry = session?.directEntry || session?.lightEntry;
     const partial = Boolean(entry ? !entry.complete : session?.partial);
-    const serverHasMore = Boolean(entry ? !entry.complete || _activitiesData.length < entry.records.length : session?.hasMore);
+    const serverHasMore = Boolean(direct ? !entry.complete || Number(session.directOffset || 0) < entry.records.length : entry ? !entry.complete || _activitiesData.length < entry.records.length : session?.hasMore);
     const scanned = Number(entry?.scanned ?? session?.scanned ?? 0);
-    const coverageText = partial
+    const coverageText = direct ? entry.statusText : partial
       ? `Verificación pendiente: ${scanned} candidato(s) revisado(s). ${_activitiesFiltered.length ? 'Son coincidencias verificadas, no el total definitivo del rango.' : 'Sin coincidencias en la parte revisada; todavía no se puede confirmar que no existan actividades.'} Usa Continuar búsqueda sólo si necesitas revisar el siguiente tramo.`
       : '';
-    const coverageNotice = partial ? `<div id="activityCoverageStatus" role="status" style="padding:12px 14px;margin-bottom:14px;border:1px solid #FCD34D;background:#FFFBEB;color:#92400E;border-radius:10px;font-size:13px;line-height:1.5">${activityText(coverageText)}</div>` : '';
+    const coverageNotice = direct || partial ? `<div id="activityCoverageStatus" role="status" style="padding:12px 14px;margin-bottom:14px;border:1px solid #FCD34D;background:#FFFBEB;color:#92400E;border-radius:10px;font-size:13px;line-height:1.5">${activityText(coverageText)}</div>` : '';
     ['activityTotal', 'activityGeneral', 'activityCobranza', 'activityProspeccion', 'activityEvidence'].forEach(id => {
       document.getElementById(id)?.setAttribute?.('title', 'Conteo de coincidencias cargadas; no representa automáticamente el total del rango.');
     });
@@ -6108,7 +6380,7 @@
     document.getElementById('activityEvidence').textContent = _activitiesFiltered.filter(x => x.tiene_evidencia).length;
     const sources = window.__activitySearchSources || {};
     const sourceLabel = sources.paginated
-      ? ` · ${Number(sources.direct || 0)} coincidencia(s) cargada(s)${sources.label ? ` · ${activityText(sources.label)}` : ''}${partial ? ' · verificación histórica pendiente' : serverHasMore ? ' · hay coincidencias verificadas por mostrar' : ''}`
+      ? ` · ${Number(sources.direct || 0)} coincidencia(s) cargada(s)${sources.label ? ` · ${activityText(sources.label)}` : ''}${partial ? direct ? ' · quedan fichas DEL RANGO por revisar' : ' · verificación histórica pendiente' : serverHasMore ? ' · hay coincidencias verificadas por mostrar' : ''}`
       : Number.isFinite(sources.direct) || Number.isFinite(sources.historical)
       ? ` · directas: ${Number(sources.direct || 0)} · históricas: ${Number(sources.historical || 0)}`
       : '';
@@ -6131,7 +6403,7 @@
     const container = document.getElementById('activitiesTableContainer');
     if (!_activitiesFiltered.length) {
       const nextPage = serverHasMore ? `<div style="margin-top:13px"><button type="button" onclick="window.loadMoreActivities()" style="border:0;border-radius:9px;background:#4F46E5;color:#fff;padding:10px 16px;font-weight:800;cursor:pointer">Continuar búsqueda</button><div style="font-size:12px;color:#667085;margin-top:8px">Revisa otro tramo acotado y agrega hasta ${ACTIVITY_RESULTS_PAGE_SIZE} coincidencias; no recorre todo el historial automáticamente.</div></div>` : '';
-      container.innerHTML = `${coverageNotice}<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">${partial ? 'Aún no hay coincidencias en el tramo verificado.' : 'No hay actividades que cumplan los filtros actuales.'}</div>${nextPage}</div>`;
+      container.innerHTML = `${coverageNotice}<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">${direct ? 'Sin coincidencias en las fichas disponibles revisadas del rango; no confirma cero actividades históricas.' : partial ? 'Aún no hay coincidencias en el tramo verificado.' : 'No hay actividades que cumplan los filtros actuales.'}</div>${nextPage}</div>`;
       return;
     }
     renderActivityBoard(container, visibleRecords, remainingRecords, serverHasMore, partial);
@@ -6139,6 +6411,28 @@
   };
 
   window.loadMoreActivities = async function() {
+    if (_activityPageSession?.directEntry) {
+      const session = _activityPageSession;
+      if (session.loading) return session.loading;
+      const container = document.getElementById('activitiesTableContainer');
+      const promise = (async () => {
+        try {
+          session.ensureActive();
+          if (container) container.style.opacity = '0.65';
+          const result = await loadActivityTextPage(session, activityAnalysisPreview, currentActivityFilterCriteria());
+          session.ensureActive();
+          _activitiesData = activityDirectConsolidateRecords(session.directEntry.records.slice(0, session.directOffset));
+          _activitiesVisibleCount = _activitiesData.length;
+          window.__activitySearchSources = { ...window.__activitySearchSources, direct: session.directOffset, partial: session.partial, scanned: session.scanned, statusText: session.statusText, scannedBatches: Number(window.__activitySearchSources?.scannedBatches || 0) + result.scannedBatches };
+          recordPanelDataUsage('PANEL_ACTIVITY_SEARCH_PAGE', { records: result.page.length, payload: result.payload, estimatedBytes: result.estimatedBytes ?? null, scope: `Página adicional sólo del rango ${session.startValue} a ${session.endValue} · fichas por captura · sin fotos` });
+          window.renderActivities();
+        } catch (error) {
+          if (_activityPageSession === session && activityQueryContextKey() === _activityQueryContext) alert(`No se pudieron cargar más fichas del rango: ${error.message}`);
+        } finally { if (_activityPageSession === session && container) container.style.opacity = ''; session.loading = null; }
+      })();
+      session.loading = promise;
+      return promise;
+    }
     if (_activityPageSession?.lightEntry) {
       const session = _activityPageSession;
       if (session.loading) return session.loading;
@@ -6738,10 +7032,11 @@
     return activityBoundedRead(() => new Promise((resolve, reject) => {
       ensureActive();
       if (signal?.aborted) { reject(new Error('Consulta de mapa cancelada.')); return; }
-      let unsubscribe = null, settled = false;
+      let unsubscribe = null, settled = false, timeout = null;
       const finish = (error, value) => {
         if (settled) return;
         settled = true;
+        if (timeout !== null) clearTimeout(timeout);
         signal?.removeEventListener('abort', abort);
         unsubscribe?.();
         if (error) reject(error); else resolve(value);
@@ -6749,6 +7044,7 @@
       const abort = () => finish(new Error('Consulta de mapa cancelada.'));
       signal?.addEventListener('abort', abort, { once: true });
       try {
+        timeout = setTimeout(() => finish(new Error('La consulta de actividades no respondió en 20 segundos. Usa Actualizar para intentar de nuevo; no se recorrerá el historial.')), 20_000);
         unsubscribe = onValue(request, value => {
           try { ensureActive(); finish(null, value); } catch (error) { finish(error); }
         }, error => finish(new Error('No se pudo leer el índice o GPS del mapa. Revisa permisos y usa Actualizar.')), { onlyOnce: true });
