@@ -442,6 +442,15 @@
     .activity-board-timeline strong { color:#334155; font-size:12px; }
     @media (max-width:560px) { .activity-board-plaza > summary { padding:13px 11px; gap:8px; } .activity-board-members { padding:0 8px 10px; } .activity-board-user > summary { padding:11px 9px; gap:8px; } .activity-board-grid { padding:0 8px 10px; grid-template-columns:1fr; } .activity-board-count { padding:5px 7px; font-size:10px; } .activity-board-avatar { width:28px; height:28px; } }
     @media (prefers-reduced-motion:reduce) { .activity-board-chevron { transition:none; } }
+    @media (max-width:600px) {
+      .activity-route-managements, .activity-route-users, .activity-route-precision {
+        box-sizing:border-box; width:calc(50vw - 34px)!important; min-width:0!important;
+        max-height:20vh; overflow:auto; overflow-wrap:anywhere; padding:7px!important;
+      }
+      .activity-route-managements button, .activity-route-users button { white-space:normal; }
+      .activity-route-precision { max-height:min(115px,18vh); }
+      .activity-route-legend { box-sizing:border-box; max-height:25vh!important; }
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -7132,7 +7141,7 @@
   function addActivityPrecisionControl(map, getBounds) {
     const precisionControl = L.control({ position: 'topright' });
     precisionControl.onAdd = function() {
-      const box = L.DomUtil.create('div');
+      const box = L.DomUtil.create('div', 'activity-route-precision');
       box.style.cssText = 'background:#fff;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);padding:9px 10px;font:12px Segoe UI,Arial,sans-serif;color:#312E81;min-width:170px';
       box.innerHTML = `<div style="font-weight:800;margin-bottom:6px">🔎 Zoom de precisión</div><div style="display:flex;align-items:center;gap:5px"><input id="activityRouteZoomInput" type="number" min="3" max="22" step="1" value="${map.getZoom()}" style="width:52px;border:1px solid #C7D2FE;border-radius:5px;padding:4px 5px;font:700 12px Segoe UI,Arial,sans-serif"><button id="activityRouteZoomApply" style="border:0;border-radius:5px;background:#4F46E5;color:#fff;padding:5px 7px;font-weight:700;cursor:pointer">Aplicar</button></div><div id="activityRouteScaleHint" style="color:#64748B;margin-top:6px;font-size:11px">22 ≈ escala de 2 m</div><button id="activityRouteZoomAuto" style="margin-top:7px;border:0;background:transparent;color:#4F46E5;padding:0;font:700 11px Segoe UI,Arial,sans-serif;cursor:pointer">↺ Ajuste automático</button>`;
       L.DomEvent.disableClickPropagation(box);
@@ -7211,6 +7220,34 @@
       const prospeccionCount = group.records.filter(record => activityCategory(record) === 'PROSPECCION').length;
       return { ...group, ...metrics, generalCount, cobranzaCount, prospeccionCount, color: activityRouteColor(group.key), nombre: first.nombre_usuario || 'Sin nombre', correo: first.correo_usuario || '—', plaza: first.plaza || 'Sin plaza' };
     }).sort((a, b) => a.day.localeCompare(b.day) || a.nombre.localeCompare(b.nombre));
+  }
+
+  function activityRoutesVisibility(groups, visibleUsers, visibleManagements, visibleRoutes) {
+    // Un solo conjunto visible para mapa, leyenda y contadores. Todo en memoria.
+    const shownGroups = [], routeRows = [], managementCounts = new Map(), userCounts = new Map();
+    let totalRecords = 0;
+    groups.forEach(group => {
+      const userRecords = group.records.filter(record => visibleUsers.has(activityRouteIdentity(record)));
+      if (!userRecords.length) return;
+      const selected = visibleRoutes.has(group.key);
+      const records = selected ? userRecords.filter(record => visibleManagements.has(normaliseActivityText(activityRouteManagement(record)) || 'SIN_GESTION_CAPTURADA')) : [];
+      const filtered = { ...group, records, ...calculateActivityRouteMetrics(records),
+        generalCount: records.filter(record => activityCategory(record) === 'GENERAL').length,
+        cobranzaCount: records.filter(record => activityCategory(record) === 'COBRANZA').length,
+        prospeccionCount: records.filter(record => activityCategory(record) === 'PROSPECCION').length };
+      // Conservar la fila desmarcada/vacía permite volver a mostrar la ruta.
+      routeRows.push({ ...filtered, selected });
+      if (!records.length) return;
+      shownGroups.push(filtered);
+      records.forEach(record => {
+        const management = normaliseActivityText(activityRouteManagement(record)) || 'SIN_GESTION_CAPTURADA';
+        const user = activityRouteIdentity(record);
+        managementCounts.set(management, (managementCounts.get(management) || 0) + 1);
+        userCounts.set(user, (userCounts.get(user) || 0) + 1);
+        totalRecords++;
+      });
+    });
+    return { groups: shownGroups, routeRows, managementCounts, userCounts, totalRecords, totalRoutes: shownGroups.length };
   }
 
   function renderActivityRoutesReport(records) {
@@ -7331,22 +7368,25 @@
     const userFilters = buildActivityRouteUserFilters(groups);
     const visibleManagements = new Set(managementFilters.map(filter => filter.key));
     const visibleUsers = new Set(userFilters.map(filter => filter.key));
-    const state = { layers: [], bounds: [], legend: null, filterPanel: null, userFilterPanel: null };
+    const visibleRoutes = new Set(groups.map(group => group.key));
+    const state = { layers: [], bounds: [], legend: null, filterPanel: null, userFilterPanel: null, visibility: null };
 
     const renderVisibleRoutes = () => {
+      const focusedRoute = state.legend?.contains(document.activeElement) ? document.activeElement?.dataset.routeKey : null;
+      const focusedAction = state.legend?.contains(document.activeElement) ? document.activeElement?.dataset.routeVisibilityAction : null;
+      const legendScroll = state.legend?.scrollTop || 0;
+      const view = activityRoutesVisibility(groups, visibleUsers, visibleManagements, visibleRoutes);
+      state.visibility = view;
       state.layers.forEach(layer => map.removeLayer(layer));
       state.layers = [];
       state.bounds = [];
-      const legendRows = [];
-      groups.forEach(group => {
-        const visibleRecords = group.records.filter(record => visibleManagements.has(normaliseActivityText(activityRouteManagement(record)) || 'SIN_GESTION_CAPTURADA') && visibleUsers.has(activityRouteIdentity(record)));
-        if (!visibleRecords.length) return;
+      const legendRows = view.routeRows.map((group, index) => {
         const groupDate = group.day === 'Sin fecha' ? group.day : group.day.split('-').reverse().join('/');
+        return `<label style="display:flex;align-items:flex-start;gap:7px;margin:6px 0;padding:5px 0;border-top:1px solid #E5E7EB;cursor:pointer;opacity:${group.selected && group.records.length ? '1' : '.65'}"><input type="checkbox" data-route-visible-index="${index}" data-route-key="${escapeMapHtml(group.key)}" ${group.selected ? 'checked' : ''} aria-label="Mostrar ruta de ${escapeMapHtml(group.nombre)} del ${escapeMapHtml(groupDate)}" style="margin:2px 0 0;accent-color:${group.color}"><span style="width:18px;border-top:3px dashed ${group.color};margin-top:7px;flex-shrink:0"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)}<br>${group.records.length} punto(s) visibles · <b>${formatActivityDistance(group.totalMeters)}</b><br><span style="color:#7C3AED">● ${group.generalCount} General</span> <span style="color:#15803D">● ${group.cobranzaCount} Cobranza</span> <span style="color:#2563EB">● ${group.prospeccionCount} Prospección</span>${group.selected ? '' : '<small style="display:block;color:#64748B">Ruta oculta. Marca para volver a mostrarla.</small>'}</span></label>`;
+      });
+      view.groups.forEach(group => {
+        const visibleRecords = group.records;
         const metrics = calculateActivityRouteMetrics(visibleRecords);
-        const generalCount = visibleRecords.filter(record => activityCategory(record) === 'GENERAL').length;
-        const cobranzaCount = visibleRecords.filter(record => activityCategory(record) === 'COBRANZA').length;
-        const prospeccionCount = visibleRecords.filter(record => activityCategory(record) === 'PROSPECCION').length;
-        legendRows.push(`<div style="display:flex;align-items:center;gap:7px;margin:4px 0"><span style="width:18px;border-top:3px dashed ${group.color}"></span><span><b>${escapeMapHtml(group.nombre)}</b> · ${escapeMapHtml(groupDate)}<br>${visibleRecords.length} punto(s) · <b>${formatActivityDistance(metrics.totalMeters)}</b><br><span style="color:#7C3AED">● ${generalCount} General</span> <span style="color:#15803D">● ${cobranzaCount} Cobranza</span> <span style="color:#2563EB">● ${prospeccionCount} Prospección</span></span></div>`);
         const routePoints = [];
         visibleRecords.forEach((record, index) => {
           const latitude = Number(record.latitud);
@@ -7374,14 +7414,17 @@
         }
       });
       if (state.legend) {
-        state.legend.innerHTML = `<div style="font-weight:800;margin-bottom:5px;color:#312E81">Rutas visibles</div><div style="margin-bottom:7px;font-size:11px"><span style="color:#7C3AED">● Punto morado: General</span><br><span style="color:#15803D">● Punto verde: Cobranza</span><br><span style="color:#2563EB">● Punto azul: Prospección</span></div>${legendRows.length ? legendRows.join('') : '<div style="font-size:12px;color:#64748B">No hay actividades seleccionadas para mostrar.</div>'}`;
+        state.legend.innerHTML = `<div style="font-weight:800;margin-bottom:5px;color:#312E81">Rutas visibles (${view.totalRoutes})</div><div data-route-visible-total="${view.totalRecords}" style="font-weight:700;margin-bottom:5px">${view.totalRecords} actividad(es) visibles en el mapa</div><div style="margin-bottom:7px;font-size:11px">Marca rutas por usuario y día. Sus puntos, distancias y conteos respetan los filtros.</div><div style="display:flex;gap:6px;margin-bottom:7px"><button type="button" data-route-visibility-action="all" style="border:1px solid #C7D2FE;background:#EEF2FF;color:#3730A3;border-radius:5px;padding:4px 7px;font-weight:800;font-size:11px;cursor:pointer">Ver rutas</button><button type="button" data-route-visibility-action="none" style="border:1px solid #E5E7EB;background:#fff;color:#4B5563;border-radius:5px;padding:4px 7px;font-weight:800;font-size:11px;cursor:pointer">Ocultar rutas</button></div><div style="margin-bottom:7px;font-size:11px"><span style="color:#7C3AED">● Punto morado: General</span><br><span style="color:#15803D">● Punto verde: Cobranza</span><br><span style="color:#2563EB">● Punto azul: Prospección</span></div>${legendRows.length ? legendRows.join('') : '<div style="font-size:12px;color:#64748B">Selecciona usuarios para mostrar sus rutas.</div>'}`;
+        state.legend.scrollTop = legendScroll;
+        if (focusedRoute != null) Array.from(state.legend.querySelectorAll('[data-route-key]')).find(input => input.dataset.routeKey === focusedRoute)?.focus({ preventScroll: true });
+        else if (focusedAction != null) Array.from(state.legend.querySelectorAll('[data-route-visibility-action]')).find(button => button.dataset.routeVisibilityAction === focusedAction)?.focus({ preventScroll: true });
       }
     };
 
     const routesLegendControl = L.control({ position: 'bottomright' });
     routesLegendControl.onAdd = function() {
-      state.legend = L.DomUtil.create('div');
-      state.legend.style.cssText = 'background:#fff;padding:9px 11px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);max-height:170px;overflow:auto;font:12px Segoe UI,Arial,sans-serif;color:#334155';
+      state.legend = L.DomUtil.create('div', 'activity-route-legend');
+      state.legend.style.cssText = 'background:#fff;padding:9px 11px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);max-height:min(38vh,320px);max-width:min(390px,calc(100vw - 52px));overflow:auto;font:12px Segoe UI,Arial,sans-serif;color:#334155';
       L.DomEvent.disableClickPropagation(state.legend);
       L.DomEvent.disableScrollPropagation(state.legend);
       return state.legend;
@@ -7390,7 +7433,7 @@
 
     const routesFilterControl = L.control({ position: 'topright' });
     routesFilterControl.onAdd = function() {
-      const panel = L.DomUtil.create('div');
+      const panel = L.DomUtil.create('div', 'activity-route-managements');
       state.filterPanel = panel;
       panel.style.cssText = 'background:#fff;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);padding:10px;width:min(290px,calc(100vw - 52px));font:12px Segoe UI,Arial,sans-serif;color:#1F2937';
       panel.innerHTML = `<div style="font-weight:900;color:#312E81">Filtros de actividades</div><div style="font-size:11px;color:#64748B;margin:3px 0 8px">Todas están visibles. Desmarca las que no quieras ver.</div><div style="display:flex;gap:6px;margin-bottom:8px"><button type="button" data-route-filter-action="all" style="border:1px solid #C7D2FE;background:#EEF2FF;color:#3730A3;border-radius:5px;padding:4px 7px;font-weight:800;font-size:11px;cursor:pointer">Ver todas</button><button type="button" data-route-filter-action="none" style="border:1px solid #E5E7EB;background:#fff;color:#4B5563;border-radius:5px;padding:4px 7px;font-weight:800;font-size:11px;cursor:pointer">Ocultar todas</button></div><div style="max-height:230px;overflow:auto;padding-right:3px">${managementFilters.map((filter, index) => `<label style="display:flex;align-items:flex-start;gap:7px;padding:5px 1px;border-top:1px solid #F3F4F6;cursor:pointer"><input type="checkbox" data-route-filter-index="${index}" checked style="margin:2px 0 0;accent-color:#4F46E5"><span style="flex:1;line-height:1.3">${escapeMapHtml(filter.label)}</span><b style="color:#4F46E5">(${filter.count})</b></label>`).join('')}</div>`;
@@ -7399,10 +7442,15 @@
       return panel;
     };
     routesFilterControl.addTo(map);
+    state.filterPanel.children[1].textContent = 'Conteos de lo visible en el mapa, según usuarios, rutas y actividades seleccionados.';
+    const activityVisibleTotal = document.createElement('div');
+    activityVisibleTotal.dataset.routeFilterTotal = '0';
+    activityVisibleTotal.style.cssText = 'font-size:12px;font-weight:800;color:#3730A3;margin:5px 0 8px';
+    state.filterPanel.insertBefore(activityVisibleTotal, state.filterPanel.children[2]);
 
     const routesUserFilterControl = L.control({ position: 'topleft' });
     routesUserFilterControl.onAdd = function() {
-      const panel = L.DomUtil.create('div');
+      const panel = L.DomUtil.create('div', 'activity-route-users');
       state.userFilterPanel = panel;
       panel.style.cssText = 'background:#fff;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);padding:10px;width:min(290px,calc(100vw - 52px));font:12px Segoe UI,Arial,sans-serif;color:#1F2937';
       panel.innerHTML = `<div style="font-weight:900;color:#312E81">Usuarios visibles</div><div style="font-size:11px;color:#64748B;margin:3px 0 8px">Filtra los puntos y rutas por responsable.</div><div style="display:flex;gap:6px;margin-bottom:8px"><button type="button" data-route-user-action="all" style="border:1px solid #C7D2FE;background:#EEF2FF;color:#3730A3;border-radius:5px;padding:4px 7px;font-weight:800;font-size:11px;cursor:pointer">Ver todos</button><button type="button" data-route-user-action="none" style="border:1px solid #E5E7EB;background:#fff;color:#4B5563;border-radius:5px;padding:4px 7px;font-weight:800;font-size:11px;cursor:pointer">Ocultar todos</button></div><div style="max-height:230px;overflow:auto;padding-right:3px">${userFilters.map((filter, index) => `<label style="display:flex;align-items:flex-start;gap:7px;padding:5px 1px;border-top:1px solid #F3F4F6;cursor:pointer"><input type="checkbox" data-route-user-index="${index}" checked style="margin:2px 0 0;accent-color:#4F46E5"><span style="flex:1;line-height:1.3"><b>${escapeMapHtml(filter.label)}</b>${filter.role || filter.plaza ? `<small style="display:block;color:#64748B;margin-top:1px">${escapeMapHtml([filter.role, filter.plaza].filter(Boolean).join(' · '))}</small>` : ''}</span><b style="color:#4F46E5">(${filter.count})</b></label>`).join('')}</div>`;
@@ -7411,18 +7459,48 @@
       return panel;
     };
     routesUserFilterControl.addTo(map);
+    state.userFilterPanel.children[1].textContent = 'Conteos de actividades visibles. Puedes volver a marcar usuarios con conteo cero.';
 
     const updateVisibility = () => {
       renderVisibleRoutes();
+      const view = state.visibility;
+      activityVisibleTotal.dataset.routeFilterTotal = String(view.totalRecords);
+      activityVisibleTotal.textContent = `${view.totalRecords} actividad(es) visibles`;
       state.filterPanel?.querySelectorAll('[data-route-filter-index]').forEach(input => {
-        const filter = managementFilters[Number(input.dataset.routeFilterIndex)];
+        const index = Number(input.dataset.routeFilterIndex);
+        const filter = managementFilters[index];
         input.checked = Boolean(filter && visibleManagements.has(filter.key));
+        const count = view.managementCounts.get(filter?.key) || 0;
+        const badge = input.parentElement?.lastElementChild;
+        if (badge?.tagName === 'B') { badge.dataset.routeFilterCount = String(index); badge.textContent = `(${count})`; badge.title = 'Actividades de esta gestión realmente visibles en el mapa'; }
       });
       state.userFilterPanel?.querySelectorAll('[data-route-user-index]').forEach(input => {
-        const filter = userFilters[Number(input.dataset.routeUserIndex)];
+        const index = Number(input.dataset.routeUserIndex);
+        const filter = userFilters[index];
         input.checked = Boolean(filter && visibleUsers.has(filter.key));
+        const count = view.userCounts.get(filter?.key) || 0;
+        const badge = input.parentElement?.lastElementChild;
+        if (badge?.tagName === 'B') { badge.dataset.routeUserCount = String(index); badge.textContent = `(${count})`; badge.title = `${filter?.count || 0} actividades cargadas; ${count} visibles con los filtros actuales`; }
       });
     };
+    // Delegación: las casillas nuevas siguen funcionando después de cada render
+    // de la leyenda, sin perder sus opciones ni instalar listeners de datos.
+    state.legend.addEventListener('change', event => {
+      const input = event.target;
+      if (input?.dataset.routeVisibleIndex === undefined) return;
+      const route = state.visibility.routeRows[Number(input.dataset.routeVisibleIndex)];
+      if (!route) return;
+      if (input.checked) visibleRoutes.add(route.key); else visibleRoutes.delete(route.key);
+      updateVisibility();
+    });
+    state.legend.addEventListener('click', event => {
+      const button = event.target?.closest('[data-route-visibility-action]');
+      if (!button || !state.legend.contains(button)) return;
+      state.visibility.routeRows.forEach(route => {
+        if (button.dataset.routeVisibilityAction === 'all') visibleRoutes.add(route.key); else visibleRoutes.delete(route.key);
+      });
+      updateVisibility();
+    });
     state.filterPanel?.querySelectorAll('[data-route-filter-index]').forEach(input => {
       input.addEventListener('change', () => {
         const filter = managementFilters[Number(input.dataset.routeFilterIndex)];
@@ -7454,7 +7532,7 @@
       });
     });
 
-    renderVisibleRoutes();
+    updateVisibility();
     focusActivityRoutesMap(map, state.bounds);
     addActivityPrecisionControl(map, () => state.bounds);
     setTimeout(() => map.invalidateSize(), 60);
